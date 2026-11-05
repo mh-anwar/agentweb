@@ -220,11 +220,13 @@ export class RunCtx {
   }
 
   /** Load a URL on the cheapest engine that works, escalating only for GET. */
-  async navigate(req: NavRequest, o?: { tier?: Tier; push?: boolean }): Promise<void> {
+  async navigate(req: NavRequest, o?: { tier?: Tier; push?: boolean; checked?: boolean }): Promise<void> {
     const method = req.method ?? 'GET';
-    const v = await this.guard.checkStep({ verb: 'open', origin: this.rec.page ? originOf(this.rec.page.url) : undefined, dest: req.url, method });
-    if (!v.ok) throw new AwError('policy', v.reason);
-    if (v.warn) this.note(v.warn);
+    if (!o?.checked) {
+      const v = await this.guard.checkStep({ verb: 'open', origin: this.rec.page ? originOf(this.rec.page.url) : undefined, dest: req.url, method });
+      if (!v.ok) throw new AwError('policy', v.reason);
+      if (v.warn) this.note(v.warn);
+    }
     let tier = o?.tier ?? (method === 'GET' ? await this.pickTier(req.url) : 'wire');
     const pinned = !!o?.tier || !!this.rec.engine;
     const before = this.rec.page?.tier;
@@ -366,7 +368,7 @@ export class RunCtx {
     if (v.warn) this.note(v.warn);
     const beforeUrl = page.url;
     const beforeHashes = page.blocks.map((b) => b.hx).join(',');
-    await this.navigate({ url: req.url, method: req.method, body: req.body, contentType: req.contentType, referer: page.url }, { tier: 'wire' });
+    await this.navigate({ url: req.url, method: req.method, body: req.body, contentType: req.contentType, referer: page.url }, { tier: 'wire', checked: true });
     const now = this.page;
     if (now.url === beforeUrl && now.blocks.map((b) => b.hx).join(',') === beforeHashes) {
       this.note("the page did not change after submitting: the form may be handled by JavaScript (engine('ghost') re-opens the page with scripts)");
@@ -729,6 +731,17 @@ const VERBS: Record<string, VerbHandler> = {
   },
 };
 VERBS.uncheck = VERBS.check;
+
+// A consequential step was refused with "confirm <token>": confirm('token') approves exactly that
+// step once. Hosts that want a human in the loop should not let the model write this themselves.
+VERBS.confirm = async (rc, step) => {
+  const token = str(step.args[0]).replace(/^confirm\s+/i, '').trim();
+  const g = rc.guard as { confirm?: (t: string) => boolean };
+  if (!token) throw new AwError('bad_request', "confirm needs the token from the refusal: confirm('1a2b3c4d')");
+  if (!g.confirm) throw new AwError('unsupported', 'this guard has no confirmations');
+  if (!g.confirm(token)) throw new AwError('policy', `'${token}' is not a pending confirmation for this session`);
+  rc.note('confirmed: the refused step may now run once; repeat it');
+};
 
 /** After escalation the page object is new: aim the step at the same control by fingerprint or label. */
 function retarget(step: Step, act: Act): Step {

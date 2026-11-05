@@ -181,3 +181,18 @@ test('bad programs come back with usable help, not a stack trace', async () => {
   const none = await rt.run(fresh(), `find('x')`);
   assert.match(none.text, /no page is open/);
 });
+
+test('a consequential step needs a confirmation token, which approves it once', async () => {
+  const policy = { ...defaultPolicy('local'), confirm: 'consequential' as const };
+  const r2 = createRuntime({ store: new MemoryStore(), engines: { wire: createWireEngine({ polite: false }) }, createJar, createGuard: (st) => createGuard(policy, st), encodeForm, readBody });
+  const s = 'confirm-test';
+  const refused = await r2.run(s, `open('${site.url}/p/1'); click('Add to cart'); click('Place order')`);
+  assert.equal(refused.ok, false, refused.text);
+  const token = /confirm ([0-9a-f]{8})/.exec(refused.text)?.[1];
+  assert.ok(token, refused.text);
+  const before = site.orders.length;
+  const placed = await r2.run(s, `confirm('${token}'); click('Place order'); expect('Order placed')`);
+  assert.equal(placed.ok, true, placed.text);
+  assert.equal(site.orders.length, before + 1);
+  await r2.close();
+});
