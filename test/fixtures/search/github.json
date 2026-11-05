@@ -1,0 +1,96 @@
+{
+"total_count": 443,
+"incomplete_results": false,
+"items": [
+{
+"full_name": "monoio-rs/monoio",
+"html_url": "https://github.com/monoio-rs/monoio",
+"description": "Rust async runtime based on io-uring.",
+"stargazers_count": 5133,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-10-16T08:48:43Z"
+},
+{
+"full_name": "smol-rs/smol",
+"html_url": "https://github.com/smol-rs/smol",
+"description": "A small and fast async runtime for Rust",
+"stargazers_count": 5108,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-10-26T13:43:06Z"
+},
+{
+"full_name": "rustls/tokio-rustls",
+"html_url": "https://github.com/rustls/tokio-rustls",
+"description": "Async TLS for the Tokio runtime",
+"stargazers_count": 238,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-11-02T08:19:30Z"
+},
+{
+"full_name": "sparckles/Robyn",
+"html_url": "https://github.com/sparckles/Robyn",
+"description": "Robyn is a Super Fast Async Python Web Framework with a Rust runtime.",
+"stargazers_count": 7430,
+"language": "Python",
+"archived": false,
+"pushed_at": "2026-11-02T18:55:43Z"
+},
+{
+"full_name": "NVIDIA/cuda-rust",
+"html_url": "https://github.com/NVIDIA/cuda-rust",
+"description": "NVIDIA's CUDA platform for Rust. Host runtime crates plus Tile (cutile-rs) and SIMT (cuda-oxide) kernel programming models in idiomatic Rust.",
+"stargazers_count": 3990,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-11-05T20:23:19Z"
+},
+{
+"full_name": "actix/actix-net",
+"html_url": "https://github.com/actix/actix-net",
+"description": "A collection of lower-level libraries for composable network services.",
+"stargazers_count": 776,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-11-05T18:33:15Z"
+},
+{
+"full_name": "PyO3/pyo3-async-runtimes",
+"html_url": "https://github.com/PyO3/pyo3-async-runtimes",
+"description": "PyO3-based bridges between Python and Rust async runtimes",
+"stargazers_count": 200,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-10-20T16:41:54Z"
+},
+{
+"full_name": "compio-rs/compio",
+"html_url": "https://github.com/compio-rs/compio",
+"description": "A thread-per-core async Rust runtime with IOCP/io_uring/polling.",
+"stargazers_count": 1944,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-11-03T22:44:58Z"
+},
+{
+"full_name": "FutureSDR/FutureSDR",
+"html_url": "https://github.com/FutureSDR/FutureSDR",
+"description": "An Async SDR Runtime for Heterogeneous Architectures",
+"stargazers_count": 485,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-10-20T08:45:16Z"
+},
+{
+"full_name": "apache/asyncband",
+"html_url": "https://github.com/apache/asyncband",
+"description": "This crate provides concurrency control and async coordination primitives that are runtime agnostic.",
+"stargazers_count": 291,
+"language": "Rust",
+"archived": false,
+"pushed_at": "2026-11-05T14:08:31Z"
+}
+]
+}

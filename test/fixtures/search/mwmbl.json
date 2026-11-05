@@ -1,0 +1,598 @@
+[
+{
+"url": "https://github.com/notgull/unsend",
+"title": [
+{
+"value": "GitHub - notgull/unsend: Thread-unsafe ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+}
+],
+"extract": [
+{
+"value": " Saved searches Use saved searches to filter your results more quickly You signed in with another tab or window. Reload to refresh your session.You signed…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://news.ycombinator.com/item?id=25520353",
+"title": [
+{
+"value": "Tokio 1.0 – ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " for ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " | Hacker News",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " I don't really get these modern ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " APIs. In languages like Javascript I thought they only made sense because JS interpreters are (historically) single…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://tokio.rs/",
+"title": [
+{
+"value": "Tokio - An asynchronous ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+}
+],
+"extract": [
+{
+"value": "Tokio is a ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " for writing reliable asynchronous applications with ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": ". It provides ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " I/O, networking, scheduling, timers, and more.",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://www.mattkeeter.com/blog/2024-08-01-panic/",
+"title": [
+{
+"value": "Panic! At The ",
+"is_bold": false
+},
+{
+"value": "Async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "Runtime",
+"is_bold": true
+},
+{
+"value": " Shutdown",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " Panic! At The ",
+"is_bold": false
+},
+{
+"value": "Async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "Runtime",
+"is_bold": true
+},
+{
+"value": " Shutdown While working on Crucible,\nI've been repeatedly bitten by seemingly \"impossible\" panics happening at a\nfrustratingly…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://hackmd.io/@wg-async",
+"title": [
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "Async",
+"is_bold": true
+},
+{
+"value": " Working Group - HackMD",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "Async",
+"is_bold": true
+},
+{
+"value": " Working Group",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "http://github.com/ChenLongxi666/monoio",
+"title": [
+{
+"value": "GitHub - ChenLongxi666/monoio: ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " based on io-ur…",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": "You signed in with another tab or window. Reload to refresh your session. You signed out in another tab or window. Reload to refresh your session. You swi…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://github.com/kprotty/yaar",
+"title": [
+{
+"value": "GitHub - kprotty/yaar: Yet Another ",
+"is_bold": false
+},
+{
+"value": "Async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "Runtime",
+"is_bold": true
+},
+{
+"value": " (yaar) focused …",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " Saved searches Use saved searches to filter your results more quickly You signed in with another tab or window. Reload to refresh your session.You signed…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://en.wikipedia.org/wiki/Async/await",
+"title": [
+{
+"value": "Async",
+"is_bold": true
+},
+{
+"value": "/await",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": "Kotlin, ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": ", Nim, JavaScript, and Swift. F# added asynchronous workflows with await points in version 2.0 in 2007. This influenced the ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": "/await mechanism",
+"is_bold": false
+}
+],
+"source": "wikipedia"
+},
+{
+"url": "http://fasterthanli.me/tags/async",
+"title": [
+{
+"value": "async",
+"is_bold": true
+}
+],
+"extract": [
+{
+"value": "I'd like to think that my understanding of \"",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": "\" has increased over the past year or so. I'm 100% onboard with the basic principle: I would like to…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://github.com/naturalio/orb",
+"title": [
+{
+"value": "GitHub - NaturalIO/orb-rs: ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " compatible made easy · …",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " You signed in with another tab or window. Reload to refresh your session.You signed out in another tab or window. Reload to refresh your session.You swit…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://github.com/bytedance/monoio",
+"title": [
+{
+"value": "GitHub - monoio-rs/monoio: ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " based on io-uring.…",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " You signed in with another tab or window. Reload to refresh your session.You signed out in another tab or window. Reload to refresh your session.You swit…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://github.com/dragon-zhang/monoio",
+"title": [
+{
+"value": "GitHub - dragon-zhang/monoio: ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " based on io-uri…",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " Saved searches Use saved searches to filter your results more quickly You signed in with another tab or window. Reload to refresh your session.You signed…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://github.com/smol-rs/smol",
+"title": [
+{
+"value": "GitHub - smol-rs/smol: A small and fast ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " for ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": " ·…",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " You signed in with another tab or window. Reload to refresh your session.You signed out in another tab or window. Reload to refresh your session.You swit…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://git.sr.ht/~notgull/async-winit",
+"title": [
+{
+"value": "~notgull/",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": "-winit -\n\nUse winit like the ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": " ",
+"is_bold": false
+},
+{
+"value": "runtime",
+"is_bold": true
+},
+{
+"value": " you've …",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " winit is actually asynchronous, contrary to popular belief; it's just not ",
+"is_bold": false
+},
+{
+"value": "async",
+"is_bold": true
+},
+{
+"value": ". It uses an event loop to handle events, which is an good fit for some ca…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+},
+{
+"url": "https://github.com/co-rs/mco.git",
+"title": [
+{
+"value": "GitHub - co-rs/mco: ",
+"is_bold": false
+},
+{
+"value": "Rust",
+"is_bold": true
+},
+{
+"value": "  ",
+"is_bold": false
+},
+{
+"value": "Async",
+"is_bold": true
+},
+{
+"value": " Coroutine ",
+"is_bold": false
+},
+{
+"value": "Runtime",
+"is_bold": true
+},
+{
+"value": " that combines …",
+"is_bold": false
+}
+],
+"extract": [
+{
+"value": " Saved searches Use saved searches to filter your results more quickly You signed in with another tab or window. Reload to refresh your session.You signed…",
+"is_bold": false
+}
+],
+"source": "mwmbl"
+}
+]

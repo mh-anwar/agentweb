@@ -1,0 +1,195 @@
+{
+"items": [
+{
+"tags": [
+"python",
+"unit-testing",
+"patch",
+"python-dataclasses",
+"freezegun"
+],
+"question_score": 8,
+"is_accepted": false,
+"has_accepted_answer": true,
+"answer_count": 1,
+"is_answered": true,
+"question_id": 61257658,
+"item_type": "question",
+"score": 8,
+"last_activity_date": 1587196854,
+"creation_date": 1587062499,
+"excerpt": "The <span class=\"highlight\">dataclass</span> is frozen so its immutable. &hellip; I&#39;m assuming it has to do with the <span class=\"highlight\">default</span> <span class=\"highlight\">factory</span> and module being loaded well before the patch is in place. &hellip; ",
+"title": "Python Dataclasses: Mocking the default factory in a frozen Dataclass"
+},
+{
+"tags": [
+"python-3.x",
+"python-dataclasses"
+],
+"question_score": 4,
+"is_accepted": false,
+"has_accepted_answer": true,
+"answer_count": 1,
+"is_answered": true,
+"question_id": 74866472,
+"item_type": "question",
+"score": 4,
+"last_activity_date": 1708355744,
+"creation_date": 1671555842,
+"excerpt": "I have a <span class=\"highlight\">dataclass</span> with a field of metadata,\nI want to extract info from it to put in other field in the <span class=\"highlight\">dataclass</span>, but I&#39;m not sure if it&#39;s possible/advisable. &hellip; I&#39;m using <span class=\"highlight\">python</span> 3.10.8 &hellip; ",
+"title": "Python dataclass default factory with data from another field"
+},
+{
+"tags": [
+"python",
+"python-3.x"
+],
+"question_score": 27,
+"is_accepted": false,
+"has_accepted_answer": true,
+"answer_count": 1,
+"is_answered": true,
+"question_id": 59222110,
+"item_type": "question",
+"score": 27,
+"last_activity_date": 1659995674,
+"creation_date": 1575680262,
+"excerpt": "For both instantiations, I get a &quot;Mutable <span class=\"highlight\">default</span> is not allowed. Used <span class=\"highlight\">default</span> <span class=\"highlight\">factory</span>&quot; syntax error. &hellip; I&#39;m using <span class=\"highlight\">python</span> 3.7.3 \n\nfrom dataclasses import <span class=\"highlight\">dataclass</span>\nfrom typing import Dict\n\n@<span class=\"highlight\">dataclass</span>\nclass Test:\n    foo: Dict[str, int] = {}\n    bar: Dict[str, float] = {&#39;blah&#39;: 2.0}\n\n\nFigured it out. &hellip; ",
+"title": "Python type hinted Dict syntax error mutable default is not allowed. Use &#39;default factory&#39;"
+},
+{
+"tags": [
+"python",
+"python-3.x",
+"numpy",
+"callable",
+"python-dataclasses"
+],
+"question_score": 3,
+"is_accepted": false,
+"has_accepted_answer": true,
+"answer_count": 1,
+"is_answered": true,
+"question_id": 70612777,
+"item_type": "question",
+"score": 3,
+"last_activity_date": 1641517531,
+"creation_date": 1641498109,
+"excerpt": "I found this weird behaviour where I don&#39;t know if I am the problem or if this is a <span class=\"highlight\">python</span> / <span class=\"highlight\">dataclass</span> / callable bug. &hellip; I am using <span class=\"highlight\">Python</span> 3.8 and numpy 1.20.2 &hellip; ",
+"title": "Dataclass and Callable Initialization Problem via Classmethods"
+},
+{
+"tags": [
+"python",
+"namedtuple"
+],
+"question_score": 11,
+"is_accepted": false,
+"has_accepted_answer": false,
+"answer_count": 1,
+"is_answered": true,
+"question_id": 59205528,
+"item_type": "question",
+"score": 11,
+"last_activity_date": 1575600769,
+"creation_date": 1575594882,
+"excerpt": "I could potentially use a <span class=\"highlight\">dataclass</span> here with a <span class=\"highlight\">default</span> <span class=\"highlight\">factory</span> function (or the equivalent in attrs), but I currently need to support <span class=\"highlight\">python</span> 3.6.x and 3.7.x, so that would add some overhead. &hellip; For what it&#39;s worth, the version of <span class=\"highlight\">python</span> where I&#39;m testing this is 3.7.3 &hellip; ",
+"title": "typing.NamedTuple with a dictionary default"
+},
+{
+"tags": [
+"python",
+"enums",
+"python-dataclasses"
+],
+"question_score": 3,
+"is_accepted": false,
+"has_accepted_answer": true,
+"answer_count": 1,
+"is_answered": true,
+"question_id": 79758806,
+"item_type": "question",
+"score": 3,
+"last_activity_date": 1757576788,
+"creation_date": 1757329404,
+"excerpt": "I am writing a <span class=\"highlight\">Python</span> config script that creates an array of input files in a domain-specific language (DSL), so my use case is a bit unusual. &hellip; Same issue obviously arises if I try to use self.state, cls.state, or workarounds based on <span class=\"highlight\">default</span> values instead of <span class=\"highlight\">default</span> factories. &hellip; ",
+"title": "Trying to reduce the verboseness of __post_init__ in a python dataclass"
+},
+{
+"tags": [
+"python",
+"class",
+"default"
+],
+"question_score": 4,
+"is_accepted": false,
+"answer_id": 56883874,
+"is_answered": false,
+"question_id": 56878667,
+"item_type": "answer",
+"score": 4,
+"last_activity_date": 1562229644,
+"creation_date": 1562229644,
+"excerpt": ")\n\n\nYou also get the option to define <span class=\"highlight\">default</span> factories instead of <span class=\"highlight\">default</span> values for free with the <span class=\"highlight\">dataclass</span> field definition. &hellip; It might not be a problem yet, but it avoids the mutable <span class=\"highlight\">default</span> value gotcha, which every <span class=\"highlight\">python</span> programmer runs into sooner or later. &hellip; ",
+"title": "Setting default values in a class"
+},
+{
+"tags": [
+"python",
+"python-3.7",
+"python-dataclasses"
+],
+"question_score": 19,
+"is_accepted": true,
+"answer_id": 55065215,
+"is_answered": false,
+"question_id": 54824893,
+"item_type": "answer",
+"score": 20,
+"last_activity_date": 1600004153,
+"creation_date": 1552055218,
+"excerpt": "What you are asking for is realized by the <span class=\"highlight\">factory</span> method pattern, and can be implemented in <span class=\"highlight\">python</span> classes straight forwardly using the @classmethod keyword. &hellip; Just include a <span class=\"highlight\">dataclass</span> <span class=\"highlight\">factory</span> method in your base class definition, like this:\nimport dataclasses\n\n@dataclasses.dataclass\nclass Person:\n    name: str\n    smell: str = &quot;good&quot;\n\n    @classmethod\n    def &hellip; ",
+"title": "Python: Dataclass that inherits from base Dataclass, how do I upgrade a value from base to the new class?"
+},
+{
+"tags": [
+"python",
+"python-dataclasses"
+],
+"question_score": 346,
+"is_accepted": false,
+"answer_id": 73095470,
+"is_answered": false,
+"question_id": 51575931,
+"item_type": "answer",
+"score": 3,
+"last_activity_date": 1658631135,
+"creation_date": 1658631135,
+"excerpt": "If you are using <span class=\"highlight\">Python</span> 3.10+, then you can utilize keyword-only arguments for the <span class=\"highlight\">dataclass</span> as discussed in this answer and in the <span class=\"highlight\">python</span> docs. &hellip; Since the attribute will be declared with field(), it gets treated as if it has a <span class=\"highlight\">default</span>; but if a user attempts to create an instance without providing the value for that field, it will use the <span class=\"highlight\">factory</span> &hellip; ",
+"title": "Overriding default values when using inheritance in dataclasses"
+},
+{
+"tags": [
+"python",
+"oop",
+"attributes",
+"tuples",
+"namedtuple"
+],
+"question_score": 1,
+"is_accepted": true,
+"answer_id": 56235894,
+"is_answered": false,
+"question_id": 56235668,
+"item_type": "answer",
+"score": 1,
+"last_activity_date": 1558434713,
+"creation_date": 1558433117,
+"excerpt": "You merely want to make those arguments optional with a <span class=\"highlight\">default</span> value for the attribute if you didn&#39;t pass in a month value. The namedtuple() <span class=\"highlight\">factory</span> function doesn&#39;t support that use-case. &hellip; <span class=\"highlight\">Python</span> 3.7 has the new dataclasses module, or you can install the attrs project. &hellip; ",
+"title": "Using a different class definition depending on the constructor signature"
+}
+],
+"has_more": true,
+"quota_max": 300,
+"quota_remaining": 296
+}

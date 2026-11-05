@@ -1,0 +1,201 @@
+{
+"exhaustive": {
+"nbHits": false,
+"typo": false
+},
+"exhaustiveNbHits": false,
+"exhaustiveTypo": false,
+"hits": [
+{
+"_tags": [
+"story",
+"author_phiresky",
+"story_27016630"
+],
+"author": "phiresky",
+"created_at": "2021-05-02T16:43:15Z",
+"created_at_i": 1619973795,
+"num_comments": 244,
+"objectID": "27016630",
+"points": 1812,
+"story_id": 27016630,
+"title": "Hosting SQLite databases on GitHub Pages or any static file hoster",
+"updated_at": "2026-08-18T07:11:34Z",
+"url": "https://phiresky.github.io/blog/2021/hosting-sqlite-databases-on-github-pages/"
+},
+{
+"_tags": [
+"story",
+"author_dpeck",
+"story_31318708"
+],
+"author": "dpeck",
+"created_at": "2022-05-09T19:35:41Z",
+"created_at_i": 1652124941,
+"num_comments": 404,
+"objectID": "31318708",
+"points": 1353,
+"story_id": 31318708,
+"title": "I'm all-in on server-side SQLite",
+"updated_at": "2026-05-05T09:01:54Z",
+"url": "https://fly.io/blog/all-in-on-sqlite-litestream/"
+},
+{
+"_tags": [
+"story",
+"author_ropbear",
+"story_49272832"
+],
+"author": "ropbear",
+"created_at": "2026-08-12T14:22:30Z",
+"created_at_i": 1786544550,
+"num_comments": 239,
+"objectID": "49272832",
+"points": 1223,
+"story_id": 49272832,
+"title": "Tracking down the 16-year-old WAL-reset SQLite bug",
+"updated_at": "2026-09-21T15:59:45Z",
+"url": "https://tailscale.com/blog/sqlite-wal-reset-bug"
+},
+{
+"_tags": [
+"story",
+"author_nalgeon",
+"story_26580614"
+],
+"author": "nalgeon",
+"created_at": "2021-03-25T14:20:25Z",
+"created_at_i": 1616682025,
+"num_comments": 354,
+"objectID": "26580614",
+"points": 986,
+"story_id": 26580614,
+"title": "SQLite is not a toy database",
+"updated_at": "2026-07-18T01:30:59Z",
+"url": "https://antonz.org/sqlite-is-not-a-toy-database/"
+},
+{
+"_tags": [
+"story",
+"author_zbaylin",
+"story_17387851"
+],
+"author": "zbaylin",
+"created_at": "2018-06-24T19:03:48Z",
+"created_at_i": 1529867028,
+"num_comments": 129,
+"objectID": "17387851",
+"points": 813,
+"story_id": 17387851,
+"title": "How SQL Database Engines Work, by the Creator of SQLite (2008) [video]",
+"updated_at": "2025-09-19T06:00:28Z",
+"url": "https://www.youtube.com/watch?v=Z_cX3bzkExE"
+},
+{
+"_tags": [
+"story",
+"author_goranmoomin",
+"story_24531085"
+],
+"author": "goranmoomin",
+"created_at": "2020-09-20T00:02:36Z",
+"created_at_i": 1600560156,
+"num_comments": 160,
+"objectID": "24531085",
+"points": 801,
+"story_id": 24531085,
+"title": "DuckDB – An embeddable SQL database like SQLite, but supports Postgres features",
+"updated_at": "2026-07-30T06:17:57Z",
+"url": "https://duckdb.org/"
+},
+{
+"_tags": [
+"story",
+"author_stevekrouse",
+"story_43681287"
+],
+"author": "stevekrouse",
+"created_at": "2025-04-14T13:52:58Z",
+"created_at_i": 1744638778,
+"num_comments": 174,
+"objectID": "43681287",
+"points": 800,
+"story_id": 43681287,
+"title": "A hackable AI assistant using a single SQLite table and a handful of cron jobs",
+"updated_at": "2026-01-12T07:56:00Z",
+"url": "https://www.geoffreylitt.com/2025/04/12/how-i-made-a-useful-ai-assistant-with-one-sqlite-table-and-a-handful-of-cron-jobs"
+},
+{
+"_tags": [
+"story",
+"author_segfall",
+"story_28012829",
+"show_hn"
+],
+"author": "segfall",
+"created_at": "2021-07-30T21:50:50Z",
+"created_at_i": 1627681850,
+"num_comments": 189,
+"objectID": "28012829",
+"points": 796,
+"story_id": 28012829,
+"title": "Show HN: Static.wiki – read-only Wikipedia using a 43GB SQLite file",
+"updated_at": "2026-10-06T18:57:02Z",
+"url": "http://static.wiki/"
+},
+{
+"_tags": [
+"story",
+"author_DaGardner",
+"story_9196218"
+],
+"author": "DaGardner",
+"created_at": "2015-03-13T09:10:05Z",
+"created_at_i": 1426237805,
+"num_comments": 108,
+"objectID": "9196218",
+"points": 792,
+"story_id": 9196218,
+"title": "SQLite developer must have received a lot of phone calls",
+"updated_at": "2026-02-09T14:54:33Z",
+"url": "https://github.com/mackyle/sqlite/blob/3cf493d4018042c70a4db733dd38f96896cd825f/src/os.h#L52"
+},
+{
+"_tags": [
+"story",
+"author_todsacerdoti",
+"story_40206752"
+],
+"author": "todsacerdoti",
+"created_at": "2024-04-30T02:48:43Z",
+"created_at_i": 1714445323,
+"num_comments": 221,
+"objectID": "40206752",
+"points": 790,
+"story_id": 40206752,
+"title": "Why SQLite Uses Bytecode",
+"updated_at": "2026-08-19T16:59:25Z",
+"url": "https://sqlite.org/draft/whybytecode.html"
+}
+],
+"hitsPerPage": 10,
+"nbHits": 4618,
+"nbPages": 100,
+"page": 0,
+"params": "query=sqlite&tags=story&hitsPerPage=10&advancedSyntax=true&analyticsTags=backend",
+"processingTimeMS": 18,
+"processingTimingsMS": {
+"_request": {
+"queue": 722,
+"roundTrip": 26
+},
+"fetch": {
+"query": 11,
+"scanning": 5,
+"total": 17
+},
+"total": 18
+},
+"query": "sqlite",
+"serverTimeMS": 741
+}
