@@ -1,0 +1,32 @@
+{
+  "name": "agentweb",
+  "version": "0.1.0",
+  "description": "A browser for agents, not people: one MCP tool, bounded token output, sessions that are data instead of processes.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "agentweb": "dist/agentweb.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "dev": "node src/cli.ts",
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.ts",
+    "bench": "node bench/run.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "gpt-tokenizer": "^4.1.0",
+    "htmlparser2": "^12.0.0",
+    "typescript": "^7.0.2"
+  }
+}

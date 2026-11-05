@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.agentweb/
+bench/out/
+bench/baseline/node_modules/
+*.log
