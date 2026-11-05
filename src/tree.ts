@@ -50,7 +50,7 @@ export const ATTRS = new Set([
   'for', 'id', 'role', 'aria-label', 'aria-labelledby', 'aria-checked', 'aria-selected', 'aria-expanded',
   'aria-current', 'aria-disabled', 'aria-pressed', 'checked', 'selected', 'disabled', 'readonly', 'multiple',
   'colspan', 'label', 'open', 'onclick', 'contenteditable', 'class', 'target', 'data-testid', 'required',
-  'maxlength', 'form', 'formaction', 'formmethod', 'tabindex', 'datetime', 'srcdoc', 'min', 'max', 'pattern',
+  'maxlength', 'form', 'formaction', 'formmethod', 'tabindex', 'datetime', 'srcdoc', 'min', 'max', 'pattern', 'hreflang',
 ]);
 
 export function text(n: LNode): string {

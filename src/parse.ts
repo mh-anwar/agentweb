@@ -20,6 +20,57 @@ function staticallyHidden(a: Record<string, string>): boolean {
   return false;
 }
 
+const STATE_ASSIGN = /(?:^|[;\s,])(?:window\.|self\.|globalThis\.|var\s+|let\s+|const\s+)?([A-Za-z_$][\w$.]*)\s*=\s*(?=[\[{])/g;
+const STATE_NAME = /state|data|props|payload|initial|preload|apollo|redux|nuxt|store|config|items|results|products|quotes|entries|bootstrap/i;
+
+/**
+ * Pages that render in the browser often ship their data as a JSON literal assigned in an inline
+ * script (`window.__INITIAL_STATE__ = {...}`, `var data = [...]`). Capture literals that are valid
+ * JSON so the content can be recovered without executing anything.
+ */
+function inlineState(js: string, meta: DocMeta) {
+  if (js.length < 40 || js.length > 3_000_000) return;
+  STATE_ASSIGN.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  let tries = 0;
+  while ((m = STATE_ASSIGN.exec(js)) && tries < 8) {
+    const name = m[1];
+    if (!STATE_NAME.test(name)) continue;
+    tries++;
+    const start = STATE_ASSIGN.lastIndex;
+    const end = balancedEnd(js, start);
+    if (end < 0 || end - start < 30) continue;
+    const text = js.slice(start, end);
+    try {
+      JSON.parse(text);
+    } catch {
+      continue;
+    }
+    meta.json.push({ id: name, type: 'js-assign', text });
+    STATE_ASSIGN.lastIndex = end;
+  }
+}
+
+/** Index just past the bracket that closes the one at `start`, respecting strings; -1 if unbalanced. */
+function balancedEnd(s: string, start: number): number {
+  let depth = 0;
+  let inStr = false;
+  for (let i = start; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    if (inStr) {
+      if (c === 92) i++;
+      else if (c === 34) inStr = false;
+      continue;
+    }
+    if (c === 34) inStr = true;
+    else if (c === 123 || c === 91) depth++;
+    else if (c === 125 || c === 93) {
+      if (--depth === 0) return i + 1;
+    } else if (c === 39 || c === 96) return -1; // single quotes or templates: not JSON
+  }
+  return -1;
+}
+
 export function parseHtml(html: string): Doc {
   const dom = parseDocument(html, { decodeEntities: true, lowerCaseTags: true, lowerCaseAttributeNames: true });
   const meta: DocMeta = { title: '', scripts: 0, json: [], links: [], noscript: '' };
@@ -44,7 +95,10 @@ export function parseHtml(html: string): Doc {
         if (type.includes('json') || id === '__NEXT_DATA__') {
           const t = rawText(n);
           if (t.length > 1 && t.length < 4_000_000) meta.json.push({ id, type, text: t });
-        } else if (!type || type.includes('javascript') || type === 'module') meta.scripts++;
+        } else if (!type || type.includes('javascript') || type === 'module') {
+          meta.scripts++;
+          if (!n.attribs?.src && meta.json.length < 12) inlineState(rawText(n), meta);
+        }
         continue;
       }
       if (n.type !== 'tag') continue; // comments, directives, style
