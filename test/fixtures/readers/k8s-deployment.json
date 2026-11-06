@@ -1,0 +1,141 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {
+    "name": "checkout-api",
+    "namespace": "shop",
+    "uid": "5f3b2a8e-61c4-4b6f-9d1e-0c2a7b9f4e11",
+    "resourceVersion": "48211907",
+    "generation": 14,
+    "creationTimestamp": "2026-03-02T11:04:51Z",
+    "labels": {
+      "app": "checkout-api",
+      "team": "payments",
+      "tier": "backend"
+    },
+    "annotations": {
+      "deployment.kubernetes.io/revision": "14",
+      "kubectl.kubernetes.io/last-applied-configuration": "{\"apiVersion\":\"apps/v1\",\"kind\":\"Deployment\",\"metadata\":{\"annotations\":{},\"name\":\"checkout-api\",\"namespace\":\"shop\"},\"spec\":{\"replicas\":3}}"
+    }
+  },
+  "spec": {
+    "replicas": 3,
+    "revisionHistoryLimit": 10,
+    "selector": {
+      "matchLabels": {
+        "app": "checkout-api"
+      }
+    },
+    "strategy": {
+      "type": "RollingUpdate",
+      "rollingUpdate": {
+        "maxSurge": "25%",
+        "maxUnavailable": "25%"
+      }
+    },
+    "template": {
+      "metadata": {
+        "labels": {
+          "app": "checkout-api",
+          "team": "payments"
+        }
+      },
+      "spec": {
+        "serviceAccountName": "checkout",
+        "terminationGracePeriodSeconds": 30,
+        "containers": [
+          {
+            "name": "api",
+            "image": "registry.example.com/shop/checkout-api:2.14.3",
+            "ports": [
+              {
+                "containerPort": 8080,
+                "name": "http",
+                "protocol": "TCP"
+              }
+            ],
+            "env": [
+              {
+                "name": "DATABASE_URL",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "name": "checkout-db",
+                    "key": "url"
+                  }
+                }
+              },
+              {
+                "name": "LOG_LEVEL",
+                "value": "info"
+              },
+              {
+                "name": "PAYMENTS_TIMEOUT_MS",
+                "value": "4000"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "1Gi"
+              },
+              "requests": {
+                "cpu": "250m",
+                "memory": "512Mi"
+              }
+            },
+            "readinessProbe": {
+              "httpGet": {
+                "path": "/healthz",
+                "port": 8080
+              },
+              "initialDelaySeconds": 5,
+              "periodSeconds": 10
+            }
+          },
+          {
+            "name": "envoy",
+            "image": "envoyproxy/envoy:v1.31.0",
+            "ports": [
+              {
+                "containerPort": 9901,
+                "name": "admin",
+                "protocol": "TCP"
+              }
+            ],
+            "resources": {
+              "limits": {
+                "cpu": "500m",
+                "memory": "256Mi"
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "status": {
+    "observedGeneration": 14,
+    "replicas": 3,
+    "updatedReplicas": 3,
+    "readyReplicas": 3,
+    "availableReplicas": 3,
+    "conditions": [
+      {
+        "type": "Available",
+        "status": "True",
+        "lastUpdateTime": "2026-10-30T08:01:12Z",
+        "lastTransitionTime": "2026-03-02T11:05:30Z",
+        "reason": "MinimumReplicasAvailable",
+        "message": "Deployment has minimum availability."
+      },
+      {
+        "type": "Progressing",
+        "status": "True",
+        "lastUpdateTime": "2026-10-30T08:01:12Z",
+        "lastTransitionTime": "2026-03-02T11:04:51Z",
+        "reason": "NewReplicaSetAvailable",
+        "message": "ReplicaSet \"checkout-api-7d9f8c6b5\" has successfully progressed."
+      }
+    ]
+  }
+}

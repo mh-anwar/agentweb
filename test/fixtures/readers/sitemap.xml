@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url><loc>https://shop.example.com/</loc><lastmod>2026-11-01</lastmod><changefreq>daily</changefreq><priority>1.0</priority></url>
+  <url><loc>https://shop.example.com/products/trail-runner-3</loc><lastmod>2026-10-28T12:00:00+00:00</lastmod><image:image><image:loc>https://cdn.example.com/tr3.jpg</image:loc></image:image></url>
+  <url><loc>https://shop.example.com/products/rain-shell</loc><lastmod>2026-10-20</lastmod></url>
+  <url><loc>https://shop.example.com/about?ref=footer&amp;lang=en</loc></url>
+</urlset>

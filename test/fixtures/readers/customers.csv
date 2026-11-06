@@ -1,0 +1,8 @@
+id,name,city,notes,signup_date,plan
+1,"Smith, Jane",Lisbon,"Prefers email.
+Call only after 5pm, ""urgent"" only",2026-01-04,pro
+2,Bob Lee,Porto,,2026-02-11,pro
+3,"Ana ""Nana"" Silva",Lisbon,VIP,2026-03-09,pro
+4,Chen Wei,Braga,"multi
+line
+note",2026-03-30,pro

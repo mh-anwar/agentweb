@@ -1,0 +1,11 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "Daily Links",
+  "home_page_url": "https://links.example.net/",
+  "feed_url": "https://links.example.net/feed.json",
+  "items": [
+    { "id": "3", "url": "https://links.example.net/3", "title": "A field guide to HTTP caching", "content_html": "<p>Everything about <code>Cache-Control</code>, ETags and stale-while-revalidate.</p>", "date_published": "2026-11-05T07:00:00Z", "authors": [{ "name": "Sam" }] },
+    { "id": "2", "url": "https://links.example.net/2", "title": "Postgres at 1M QPS", "summary": "Connection poolers compared.", "date_published": "2026-11-05T06:00:00Z" },
+    { "id": "1", "url": "https://links.example.net/1", "content_text": "A short note without a title about the new CSS anchor positioning spec.", "date_published": "2026-11-04T21:00:00Z" }
+  ]
+}

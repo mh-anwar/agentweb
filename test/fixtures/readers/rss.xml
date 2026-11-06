@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom">
+<channel>
+  <title>The Example Engineering Blog</title>
+  <link>https://blog.example.com/</link>
+  <atom:link href="https://blog.example.com/feed.xml" rel="self" type="application/rss+xml"/>
+  <description>Notes on building &amp; running distributed systems</description>
+  <language>en-us</language>
+  <lastBuildDate>Tue, 04 Nov 2026 09:00:00 +0000</lastBuildDate>
+  <item>
+    <title>How we cut p99 latency by 40%</title>
+    <link>https://blog.example.com/2026/11/p99-latency</link>
+    <guid isPermaLink="true">https://blog.example.com/2026/11/p99-latency</guid>
+    <pubDate>Tue, 04 Nov 2026 08:30:00 +0000</pubDate>
+    <dc:creator>Priya Natarajan</dc:creator>
+    <description><![CDATA[<p>Our checkout service had a <strong>long tail</strong> problem. Here is how connection pooling, request hedging and a smaller GC heap fixed it.</p><img src="/img/p99.png" alt="">]]></description>
+  </item>
+  <item>
+    <title>Postmortem: the October 12 outage</title>
+    <link>https://blog.example.com/2026/10/outage-postmortem</link>
+    <pubDate>Mon, 13 Oct 2026 17:05:00 +0000</pubDate>
+    <description>A config push removed the health check from 30% of the fleet. Timeline, root cause and what we changed.</description>
+    <content:encoded><![CDATA[<h2>Timeline</h2><p>At 14:02 UTC…</p>]]></content:encoded>
+  </item>
+  <item>
+    <title>Why we moved off cron</title>
+    <guid isPermaLink="true">https://blog.example.com/2026/09/cron</guid>
+    <pubDate>Wed, 17 Sep 2026 12:00:00 GMT</pubDate>
+    <description>Why we moved off cron: scheduled jobs now run as durable workflows with retries.</description>
+  </item>
+</channel>
+</rss>

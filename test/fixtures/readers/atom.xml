@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xml:base="https://releases.example.org/">
+  <title type="text">widget releases</title>
+  <subtitle>Release notes for widget</subtitle>
+  <link href="https://releases.example.org/" rel="alternate"/>
+  <link href="https://releases.example.org/atom.xml" rel="self"/>
+  <updated>2026-11-01T10:00:00Z</updated>
+  <id>tag:releases.example.org,2026:feed</id>
+  <entry>
+    <title type="html">v2.4.0 &lt;em&gt;stable&lt;/em&gt;</title>
+    <link rel="alternate" type="text/html" href="/v2.4.0"/>
+    <id>tag:releases.example.org,2026:v2.4.0</id>
+    <updated>2026-11-01T10:00:00Z</updated>
+    <author><name>release-bot</name></author>
+    <content type="html">&lt;ul&gt;&lt;li&gt;New &lt;code&gt;--watch&lt;/code&gt; flag&lt;/li&gt;&lt;li&gt;Faster startup&lt;/li&gt;&lt;/ul&gt;</content>
+  </entry>
+  <entry>
+    <title>v2.3.1</title>
+    <link href="https://releases.example.org/v2.3.1"/>
+    <id>tag:releases.example.org,2026:v2.3.1</id>
+    <published>2026-10-02T08:00:00Z</published>
+    <updated>2026-10-03T08:00:00Z</updated>
+    <summary>Fixes a crash when the config file is empty.</summary>
+  </entry>
+</feed>
