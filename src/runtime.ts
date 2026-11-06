@@ -13,7 +13,7 @@
 import { searchTemplate } from './atlas/index.ts';
 import { blockText } from './blocks.ts';
 import { compile } from './compile.ts';
-import { parseProgram, type Arg, type Step } from './dsl.ts';
+import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { actByFp, allActs, loadSession, rehash, resolveTarget, saveSession, SessionRefs, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
@@ -818,6 +818,7 @@ export class RuntimeImpl implements Runtime {
   /** Add or replace a verb (extraction, fan-out, watchers live in their own modules). */
   register(verb: string, handler: VerbHandler) {
     this.verbs[verb] = handler;
+    DSL_VERBS.add(verb);
   }
 
   count(name: string, by = 1) {
