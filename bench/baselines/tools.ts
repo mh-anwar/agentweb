@@ -146,7 +146,6 @@ export const MCP_VARIANTS: McpVariant[] = [
     id: 'agentweb',
     server: 'agentweb',
     label: 'agentweb',
-    configOnly: true,
     spec: { command: 'node', args: [join(REPO, 'src/cli.ts'), 'mcp'] },
   },
 ];

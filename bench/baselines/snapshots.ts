@@ -104,6 +104,8 @@ export const MODES: Mode[] = [
     note: 'typical web-fetch tool pipeline (main content only)',
   },
   { id: 'fetch-turndown', label: 'fetch → whole-page Turndown', note: 'script/style/noscript removed' },
+  { id: 'agentweb', label: "agentweb: web({run: \"open('URL')\"})", note: 'one call, default budget (2000 tokens); escalates to a browser only when needed' },
+  { id: 'agentweb-full', label: 'agentweb, budget 40000', note: 'same call with a large budget: the whole compiled page' },
 ];
 
 // ---------------------------------------------------------------------------------------------
@@ -387,6 +389,7 @@ export async function runSnapshots(opts: {
   const cdp = want.has('chrome-devtools-mcp') ? new McpSession('chrome-devtools-mcp') : undefined;
   const ab = want.has('agent-browser') || want.has('agent-browser-i') ? new AgentBrowserSession() : undefined;
   const pwc = want.has('playwright-cli') ? new PlaywrightCliSession() : undefined;
+  const aw = want.has('agentweb') || want.has('agentweb-full') ? new McpSession('agentweb') : undefined;
   let cdpPage: number | undefined;
 
   try {
@@ -401,7 +404,8 @@ export async function runSnapshots(opts: {
       });
     if (ab) await ab.start();
     if (pwc) await pwc.start();
-    for (const [k, s] of Object.entries({ 'playwright-mcp': pw, 'playwright-mcp-vision': pwv, 'chrome-devtools-mcp': cdp, 'agent-browser': ab, 'playwright-cli': pwc })) {
+    if (aw) await aw.start((c) => c.callTool('web', { run: 'version()', session: 'warmup' }).catch(() => undefined));
+    for (const [k, s] of Object.entries({ 'playwright-mcp': pw, 'playwright-mcp-vision': pwv, 'chrome-devtools-mcp': cdp, 'agent-browser': ab, 'playwright-cli': pwc, agentweb: aw })) {
       if (s) launches[k] = { ms: s.launchMs, ...(s.error ? { error: s.error } : {}) };
     }
     log(`launch: ${JSON.stringify(launches)}`);
@@ -466,6 +470,21 @@ export async function runSnapshots(opts: {
           ]);
           done(capture('chrome-devtools-mcp', url, [nav.res, snap.res], t));
         }
+      }
+
+      for (const [mode, budget] of [['agentweb', undefined], ['agentweb-full', 40000]] as const) {
+        if (!aw || !want.has(mode)) continue;
+        const t = at();
+        if (aw.error) {
+          done(capture(mode, url, [], t, aw.error));
+          continue;
+        }
+        const args: Record<string, unknown> = { run: `open('${url}')`, session: `${mode}-${slug}` };
+        if (budget) args.budget = budget;
+        const r = await aw.call('open', 'web', args, opts.timeoutMs);
+        w.save(mode, slug, 'open', r.text);
+        w.combined(mode, slug, [{ step: 'open', call: r.res.call, text: r.text }]);
+        done(capture(mode, url, [r.res], t));
       }
 
       if (ab) {
@@ -566,6 +585,7 @@ export async function runSnapshots(opts: {
       pwv?.close(),
       cdp?.close(),
       ab?.close(),
+      aw?.close(),
       pwc?.close(),
       want.has('agent-browser-read') ? runCli(BIN.agentBrowser, ['--session', READ_SESSION, 'close'], { ...AGENT_BROWSER_ENV }, tmpdir(), 20_000) : undefined,
     ]);
