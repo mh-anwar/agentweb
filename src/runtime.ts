@@ -10,6 +10,7 @@
 //   - Nothing reaches the model that the guard has not redacted, and everything shown is recorded
 //     with the guard for data-flow checks.
 
+import { searchTemplate } from './atlas/index.ts';
 import { blockText } from './blocks.ts';
 import { compile } from './compile.ts';
 import { parseProgram, type Arg, type Step } from './dsl.ts';
@@ -445,17 +446,34 @@ const VERBS: Record<string, VerbHandler> = {
   async search(rc, step) {
     const q = str(step.args[0]);
     if (!q) throw new AwError('bad_request', "search needs a query: search('words')");
+    let query = q;
+    if (step.opts.site !== undefined) {
+      // the site's own search: from the atlas, else from the search form on its home page
+      const origin = originOf(normalizeUrl(str(step.opts.site)));
+      let tpl = (await rc.rt.deps.atlas?.site(origin).catch(() => undefined))?.search;
+      const here = () => (rc.rec.page && originOf(rc.rec.page.url) === origin ? searchTemplate(rc.rec.page.forms, origin) : undefined);
+      tpl ??= here();
+      if (!tpl) {
+        await rc.navigate({ url: origin + '/' });
+        tpl = here();
+      }
+      if (tpl) {
+        await rc.navigate({ url: tpl.replace('{q}', encodeURIComponent(q)) });
+        return;
+      }
+      query = `${q} site:${new URL(origin).host}`;
+    }
     const { search, searchBlocks } = rc.rt.deps;
     if (!search || !searchBlocks) throw new AwError('unsupported', 'web search is not configured');
     const fetch: Fetcher = (req) => {
       rc.fetches++;
       return rc.rt.deps.engines.wire.open(rc.ctx, req);
     };
-    const res = await search(q, { n: typeof step.opts.n === 'number' ? step.opts.n : 8, fetch });
+    const res = await search(query, { n: typeof step.opts.n === 'number' ? step.opts.n : 8, fetch });
     const page: Page = {
-      url: 'search:' + q,
+      url: 'search:' + query,
       status: 200,
-      title: `Search: ${q}`,
+      title: `Search: ${query}`,
       tier: 'wire',
       kind: 'html',
       method: 'GET',

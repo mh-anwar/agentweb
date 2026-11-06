@@ -1126,7 +1126,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     stats: { bytes: o.bytes ?? 0, ms: o.ms ?? 0, hidden: hiddenChars, scripts: meta.scripts, words: wordCount, acts: actCount },
   };
   if (meta.description || meta.lang || meta.links.length) page.meta = { description: meta.description, lang: meta.lang, links: meta.links };
-  if (!live) page.shell = looksLikeShell(doc, wordCount, actCount);
+  if (!live) page.shell = looksLikeShell(doc, wordCount, actCount) || asksForScripts(out, meta.scripts, wordCount);
   return page;
 }
 
@@ -1136,6 +1136,14 @@ function sameSite(a: string, b: string): boolean {
   } catch {
     return false;
   }
+}
+
+const ASKS_FOR_JS = /\b(?:please |you (?:need|must|have) to )?(?:enable|activate|turn on|allow) javascript\b|\bjavascript (?:is |must be )?(?:required|disabled|turned off|not enabled)\b|\brequires javascript\b/i;
+
+/** A short page whose visible content tells the reader to enable JavaScript (search pages, widgets). */
+function asksForScripts(blocks: Block[], scripts: number, wordCount: number): boolean {
+  if (!scripts || wordCount >= 300) return false;
+  return blocks.some((b) => (b.r === 'main' || b.r === 'other' || b.r === 'dialog') && ASKS_FOR_JS.test(blockText(b)));
 }
 
 function looksLikeShell(doc: Doc, wordCount: number, actCount: number): boolean {

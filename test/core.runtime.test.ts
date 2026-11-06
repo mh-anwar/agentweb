@@ -196,3 +196,26 @@ test('a consequential step needs a confirmation token, which approves it once', 
   assert.equal(site.orders.length, before + 1);
   await r2.close();
 });
+
+test("search(q, site=…) uses the site's own search form, learned once through the atlas", async () => {
+  const { createAtlas } = await import('../src/atlas/index.ts');
+  const policy = defaultPolicy('local');
+  const store = new MemoryStore();
+  const atlas = createAtlas(store, { flushEveryMs: 0 });
+  const mk = () =>
+    createRuntime({ store, engines: { wire: createWireEngine({ polite: false }) }, createJar, createGuard: (st) => createGuard(policy, st), encodeForm, readBody, atlas });
+  const a = mk();
+  const r1 = await a.run(fresh(), `search('keyboard', site='${site.url}')`);
+  assert.ok(r1.ok, r1.text);
+  assert.match(r1.text, /Results for "keyboard"/);
+  assert.match(r1.text, /Mechanical Keyboard/);
+  assert.equal(r1.stats.fetches, 2, 'home page, then the search URL');
+  await atlas.flush();
+  // a second worker on the same store goes straight to the results page
+  const b = mk();
+  const r2 = await b.run(fresh(), `search('mouse', site='${site.url}')`);
+  assert.match(r2.text, /Wireless Mouse/);
+  assert.equal(r2.stats.fetches, 1);
+  await a.close();
+  await b.close();
+});

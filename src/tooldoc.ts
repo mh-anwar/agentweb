@@ -6,7 +6,7 @@ import type { ToolSpec } from './types.ts';
 export const TOOL_DESCRIPTION = `Browse and act on the web. \`run\` is a short program: steps separated by ';'. Put as many steps in one call as you can. The result is the page after the last step (only what changed, if you were already on it), within a token budget.
 
 Steps
-open(url) · search('query') · back()
+open(url) · search('query') · search('query', site='shop.example') · back()
 find('words') - the lines of this page that match; use it instead of reading long pages
 read() - full text from where the view stopped; read('Section name'); read(url)
 click(target) · fill(target, 'text') · select(target, 'option') · check(target) · uncheck(target) · submit() · press('Enter')
