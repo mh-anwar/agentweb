@@ -125,3 +125,8 @@ test('each without matches, and records without repeated items, say so', async (
   const r2 = await rt.run(fresh(), `open('${url}/p/3'); records()`);
   assert.match(r2.text, /No repeated items found here/);
 });
+
+test('records with words that match nothing shows every item instead of nothing', async () => {
+  const r = await rt.run(fresh(), `open('${url}/list'); records('price', pages=2)`);
+  assert.match(r.text, /no record mentions 'price', so all are shown\. 20 records over 2 pages:/);
+});

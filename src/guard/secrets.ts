@@ -209,7 +209,7 @@ export class SecretStore {
         throw new AwError(
           'policy',
           `unknown secret "${name}"`,
-          known.length ? `known secrets: ${known.join(', ')}` : 'no secrets are configured (AGENTWEB_SECRET_<NAME> or a secrets file)',
+          known.length ? `known secrets: ${known.join(', ')}; if the user gave you the value, type it directly` : 'no secrets are configured (AGENTWEB_SECRET_<NAME> or a secrets file); if the user gave you the value, type it directly',
         );
       }
       if (!dest) throw new AwError('policy', `secret "${name}" cannot be sent to "${origin}" (not an http(s) origin)`);

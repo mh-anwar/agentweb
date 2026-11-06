@@ -64,7 +64,16 @@ export function nextLink(page: Page): Act | undefined {
 }
 
 async function records(rc: RunCtx, step: Step): Promise<void> {
-  const q = [...new Set(terms(str(step.args[0])))];
+  let q = [...new Set(terms(str(step.args[0])))];
+  let dropped = '';
+  if (q.length) {
+    // words that match no item on the first page are not a filter the agent meant: show everything
+    const first = recordBlocks(rc.page);
+    if (first.length && !first.some((b) => matches(b, q))) {
+      dropped = `no record mentions '${str(step.args[0])}', so all are shown. `;
+      q = [];
+    }
+  }
   const pages = Math.max(1, Math.min(10, num(step.opts.pages, 1)));
   const seen = new Set<string>();
   const lines: string[] = [];
@@ -94,7 +103,7 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
     if (!next?.href || next.href === page.url) break;
     await rc.navigate({ url: next.href, referer: page.url });
   }
-  const head = `${total} record${total === 1 ? '' : 's'}${q.length ? ` matching '${str(step.args[0])}'` : ''}${visited > 1 ? ` over ${visited} pages` : ''}`;
+  const head = `${dropped}${total} record${total === 1 ? '' : 's'}${q.length ? ` matching '${str(step.args[0])}'` : ''}${visited > 1 ? ` over ${visited} pages` : ''}`;
   if (!total) {
     rc.emit(`${head}. No repeated items found here; try find('words') or view().`);
     return;

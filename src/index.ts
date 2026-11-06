@@ -102,6 +102,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       runTimeoutMs: config.runTimeoutMs,
       userAgent: config.userAgent ?? env.AGENTWEB_USER_AGENT,
       sessionTtlSec: config.sessionTtlSec,
+      secretNames: policy.secrets.map((x) => x.name),
     },
   });
 

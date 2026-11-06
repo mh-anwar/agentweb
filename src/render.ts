@@ -671,7 +671,19 @@ export function renderFind(page: Page, st: ViewState, refs: Refs, query: string,
   const blocks = page.blocks;
   if (!hits.length) {
     const heads = blocks.filter((b) => b.k === 'h').slice(0, 8).map((b) => blockText(b));
-    const text = `no match for '${query}' on this page` + (heads.length ? '. Sections: ' + heads.join(' · ') : '');
+    let text = `no match for '${query}' on this page` + (heads.length ? '. Sections: ' + heads.join(' · ') : '');
+    // a miss should not waste the call: show where the page's content starts
+    const start: string[] = [];
+    let room = Math.min(350, Math.max(100, budget) - estimateTokens(text) - 20);
+    for (const b of blocks) {
+      if (!isContent(b.r) || b.r === 'dialog') continue;
+      const line = renderLine(b, refs, { maxWords: 40, maxPreLines: 6 });
+      const est = estimateTokens(line) + 1;
+      if (est > room) break;
+      room -= est;
+      start.push(line);
+    }
+    if (start.length) text += '\nThe page starts:\n' + start.join('\n');
     return { text, tokens: estimateTokens(text) };
   }
   // take the best hits that fit, with the heading above each and the header row of its table

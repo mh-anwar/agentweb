@@ -219,3 +219,9 @@ test("search(q, site=…) uses the site's own search form, learned once through 
   await a.close();
   await b.close();
 });
+
+test('a find that misses still shows where the page content starts', async () => {
+  const r = await rt.run(fresh(), `open('${site.url}/products'); find('titleline')`);
+  assert.match(r.text, /no match for 'titleline'/);
+  assert.match(r.text, /The page starts:[\s\S]*USB-C Hub/);
+});

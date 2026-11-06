@@ -12,6 +12,8 @@ import type { AgentTaskResult, ToolId } from './run-agent.ts';
 import { fmtInt, mdTable } from './measure.ts';
 
 const HN = 'What is the title of the top story on https://news.ycombinator.com/ ? Reply with the title only.';
+const BOOKS =
+  'On https://books.toscrape.com/ find the three cheapest books in the Poetry category. Reply with one line per book: title, price.';
 const SAUCE =
   'Log in to https://www.saucedemo.com/ with username standard_user and password secret_sauce, then tell me the price of the "Sauce Labs Backpack". Reply with the price only.';
 
@@ -22,6 +24,11 @@ export const SMOKE_RUNS: { id: string; tool: ToolId; prompt: string }[] = [
   { id: 'hn-playwright-cli', tool: 'playwright-cli', prompt: HN },
   { id: 'sauce-playwright-mcp', tool: 'playwright-mcp', prompt: SAUCE },
   { id: 'sauce-agent-browser', tool: 'agent-browser', prompt: SAUCE },
+  { id: 'hn-agentweb', tool: 'agentweb', prompt: HN },
+  { id: 'sauce-agentweb', tool: 'agentweb', prompt: SAUCE },
+  { id: 'books-agentweb', tool: 'agentweb', prompt: BOOKS },
+  { id: 'books-playwright-mcp', tool: 'playwright-mcp', prompt: BOOKS },
+  { id: 'books-agent-browser', tool: 'agent-browser', prompt: BOOKS },
 ];
 
 const DIR = join(OUT, 'smoke');

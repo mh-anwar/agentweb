@@ -33,3 +33,28 @@ Chrome DevTools MCP 6,216 (32 tools), agent-browser MCP 18,026 (29 tools).
 
 Not measured yet: whole tasks end to end (turns, total tokens, success rate) with the same model and
 harness. That is the next benchmark, over the local fixture web in `bench/sites`.
+
+## First agent runs (n = 1 each, live sites, not yet a benchmark)
+
+Same harness for every tool (`bench/baselines/run-agent.ts`): `claude -p` on Haiku 5.5, no other
+tools, no user settings. "Input tokens" is everything the model read over the whole task
+(tool definitions + every turn's context). All answers below were correct except where noted.
+
+| Task | Tool | Turns | Tool calls | Input tokens | Wall |
+|:--|:--|--:|--:|--:|--:|
+| HN top story title | **agentweb** | 2 | 1 | **10,618** | 3.7s |
+| | agent-browser | 3 | 2 | 23,844 | 6.3s |
+| | Playwright MCP | 4 | 3 | 34,479 | 7.5s |
+| | Chrome DevTools MCP | 3 | 2 | 46,711 | 6.3s |
+| Saucedemo: log in, price of an item | **agentweb** | 2 | 1 | **10,394** | 5.3s |
+| | Playwright MCP | 5 | 4 | 47,054 | 6.7s |
+| | agent-browser | 3 | 2 | 27,393 | 7.2s (failed: harness denied a shell variable) |
+| Books: three cheapest in Poetry | **agentweb** | 3 | 2 | **16,273** | 5.6s |
+| | Playwright MCP | 4 | 3 | 35,825 | 8.5s |
+| | agent-browser | 8 | 7 | 93,333 | 16.4s |
+
+The agentweb rows are after three fixes found by reading the first agentweb transcripts: a `find()`
+that misses now shows where the page starts; `records('words')` whose words match nothing shows all
+items; the tool description mentions `{{secret:…}}` only when secrets are configured (the agent had
+copied the example). Before those fixes the same tasks took 2, 2 and 3 calls (16.8k, 16.3k, 22.3k
+input tokens): still the lowest, but those were wasted calls.

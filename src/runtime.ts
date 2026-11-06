@@ -17,7 +17,7 @@ import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts'
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { actByFp, allActs, loadSession, rehash, resolveTarget, saveSession, SessionRefs, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
-import { TOOL } from './tooldoc.ts';
+import { TOOL, toolSpec } from './tooldoc.ts';
 import {
   AwError,
   type Act,
@@ -75,6 +75,8 @@ export interface RuntimeOptions {
   runTimeoutMs?: number;
   userAgent?: string;
   sessionTtlSec?: number;
+  /** names of configured secrets, mentioned in the tool description */
+  secretNames?: string[];
 }
 
 export type VerbHandler = (rc: RunCtx, step: Step) => Promise<void>;
@@ -812,6 +814,7 @@ export class RuntimeImpl implements Runtime {
       runTimeoutMs: o.runTimeoutMs ?? 90000,
       userAgent: o.userAgent ?? DEFAULT_UA,
       sessionTtlSec: o.sessionTtlSec ?? 86400,
+      secretNames: o.secretNames ?? [],
     };
   }
 
@@ -836,8 +839,9 @@ export class RuntimeImpl implements Runtime {
   }
 
   tool(): ToolSpec {
-    return TOOL;
+    return (this.spec ??= this.opts.secretNames.length ? toolSpec({ secrets: this.opts.secretNames }) : TOOL);
   }
+  private spec?: ToolSpec;
 
   subscribe(fn: (e: RunEvent) => void): () => void {
     this.subs.add(fn);
