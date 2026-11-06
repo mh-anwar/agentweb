@@ -403,7 +403,7 @@ function shape(verb: string, args: Arg[], opts: Record<string, Arg>, src: string
 }
 
 function hintFor(verb?: string): string {
-  let h = "verbs: open(url) find('words') read() click(n|'text') fill(n|'label','value') select(n,'option') check(n) submit() press('Enter') back() expect('text') search('query') view() links() shot()";
+  let h = "verbs: open(url) find('words') read() click(n|'text') fill(n|'label','value') select(n,'option') check(n) submit() press('Enter') back() expect('text') search('query') records('words') each('link words', find='words') view() links() shot()";
   if (verb) {
     const v = verb.toLowerCase();
     let best = '';

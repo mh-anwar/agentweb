@@ -106,15 +106,8 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
     },
   });
 
-  // optional verb packs
-  for (const pack of ['./extract/index.ts', './watch/index.ts']) {
-    try {
-      const mod = await import(pack);
-      mod.register?.(rt);
-    } catch {
-      // pack absent
-    }
-  }
+  // verb packs (literal import paths, so the bundler includes them)
+  (await import('./extract/index.ts')).register(rt);
   return rt;
 }
 
