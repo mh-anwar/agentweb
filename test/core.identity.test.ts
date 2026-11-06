@@ -25,3 +25,22 @@ test('icon-only buttons are named from their classes, not left as "unlabeled but
   const labels = compile(parseHtml(html), 'https://x.example/', { tier: 'chrome' }).blocks.flatMap((b) => b.i).filter((x): x is Act => typeof x !== 'string').map((x) => x.l);
   assert.deepEqual(labels, ['fav (icon)', 'del (icon)', 'trash (icon)', 'unlabeled button']);
 });
+
+import { resolveTarget } from '../src/session.ts';
+test("near= picks the control after the named item when several cards share one line", () => {
+  const html = '<main><p>Fjord Kettle $40 <button onclick="a()">Add to basket</button> Larch Toaster $55 <button onclick="b()">Add to basket</button> Opal Blender $70 <button onclick="c()">Add to basket</button></p></main>';
+  const page = compile(parseHtml(html), 'https://x.example/', { tier: 'chrome' });
+  const refs = { of: () => 1, numberOf: () => undefined } as any;
+  const r = resolveTarget(page, refs as any, 'Add to basket', { verb: 'click', near: 'Larch Toaster' } as any) as any;
+  const acts = page.blocks.flatMap((b) => b.i).filter((x): x is Act => typeof x !== 'string');
+  assert.equal(r.act, acts[1]);
+});
+
+test('near= does not cross into the previous item: the button under the named heading wins', () => {
+  const html = '<main><h3>Fjord Kettle</h3><p>Free delivery</p><button onclick="a()">Add to basket</button><h3>Larch Toaster</h3><p>Free delivery</p><button onclick="b()">Add to basket</button></main>';
+  const page = compile(parseHtml(html), 'https://x.example/', { tier: 'chrome' });
+  const refs = { of: () => 1, get: () => undefined } as any;
+  const r = resolveTarget(page, refs, 'Add to basket', { verb: 'click', near: 'Larch Toaster' } as any) as any;
+  const acts = page.blocks.flatMap((b) => b.i).filter((x): x is Act => typeof x !== 'string');
+  assert.equal(r.act, acts[1]);
+});

@@ -16,6 +16,8 @@ import type { Act, Block, BlockKind, Field, FormDef, Inline, Page, Region, Tier 
 
 export interface CompileOptions {
   tier: Tier;
+  /** block cap (default 6000: pages are stored with the session) */
+  maxBlocks?: number;
   status?: number;
   method?: 'GET' | 'POST';
   bytes?: number;
@@ -48,6 +50,7 @@ const SKIP_LINK = /^(skip|jump) (to|navigation|nav|main|content)/i;
 const FOOTNOTE = /^\[?\s*(\d{1,3}|[a-z]|note \d+|citation needed|edit)\s*\]?$/i;
 const EMPTY: Record<string, string> = {};
 const MAX_BLOCKS = 6000;
+export const TRUNCATED = 'very large page: truncated (find() still searches all of it)';
 const MAX_LABEL = 110;
 const PUNCT_ONLY = /^[\s|·•»«›‹>\-–—*/\\,.:;()\[\]]*$/;
 
@@ -78,6 +81,7 @@ function nameFromHref(href: string): string {
 
 export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
   const meta = doc.meta;
+  const maxBlocks = o.maxBlocks ?? MAX_BLOCKS;
   const live = o.tier !== 'wire';
   const base = (meta.base && resolveUrl(meta.base, pageUrl)) || pageUrl;
   const pageNoHash = pageUrl.split('#')[0];
@@ -229,7 +233,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
   };
 
   const emit = (k: BlockKind, i: Inline[], extra?: Partial<Block>) => {
-    if (!i.length || blocks.length >= MAX_BLOCKS) return;
+    if (!i.length || blocks.length >= maxBlocks) return;
     const b: Block = { k, r: region, i, hx: '' };
     if (form >= 0) b.fm = form;
     if (extra) Object.assign(b, extra);
@@ -1111,7 +1115,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
 
   if (hiddenRuns) notes.push(`${hiddenRuns} hidden text ${hiddenRuns === 1 ? 'block' : 'blocks'} not shown`);
   if (hasCanvas) notes.push('page draws on a canvas: its content is not in the text view');
-  if (blocks.length >= MAX_BLOCKS) notes.push('very large page: truncated');
+  if (blocks.length >= maxBlocks) notes.push(TRUNCATED);
   for (const f of forms) {
     try {
       if (new URL(f.action).origin !== new URL(pageUrl).origin && f.method === 'POST') {

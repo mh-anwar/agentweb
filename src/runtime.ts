@@ -12,7 +12,7 @@
 
 import { searchTemplate } from './atlas/index.ts';
 import { blockText } from './blocks.ts';
-import { compile } from './compile.ts';
+import { compile, TRUNCATED } from './compile.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { actByFp, allActs, loadSession, rehash, resolveTarget, saveSession, SessionRefs, type Resolved, type SessionRecord } from './session.ts';
@@ -84,6 +84,7 @@ export type VerbHandler = (rc: RunCtx, step: Step) => Promise<void>;
 const TIERS: Tier[] = ['wire', 'ghost', 'chrome'];
 const DEFAULT_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 agentweb/0.1';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const MISSING_TARGET = /nothing (?:clickable|fillable) matches|is not on this page any more|none is near/;
 const lc = (s: string) => s.toLowerCase().replace(/\s+/g, ' ').trim();
 
 export function normalizeUrl(input: string, base?: string): string {
@@ -215,6 +216,9 @@ export class RunCtx {
 
   async pickTier(url: string): Promise<Tier> {
     if (this.rec.engine && (await this.rt.available(this.rec.engine))) return this.rec.engine;
+    // this session already needed scripts on this site: start there
+    const known = this.rec.tiers?.[originOf(url)];
+    if (known && (await this.rt.available(known))) return known;
     const hint = await this.rt.deps.atlas?.site(originOf(url)).catch(() => undefined);
     if (hint?.tier && (hint.tierConf ?? 0) >= 0.6 && (await this.rt.available(hint.tier))) return hint.tier;
     return 'wire';
@@ -264,6 +268,7 @@ export class RunCtx {
       break;
     }
     if (before && before !== 'wire' && before !== tier) await this.engine(before).release(this.rec.id).catch(() => {});
+    if (tier !== 'wire' && method === 'GET' && /^https?:/.test(page.url)) (this.rec.tiers ??= {})[originOf(page.url)] = tier;
     if (loaded_meta(page) && this.rt.deps.atlas) {
       this.rt.deps.atlas.observe({ type: 'forms', origin: originOf(page.url), url: page.url, forms: page.forms });
       this.rt.deps.atlas.observe({ type: 'meta', origin: originOf(page.url), url: page.url, links: page.meta?.links ?? [], markdown: page.kind === 'markdown' });
@@ -535,7 +540,18 @@ const VERBS: Record<string, VerbHandler> = {
   async find(rc, step) {
     const q = str(step.args[0]);
     if (!q) throw new AwError('bad_request', "find needs words: find('refund policy')");
-    rc.emit(renderFind(rc.page, rc.rec.view, rc.refs, q, rc.remaining).text);
+    const p = rc.page;
+    if (p.notes.includes(TRUNCATED) && p.tier === 'wire' && p.method === 'GET') {
+      // the stored page is capped; search the whole document once (shared cache), without keeping it
+      const loaded = await rc.engine('wire').open(rc.ctx, { url: p.url });
+      rc.fetches++;
+      if (loaded.doc) {
+        const full = compile(loaded.doc, loaded.url, { tier: 'wire', maxBlocks: 400_000 });
+        rc.emit(renderFind(full, { seq: rc.rec.view.seq, seen: {} }, rc.refs, q, rc.remaining).text);
+        return;
+      }
+    }
+    rc.emit(renderFind(p, rc.rec.view, rc.refs, q, rc.remaining).text);
   },
 
   async links(rc, step) {
@@ -955,7 +971,16 @@ export class RuntimeImpl implements Runtime {
             delete step.opts.confirm;
           }
         }
-        await handler(rc, step);
+        try {
+          await handler(rc, step);
+        } catch (e) {
+          // a control the plain-HTTP view does not have (rendered by script, in a shadow root):
+          // move the page to a script engine and try the step once more
+          const p = rc.rec.page;
+          if (!(e instanceof AwError) || e.code !== 'bad_request' || !MISSING_TARGET.test(e.message) || !p || p.tier !== 'wire' || !p.stats.scripts || p.method !== 'GET' || !(await rc.nextTier('wire'))) throw e;
+          await rc.escalate(`${step.src} was not found without the page's scripts`);
+          await handler(rc, step);
+        }
         done++;
       } catch (e) {
         const err = e instanceof AwError ? e : new AwError('internal', shortError(e));

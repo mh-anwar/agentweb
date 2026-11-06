@@ -30,6 +30,8 @@ export interface SessionRecord {
   guard?: unknown;
   /** engine pinned by the agent with engine('…'); absent = automatic */
   engine?: Tier;
+  /** origins where this session already needed a script engine, and which one */
+  tiers?: Record<string, Tier>;
   /** fingerprint of the last field filled (default target for submit() and press('Enter')) */
   lastField?: string;
   /** values filled on the current wire-tier page: fingerprint -> value, replayed if the page moves to a script engine */
@@ -94,6 +96,24 @@ export interface Resolved {
   act: Act;
   block: Block;
   index: number;
+}
+
+/** Characters between the end of `near` in a block and an act in it (acts before the text cost extra). */
+function inlineDistance(block: Block, act: Act, near: string): number {
+  let text = '';
+  let at = -1;
+  for (const x of block.i) {
+    if (x === act) at = text.length;
+    text += typeof x === 'string' ? x : ` ${x.l} `;
+  }
+  const lower = text.toLowerCase();
+  let best = Infinity;
+  for (let i = lower.indexOf(near); i >= 0; i = lower.indexOf(near, i + 1)) {
+    const end = i + near.length;
+    const d = at >= end ? at - end : (i - at) + 5000;
+    best = Math.min(best, d);
+  }
+  return best;
 }
 
 export function allActs(page: Page): Resolved[] {
@@ -212,14 +232,26 @@ export function resolveTarget(page: Page, refs: SessionRefs, target: Arg, o: Res
       if (blockText(b).toLowerCase().includes(near)) hits.push(i);
     });
     if (hits.length) {
-      let pick = top[0];
-      let bestD = Infinity;
-      for (const r of top) {
+      // distance in lines, then (same line: several cards flattened together) in characters:
+      // a control usually follows its item's name, so one after the text wins over one before it
+      const cost = (r: Resolved): number => {
         let d = Infinity;
-        for (const h of hits) d = Math.min(d, Math.abs(h - r.index));
-        if (d < bestD) [pick, bestD] = [r, d];
-      }
-      if (bestD <= 8) return pick;
+        for (const h of hits) {
+          if (h === r.index) {
+            d = Math.min(d, inlineDistance(r.block, r.act, near));
+            continue;
+          }
+          const lo = Math.min(h, r.index);
+          const hi = Math.max(h, r.index);
+          // a heading in between means the control belongs to another item
+          let headings = 0;
+          for (let i = lo + 1; i <= hi; i++) if (page.blocks[i].k === 'h' && i !== h) headings++;
+          d = Math.min(d, (hi - lo) * 100000 + (r.index < h ? 250000 : 0) + headings * 1000000);
+        }
+        return d;
+      };
+      const ranked = top.map((r) => ({ r, d: cost(r) })).sort((a, b) => a.d - b.d);
+      if (ranked[0].d <= 8 * 100000 + 250000 && (ranked.length === 1 || ranked[1].d > ranked[0].d)) return ranked[0].r;
     }
     throw new AwError('bad_request', `'${target}' matches ${top.length} things and none is near '${o.near}'`, listCandidates(top, refs));
   }
