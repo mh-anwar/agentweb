@@ -1,0 +1,11 @@
+# Live URLs for the first baseline measurement (the lead will later re-run against the local fixture web).
+https://news.ycombinator.com/
+https://en.wikipedia.org/wiki/Web_browser
+https://github.com/microsoft/playwright-mcp
+https://developer.mozilla.org/en-US/docs/Web/API/Fetch_API
+https://books.toscrape.com/
+https://quotes.toscrape.com/js/
+https://www.saucedemo.com/
+https://docs.python.org/3/library/asyncio.html
+https://arxiv.org/abs/2410.16464
+https://www.bbc.com/news

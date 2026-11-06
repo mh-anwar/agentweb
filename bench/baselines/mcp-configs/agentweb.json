@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "agentweb": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/home/pippin/.t3/projects/agentweb/src/cli.ts",
+        "mcp"
+      ]
+    }
+  }
+}

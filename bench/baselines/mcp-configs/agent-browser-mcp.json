@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "agent-browser": {
+      "type": "stdio",
+      "command": "/home/pippin/.t3/projects/agentweb/bench/baselines/node_modules/agent-browser/bin/agent-browser-linux-x64",
+      "args": [
+        "mcp"
+      ],
+      "env": {
+        "AGENT_BROWSER_EXECUTABLE_PATH": "/home/pippin/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "AGENT_BROWSER_ARGS": "--no-sandbox"
+      }
+    }
+  }
+}

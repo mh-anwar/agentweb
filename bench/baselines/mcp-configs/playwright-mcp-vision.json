@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "playwright": {
+      "type": "stdio",
+      "command": "/home/pippin/.nvm/versions/node/v24.22.1/bin/node",
+      "args": [
+        "/home/pippin/.t3/projects/agentweb/bench/baselines/node_modules/@playwright/mcp/cli.js",
+        "--headless",
+        "--isolated",
+        "--no-sandbox",
+        "--executable-path",
+        "/home/pippin/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "--caps",
+        "vision"
+      ]
+    }
+  }
+}

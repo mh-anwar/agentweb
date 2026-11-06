@@ -1,0 +1,19 @@
+{
+  "name": "agentweb-baselines",
+  "private": true,
+  "type": "module",
+  "description": "Other agent browser tools, installed and wrapped so agentweb can be compared against them.",
+  "dependencies": {
+    "@mozilla/readability": "0.6.0",
+    "@playwright/cli": "0.1.23",
+    "@playwright/mcp": "0.0.84",
+    "agent-browser": "0.41.2",
+    "chrome-devtools-mcp": "1.12.0",
+    "gpt-tokenizer": "4.1.0",
+    "jsdom": "31.0.0",
+    "turndown": "7.2.5"
+  },
+  "devDependencies": {
+    "@types/turndown": "5.0.6"
+  }
+}

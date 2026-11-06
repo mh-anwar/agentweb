@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "/home/pippin/.nvm/versions/node/v24.22.1/bin/node",
+      "args": [
+        "/home/pippin/.t3/projects/agentweb/bench/baselines/node_modules/chrome-devtools-mcp/build/src/bin/chrome-devtools-mcp.js",
+        "--headless",
+        "--isolated",
+        "--executablePath",
+        "/home/pippin/.cache/ms-playwright/chromium-1248/chrome-linux64/chrome",
+        "--chromeArg=--no-sandbox"
+      ],
+      "env": {
+        "CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS": "1"
+      }
+    }
+  }
+}
