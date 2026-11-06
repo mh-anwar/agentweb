@@ -148,3 +148,12 @@ describe('read-only mode', () => {
     assert.ok(!v.ok && !/confirm\('[0-9a-f]{8}'\)/.test(v.reason));
   });
 });
+
+import { test as test2 } from 'node:test';
+import { classifyStep as classify2 } from '../src/guard/actions.ts';
+test2('removing an item from a cart or wishlist is not a deletion; deleting an account still is', () => {
+  assert.equal(classify2({ verb: 'click', method: 'POST', label: 'Remove', dest: 'https://shop.example/cart/remove' }), null);
+  assert.equal(classify2({ verb: 'submit', method: 'POST', label: 'Update', dest: 'https://shop.example/cart/update' }), null);
+  assert.equal(classify2({ verb: 'click', method: 'POST', label: 'Remove', dest: 'https://shop.example/account/remove' })?.kind, 'deletion');
+  assert.equal(classify2({ verb: 'click', method: 'POST', label: 'Delete account', dest: 'https://shop.example/cart/x' })?.kind, 'deletion');
+});

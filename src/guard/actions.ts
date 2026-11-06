@@ -47,6 +47,9 @@ const LABEL_RULES: [RegExp, Consequence][] = [
   [/\bsend (?:message|email|e-mail|reply|invite|invitation)s?\b|\bpublish\b/, 'sending'],
 ];
 
+const CART_PATH = /(?:^|[/_\-.])(?:cart|bag|basket|wishlist|wish-list|favou?rites|saved)(?:$|[/_\-.?])/;
+const CART_EDIT = /^(?:remove|delete|x|×|✕|🗑|update|update cart|save|[-−+]|decrease|increase)$|\b(?:remove|delete|quantity|qty)\b/;
+
 /** Destination paths that make a POST consequential whatever the button says. */
 const PATH_RULES: [RegExp, Consequence][] = [
   [/(?:^|[/_\-.])(?:unsubscribe|cancel[_\-]?(?:subscription|membership|plan|order|account))(?:$|[/_\-.?])/, 'cancellation'],
@@ -94,6 +97,8 @@ export function classifyStep(s: StepInfo): { kind: Consequence; why: string } | 
     return null;
   }
   const label = squash((s.label ?? '').toLowerCase());
+  // editing a cart or wishlist is not a deletion: "Remove" there takes an item out of the basket
+  if (CART_PATH.test(path) && (!label || (CART_EDIT.test(label) && !/\b(?:account|profile|all data|everything)\b/.test(label)))) return null;
   if (label && !BENIGN.some((re) => re.test(label))) {
     for (const [re, kind] of LABEL_RULES) if (re.test(label)) return { kind, why: `"${clip(s.label!)}"` };
   }
@@ -189,7 +194,7 @@ export class StepGate {
     if (this.consume(s)) return { ok: true, warn: `confirmed ${c.kind}: ${c.why}${where}` };
     return {
       ok: false,
-      reason: `${c.why}${where} looks like a ${c.kind} step and needs the user's approval. If the user approves, run it again preceded by confirm('${this.token(s)}'), e.g. confirm('${this.token(s)}'); ${s.verb}(…)`,
+      reason: `${c.why}${where} looks like a ${c.kind} step and needs the user's approval. If the user approves, run it again preceded by confirm('${this.token(s)}'), then the same step`,
     };
   }
 

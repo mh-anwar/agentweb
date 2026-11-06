@@ -455,7 +455,8 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     if (!l) {
       // an icon-only button with no accessible name: useless without scripting, guessable with it
       if (!live && !(submits && form >= 0)) return;
-      l = submits && form >= 0 ? 'Submit' : 'unlabeled button';
+      const hint = submits && form >= 0 ? '' : iconHint(n, a);
+      l = submits && form >= 0 ? 'Submit' : hint ? hint + ' (icon)' : 'unlabeled button';
     }
     l = clip(l, 80);
     if (submits && form >= 0 && !forms[form].js) {
@@ -713,7 +714,14 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     try {
       path = new URL(action).pathname;
     } catch {}
-    const keyBase = method + ' ' + path;
+    // identity = what the form submits, not where it sits: the 2nd "Add to cart" form on two
+    // listings are different products (hidden fields carry the id); per-request tokens are ignored
+    const hidden: string[] = [];
+    (function scan(x: LNode) {
+      if (x.t === 'input' && (x.a?.type ?? '').toLowerCase() === 'hidden' && x.a?.name && !VOLATILE_FIELD.test(x.a.name)) hidden.push(x.a.name + '=' + (x.a.value ?? ''));
+      if (x.c && x.t !== 'form') for (const c of x.c) scan(c);
+    })({ ...n, t: 'div' });
+    const keyBase = method + ' ' + path + (hidden.length ? ' ' + hash(hidden.sort().join('&')) : '');
     const ordinal = forms.filter((f) => f.key.startsWith(keyBase + '#')).length;
     const def: FormDef = { key: keyBase + '#' + ordinal, action, method, enctype: (a.enctype ?? 'application/x-www-form-urlencoded').toLowerCase(), fields: [] };
     if (js) def.js = true;
@@ -1145,6 +1153,35 @@ function asksForScripts(blocks: Block[], scripts: number, wordCount: number): bo
   if (!scripts || wordCount >= 300) return false;
   return blocks.some((b) => (b.r === 'main' || b.r === 'other' || b.r === 'dialog') && ASKS_FOR_JS.test(blockText(b)));
 }
+
+const GENERIC_CLASS = /^(?:btn|button|icon|icons?-?btn|btn-?icon|icon-?button|small|sm|lg|xs|primary|secondary|tertiary|ghost|outline|flat|round(?:ed)?|circle|active|inline|block|flex|grid|d-\w+|p[xy]?-\d|m[xy]?-\d|text-\w+|bg-\w+|svg|fa|fas|far|fab|material-icons|js-.*|is-.*|has-.*|[a-z]{1,2}\d*|.*[A-Z0-9]{4,}.*)$/;
+
+/** A name for an icon-only control from what its markup says: <title>, sprite id, data-icon, meaningful classes. */
+export function iconHint(n: LNode, a: Record<string, string>): string {
+  const pick: string[] = [];
+  const fromClasses = (c: string | undefined) => {
+    for (const t of (c ?? '').split(/\s+/)) {
+      const w = t.replace(/^(?:fa|icon|ico|bi|mdi|glyphicon|ti|ri|lucide|feather)-/, '').replace(/[-_]+/g, ' ').trim();
+      if (w && !(/\d/.test(t) && t.length > 4) && !GENERIC_CLASS.test(t) && !GENERIC_CLASS.test(w) && w.length <= 24 && !pick.includes(w)) pick.push(w);
+    }
+  };
+  for (const k of ['data-icon', 'data-action', 'data-testid', 'data-test', 'name', 'id']) {
+    const v = a[k];
+    if (v && v.length <= 32 && !/\d{3,}/.test(v)) pick.push(v.replace(/[-_]+/g, ' '));
+  }
+  (function scan(x: LNode, depth: number) {
+    if (depth > 4 || pick.length > 2) return;
+    if (x.t === 'title' && x.c) pick.unshift(x.c.map((c) => c.x ?? '').join('').trim());
+    const href = x.a?.href ?? x.a?.['xlink:href'];
+    if (x.t === 'use' && href?.includes('#')) pick.unshift(href.split('#').pop()!.replace(/^(?:icon|i)[-_]/, '').replace(/[-_]+/g, ' '));
+    if (x.t === 'i' || x.t === 'span' || x.t === 'svg') fromClasses(x.a?.class);
+    if (x.c) for (const c of x.c) scan(c, depth + 1);
+  })(n, 0);
+  fromClasses(a.class);
+  return squash(pick.filter(Boolean).slice(0, 2).join(' ')).slice(0, 40);
+}
+
+const VOLATILE_FIELD = /csrf|xsrf|token|nonce|authenticity|session|timestamp|^_|captcha|state$/i;
 
 function looksLikeShell(doc: Doc, wordCount: number, actCount: number): boolean {
   const meta = doc.meta;

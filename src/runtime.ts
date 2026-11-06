@@ -293,6 +293,13 @@ export class RunCtx {
     return loaded;
   }
 
+  /** Run another verb from inside a verb (verb packs use this). */
+  async verb(name: string, args: Arg[] = [], opts: Record<string, Arg> = {}): Promise<void> {
+    const h = VERBS[name] ?? this.rt.verbHandler(name);
+    if (!h) throw new AwError('unsupported', `${name}() is not available`);
+    await h(this, { verb: name, args, opts, src: `${name}()` });
+  }
+
   /** Act on a target in a script engine, re-resolving once if the page changed under us. */
   async liveOn(step: Step, build: (n: number, act: Act) => Action): Promise<void> {
     await this.ensureLive();
@@ -684,6 +691,9 @@ const VERBS: Record<string, VerbHandler> = {
   async press(rc, step) {
     const key = str(step.args[0]);
     if (!key) throw new AwError('bad_request', "press needs a key: press('Enter')");
+    // End / PageDown with no target is how agents ask to scroll a feed
+    if (step.args.length === 1 && /^(end|pagedown|page_down|space)$/i.test(key)) return VERBS.scroll(rc, { ...step, verb: 'scroll', args: ['bottom'] });
+    if (step.args.length === 1 && /^(home|pageup|page_up)$/i.test(key)) return VERBS.scroll(rc, { ...step, verb: 'scroll', args: ['top'] });
     if (!rc.isLive()) {
       if (/^(enter|return)$/i.test(key)) return VERBS.submit(rc, { ...step, verb: 'submit', args: step.args.slice(1) });
       await rc.escalate(`press('${key}') needs a script engine`);
@@ -699,7 +709,11 @@ const VERBS: Record<string, VerbHandler> = {
   },
 
   async scroll(rc, step) {
-    if (!rc.isLive()) return rc.note('nothing to scroll: the whole page is already available (read() pages through it)');
+    if (!rc.isLive()) {
+      // a static page holds everything already; one with scripts may load more as it scrolls
+      if (!rc.page.stats.scripts || rc.page.method !== 'GET') return rc.note('nothing to scroll: the whole page is already available (read() pages through it)');
+      await rc.escalate('scrolling loads more on this page');
+    }
     const a = step.args[0];
     await rc.ensureLive();
     await rc.live({ do: 'scroll', to: typeof a === 'number' ? a : lc(str(a)) === 'top' ? 'top' : 'bottom' });
@@ -709,6 +723,10 @@ const VERBS: Record<string, VerbHandler> = {
     const a = step.args[0];
     const ms = typeof a === 'number' ? Math.min(a < 100 ? a * 1000 : a, 30000) : undefined;
     const text = typeof a === 'string' ? a : undefined;
+    // text that should appear on a page with scripts: wait for it in a script engine, not by reloading
+    if (!rc.isLive() && text && rc.page.stats.scripts && rc.page.method === 'GET' && !rc.page.blocks.some((b) => lc(blockText(b)).includes(lc(text)))) {
+      await rc.escalate(`waiting for '${text}' needs the page's scripts`);
+    }
     if (rc.isLive()) {
       await rc.ensureLive();
       await rc.live({ do: 'wait', ms, text });
@@ -830,6 +848,10 @@ export class RuntimeImpl implements Runtime {
   }
 
   /** Add or replace a verb (extraction, fan-out, watchers live in their own modules). */
+  verbHandler(verb: string): VerbHandler | undefined {
+    return this.verbs[verb];
+  }
+
   register(verb: string, handler: VerbHandler) {
     this.verbs[verb] = handler;
     DSL_VERBS.add(verb);

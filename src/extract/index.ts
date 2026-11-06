@@ -100,8 +100,19 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
     }
     if (visited >= pages || left < 80) break;
     const next = nextLink(page);
-    if (!next?.href || next.href === page.url) break;
-    await rc.navigate({ url: next.href, referer: page.url });
+    if (next?.href && next.href !== page.url) {
+      await rc.navigate({ url: next.href, referer: page.url });
+      continue;
+    }
+    // no pager: an infinite feed loads more as it scrolls
+    if (!page.stats.scripts && !rc.isLive()) break;
+    const before = recordBlocks(rc.page).length;
+    try {
+      await rc.verb('scroll', ['bottom']);
+    } catch {
+      break;
+    }
+    if (recordBlocks(rc.page).length <= before) break;
   }
   const head = `${dropped}${total} record${total === 1 ? '' : 's'}${q.length ? ` matching '${str(step.args[0])}'` : ''}${visited > 1 ? ` over ${visited} pages` : ''}`;
   if (!total) {
