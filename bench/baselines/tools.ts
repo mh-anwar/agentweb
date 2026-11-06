@@ -147,7 +147,7 @@ export const MCP_VARIANTS: McpVariant[] = [
     server: 'agentweb',
     label: 'agentweb',
     // fresh in-memory store per run (no carry-over between runs); the local farm is on 127.0.0.1
-    spec: { command: 'node', args: [join(REPO, 'src/cli.ts'), 'mcp'], env: { AGENTWEB_STORE: 'memory:', AGENTWEB_ALLOW_PRIVATE: '1', AGENTWEB_GHOST: '0' } },
+    spec: { command: 'node', args: [join(REPO, 'src/cli.ts'), 'mcp'], env: { AGENTWEB_STORE: 'memory:', AGENTWEB_ALLOW_PRIVATE: '1' } },
   },
 ];
 

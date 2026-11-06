@@ -188,7 +188,7 @@ test('a consequential step needs a confirmation token, which approves it once', 
   const s = 'confirm-test';
   const refused = await r2.run(s, `open('${site.url}/p/1'); click('Add to cart'); click('Place order')`);
   assert.equal(refused.ok, false, refused.text);
-  const token = /confirm ([0-9a-f]{8})/.exec(refused.text)?.[1];
+  const token = /confirm\('([0-9a-f]{8})'\)/.exec(refused.text)?.[1];
   assert.ok(token, refused.text);
   const before = site.orders.length;
   const placed = await r2.run(s, `confirm('${token}'); click('Place order'); expect('Order placed')`);
@@ -224,4 +224,27 @@ test('a find that misses still shows where the page content starts', async () =>
   const r = await rt.run(fresh(), `open('${site.url}/products'); find('titleline')`);
   assert.match(r.text, /no match for 'titleline'/);
   assert.match(r.text, /The page starts:[\s\S]*USB-C Hub/);
+});
+
+test("confirm= on the step itself, or the refusal's 'confirm <token>' as an argument, also approve", async () => {
+  const policy = { ...defaultPolicy('local'), confirm: 'consequential' as const };
+  const r2 = createRuntime({ store: new MemoryStore(), engines: { wire: createWireEngine({ polite: false }) }, createJar, createGuard: (st) => createGuard(policy, st), encodeForm, readBody });
+  for (const form of [(t: string) => `click('Place order', confirm='${t}')`, (t: string) => `click('Place order', 'confirm ${t}')`]) {
+    const s = fresh();
+    const refused = await r2.run(s, `open('${site.url}/p/2'); click('Add to cart'); click('Place order')`);
+    const token = /confirm\('([0-9a-f]{8})'\)/.exec(refused.text)?.[1];
+    assert.ok(token, refused.text);
+    const before = site.orders.length;
+    const placed = await r2.run(s, `${form(token)}; expect('Order placed')`);
+    assert.equal(placed.ok, true, placed.text);
+    assert.equal(site.orders.length, before + 1);
+  }
+  await r2.close();
+});
+
+test("search() on a site with a search box uses that box", async () => {
+  const r = await rt.run(fresh(), `open('${site.url}/'); search('mouse')`);
+  assert.ok(r.ok, r.text);
+  assert.match(r.text, /Results for "mouse"/);
+  assert.match(r.text, /site='web'/);
 });

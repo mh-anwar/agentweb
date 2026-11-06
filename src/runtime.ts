@@ -449,7 +449,18 @@ const VERBS: Record<string, VerbHandler> = {
     const q = str(step.args[0]);
     if (!q) throw new AwError('bad_request', "search needs a query: search('words')");
     let query = q;
-    if (step.opts.site !== undefined) {
+    // on a site with a search box, search() means that box unless site='web' says otherwise
+    const siteArg = step.opts.site !== undefined ? str(step.opts.site) : undefined;
+    if (siteArg === undefined && rc.rec.page && /^https?:/.test(rc.rec.page.url)) {
+      const here = originOf(rc.rec.page.url);
+      const tpl = searchTemplate(rc.rec.page.forms, here) ?? (await rc.rt.deps.atlas?.site(here).catch(() => undefined))?.search;
+      if (tpl) {
+        await rc.navigate({ url: tpl.replace('{q}', encodeURIComponent(q)) });
+        rc.note(`searched this site; search('${q.replace(/'/g, "\\'")}', site='web') searches the web`);
+        return;
+      }
+    }
+    if (siteArg !== undefined && lc(siteArg) !== 'web') {
       // the site's own search: from the atlas, else from the search form on its home page
       const origin = originOf(normalizeUrl(str(step.opts.site)));
       let tpl = (await rc.rt.deps.atlas?.site(origin).catch(() => undefined))?.search;
@@ -911,6 +922,17 @@ export class RuntimeImpl implements Runtime {
       const handler = this.verbs[step.verb];
       try {
         if (!handler) throw new AwError('unsupported', `${step.verb}() is not available in this build`);
+        // submit(confirm='token') is how agents naturally write it: approve, then run the step
+        if (step.verb !== 'confirm') {
+          let tok = step.opts.confirm;
+          // submit('confirm 1a2b3c4d') too: the refusal text read as an argument
+          const i = step.args.findIndex((a) => typeof a === 'string' && /^confirm\s+[0-9a-f]{6,}$/i.test(a.trim()));
+          if (tok === undefined && i >= 0) [tok] = step.args.splice(i, 1);
+          if (tok !== undefined) {
+            await VERBS.confirm(rc, { verb: 'confirm', args: [tok], opts: {}, src: step.src });
+            delete step.opts.confirm;
+          }
+        }
         await handler(rc, step);
         done++;
       } catch (e) {

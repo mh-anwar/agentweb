@@ -57,7 +57,7 @@ describe('flow: true positives (block mode refuses and names the source)', () =>
       if (!v.ok) {
         assert.ok(v.reason.includes(source), v.reason);
         assert.ok(v.reason.includes(EVIL), v.reason);
-        assert.match(v.reason, /confirm [0-9a-f]{8}/);
+        assert.match(v.reason, /confirm\('[0-9a-f]{8}'\)/);
       }
     });
 
@@ -71,7 +71,7 @@ describe('flow: true positives (block mode refuses and names the source)', () =>
     const g = guard('block');
     const v = g.checkOutflow(PARAGRAPH, EVIL + '/form');
     assert.equal(v.ok, false);
-    const token = !v.ok ? /confirm ([0-9a-f]{8})/.exec(v.reason)![1] : '';
+    const token = !v.ok ? /confirm\('([0-9a-f]{8})'\)/.exec(v.reason)![1] : '';
     assert.equal(g.confirm(token), true);
     const again = g.checkOutflow(PARAGRAPH, EVIL);
     assert.equal(again.ok, true);

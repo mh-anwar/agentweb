@@ -78,7 +78,7 @@ describe('confirmation round trip', () => {
     const step = click('Place order', { text: 'qty=1' });
     const v = await g.checkStep(step);
     assert.equal(v.ok, false);
-    const token = !v.ok ? /confirm ([0-9a-f]{8})$/.exec(v.reason)?.[1] : undefined;
+    const token = !v.ok ? /confirm\('([0-9a-f]{8})'\)/.exec(v.reason)?.[1] : undefined;
     assert.ok(token, !v.ok ? v.reason : '');
     assert.match(!v.ok ? v.reason : '', /purchase/);
 
@@ -101,8 +101,8 @@ describe('confirmation round trip', () => {
     const va = await a.checkStep(step);
     const vb = await b.checkStep(step);
     assert.ok(!va.ok && !vb.ok);
-    const ta = /confirm (\w+)$/.exec(!va.ok ? va.reason : '')![1];
-    const tb = /confirm (\w+)$/.exec(!vb.ok ? vb.reason : '')![1];
+    const ta = /confirm\('(\w+)'\)/.exec(!va.ok ? va.reason : '')![1];
+    const tb = /confirm\('(\w+)'\)/.exec(!vb.ok ? vb.reason : '')![1];
     assert.notEqual(ta, tb);
     b.confirm(ta);
     assert.equal((await b.checkStep(step)).ok, false);
@@ -112,7 +112,7 @@ describe('confirmation round trip', () => {
     const step = click('Pay now');
     const g = createGuard(pol({ confirmKey: 'k' }));
     const v = await g.checkStep(step);
-    const t = /confirm (\w+)$/.exec(!v.ok ? v.reason : '')![1];
+    const t = /confirm\('(\w+)'\)/.exec(!v.ok ? v.reason : '')![1];
     const g2 = createGuard(pol({ confirmKey: 'k', confirmed: [t] }), g.state());
     assert.equal((await g2.checkStep(step)).ok, true);
     assert.equal((await g2.checkStep(step)).ok, true, 'standing approval is not consumed');
@@ -145,6 +145,6 @@ describe('read-only mode', () => {
   });
   it('a read-only refusal offers no confirmation token', async () => {
     const v = await g.checkStep(click('Place order'));
-    assert.ok(!v.ok && !/confirm [0-9a-f]{8}/.test(v.reason));
+    assert.ok(!v.ok && !/confirm\('[0-9a-f]{8}'\)/.test(v.reason));
   });
 });

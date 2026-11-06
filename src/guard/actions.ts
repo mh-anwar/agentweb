@@ -189,7 +189,7 @@ export class StepGate {
     if (this.consume(s)) return { ok: true, warn: `confirmed ${c.kind}: ${c.why}${where}` };
     return {
       ok: false,
-      reason: `${c.why}${where} looks like a ${c.kind} step and needs the user's approval. If the user approves, run it again with confirm ${this.token(s)}`,
+      reason: `${c.why}${where} looks like a ${c.kind} step and needs the user's approval. If the user approves, run it again preceded by confirm('${this.token(s)}'), e.g. confirm('${this.token(s)}'); ${s.verb}(…)`,
     };
   }
 
