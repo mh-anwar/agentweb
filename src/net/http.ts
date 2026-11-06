@@ -77,6 +77,8 @@ interface NetStats {
 export interface WireEngine extends Engine {
   readonly cache?: PageCache;
   readonly limiter?: Limiter;
+  /** the connection pool with the DNS-rebinding check; other engines send their requests through it */
+  readonly dispatcher: Agent;
   stats(): Record<string, number>;
 }
 
@@ -403,6 +405,7 @@ export function createWireEngine(opts: WireOptions = {}): WireEngine {
     tier: 'wire',
     cache,
     limiter,
+    dispatcher: agent,
     async available() { return true; },
     open,
     async release() {},

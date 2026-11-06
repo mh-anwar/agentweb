@@ -20,5 +20,20 @@ await build({
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   logLevel: 'warning',
 });
+// the ghost engine's page process: one per live page, found next to the bundle at run time
+await build({
+  entryPoints: ['src/engines/ghost/child.ts'],
+  outfile: 'dist/ghost-child.mjs',
+  bundle: true,
+  platform: 'node',
+  format: 'esm',
+  target: 'node22',
+  minifySyntax: true,
+  minifyWhitespace: true,
+  legalComments: 'none',
+  external: ['jsdom', 'happy-dom'],
+  banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
+  logLevel: 'warning',
+});
 chmodSync('dist/agentweb.mjs', 0o755);
-console.log(`dist/agentweb.mjs ${(statSync('dist/agentweb.mjs').size / 1024).toFixed(0)} KB`);
+for (const f of ['dist/agentweb.mjs', 'dist/ghost-child.mjs']) console.log(`${f} ${(statSync(f).size / 1024).toFixed(0)} KB`);

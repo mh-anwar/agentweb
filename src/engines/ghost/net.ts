@@ -183,6 +183,11 @@ export interface DefaultFetchOptions {
   /** per-request timeout (ms); the session's timeout also applies */
   timeoutMs?: number;
   maxRedirects?: number;
+  /**
+   * an undici dispatcher to send requests through (pass the wire engine's, so its connect-time
+   * address check also covers ghost pages); the global fetch is used otherwise
+   */
+  dispatcher?: unknown;
 }
 
 /** `fetch` over the global fetch: cookies from ctx.jar, Set-Cookie stored back, ctx.guard asked for every hop */
@@ -224,7 +229,8 @@ export function defaultFetch(o: DefaultFetchOptions = {}): GhostFetch {
       }
       let res: Response;
       try {
-        res = await fetch(url, { method, headers: h, body: method === 'GET' || method === 'HEAD' ? undefined : (body as any), redirect: 'manual', signal });
+        const init = { method, headers: h, body: method === 'GET' || method === 'HEAD' ? undefined : (body as any), redirect: 'manual' as const, signal };
+        res = o.dispatcher ? ((await (await import('undici')).fetch(url, { ...init, dispatcher: o.dispatcher as any })) as unknown as Response) : await fetch(url, init);
       } catch (e: any) {
         if (signal.aborted) throw new AwError('timeout', `${target.host} did not answer in time`);
         const cause = e?.cause?.code || e?.cause?.message || e?.message || String(e);

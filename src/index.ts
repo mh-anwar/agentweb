@@ -60,7 +60,8 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
   if (want(config.ghost, 'AGENTWEB_GHOST')) {
     try {
       const mod = await import('./engines/ghost/index.ts');
-      engines.ghost = mod.createGhostEngine({});
+      // ghost page requests go through the wire engine's connection pool and its address check
+      engines.ghost = mod.createGhostEngine({ fetch: mod.defaultFetch({ dispatcher: wire.dispatcher }) });
     } catch {
       // the ghost engine or its DOM dependency is not installed: the other tiers still work
     }
