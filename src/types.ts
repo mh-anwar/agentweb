@@ -70,6 +70,8 @@ export interface Block {
   /** index of the enclosing form in Page.forms */
   fm?: number;
   hd?: boolean;
+  /** the text reads like instructions aimed at an AI agent (prompt injection); rendered with a ⚠ */
+  sus?: 1;
   /** content hash (text + control state). Equal hash = the agent has seen exactly this line. */
   hx: string;
 }

@@ -105,6 +105,7 @@ export function renderLine(b: Block, refs: Refs | null, o?: LineOpts): string {
     return '```\n' + t + '\n```';
   }
   let s = inlineStr(b, refs, o);
+  if (b.sus) s = '⚠ ' + s;
   if (o?.maxWords && (b.k === 'p' || b.k === 'q' || b.k === 'li') && !b.g) {
     const w = words(s);
     if (w > o.maxWords + 12) {

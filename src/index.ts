@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { createRuntime, type RuntimeImpl, type RuntimeOptions } from './runtime.ts';
 import { createJar, createWireEngine, encodeForm } from './net/index.ts';
-import { createGuard, isPublicAddress, loadPolicy, type Policy } from './guard/index.ts';
+import { createGuard, isPublicAddress, loadPolicy, scoreInjection, type Policy } from './guard/index.ts';
 import { openStore } from './store/index.ts';
 import { mineEmbedded, readBody } from './readers/index.ts';
 import { search, toBlocks } from './search/index.ts';
@@ -95,6 +95,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
     search: (q, o) => search(q, o),
     searchBlocks: (results, q) => toBlocks(results, q),
     atlas,
+    scoreInjection: (t) => scoreInjection(t).score,
     options: {
       budget: config.budget ?? (env.AGENTWEB_BUDGET ? Number(env.AGENTWEB_BUDGET) : undefined),
       timeoutMs: config.timeoutMs,
