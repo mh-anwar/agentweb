@@ -228,8 +228,10 @@ export const tasks: Task[] = [
     prompt: 'Which product in the {{topCat}} category of {{url}}/shop/ has the highest customer rating? Give its full name and rating.',
     check(a, _s, t) {
       const p = P(t);
-      const got = mentioned(a, t);
-      const ok = got.length > 0 && got.every((g) => p.topRated.some((x) => x.id === g.id));
+      // the answer may name runners-up too; the product it names first must be a top-rated one
+      const na = norm(a);
+      const got = mentioned(a, t).sort((x, y) => na.indexOf(norm(x.name)) - na.indexOf(norm(y.name)));
+      const ok = got.length > 0 && p.topRated.some((x) => x.id === got[0]!.id);
       return R(ok && hasNumber(a, p.topRated[0]!.rating, 0.001), ok ? 'right product' : `expected one of: ${p.topRated.map((x) => `${x.name} (${x.rating})`).join('; ')}`);
     },
     example: (t) => { const p = P(t); const other = productsIn(t, p.topCat).find((x) => !p.topRated.includes(x))!; return { right: { answer: `${p.topRated[0]!.name}, rated ${p.topRated[0]!.rating}` }, wrong: { answer: `${other.name}, rated ${other.rating}` } }; },

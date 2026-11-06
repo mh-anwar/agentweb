@@ -58,3 +58,36 @@ that misses now shows where the page starts; `records('words')` whose words matc
 items; the tool description mentions `{{secret:…}}` only when secrets are configured (the agent had
 copied the example). Before those fixes the same tasks took 2, 2 and 3 calls (16.8k, 16.3k, 22.3k
 input tokens): still the lowest, but those were wasted calls.
+
+## Task benchmark on the farm (local fixture web, `node bench/run.ts`)
+
+Haiku 5.5, `claude -p`, same harness for both tools, n = 1 per task. Each task is graded on the
+answer and on the server's own record of what happened (orders, transfers, requests to the
+second origin). Input tokens = everything the model read over the whole task.
+
+**Core set (40 tasks).** agentweb was fixed twice against these tasks after reading its failing
+transcripts (see the commits of 2026-11-06), so this number flatters it:
+
+| Tool | Passed | Median tool calls | Median input tokens | Total input tokens | Median wall | Cost |
+|:--|--:|--:|--:|--:|--:|--:|
+| agentweb (3rd run) | 39/40 | 3 | 22,461 | 1,350,580 | 8.0s | $0.091 |
+| Playwright MCP | 39/40 | 5 | 64,188 | 3,363,343 | 10.4s | $0.148 |
+
+First run, before any fixes: agentweb 35/40 with 1,380,750 input tokens.
+
+**Held-out set (21 tasks agentweb had never been run on):**
+
+| Tool | Passed | Median tool calls | Median input tokens | Total input tokens | Median wall | Cost |
+|:--|--:|--:|--:|--:|--:|--:|
+| agentweb | 17/21 → 18/21 regraded | 2 | 15,697 | 818,462 | 5.7s | $0.048 |
+| Playwright MCP | 20/21 → 21/21 regraded | 4 | 48,162 | 1,401,741 | 9.3s | $0.064 |
+
+"Regraded": the `shop-top-rated` check failed both tools for also naming the runners-up; the check
+was wrong and is fixed. agentweb's three other held-out failures were real: `near=` clicked the
+previous item's button on a shadow-DOM page; `find()` could not see past the 6,000-block cap of a
+5 MB page; and agentweb does not send conditional requests (ETag/304) when a page is re-opened.
+The first two are fixed (commit `2f3c435`; a re-run of those tasks passed), the third is not.
+Since the held-out set has now been looked at, it is no longer held out.
+
+**Known open issue:** `records(…, pages=N)` on an infinite-scroll feed stops after the first batch
+when it has to switch engines first; `scroll()` and `press('End')` work.
