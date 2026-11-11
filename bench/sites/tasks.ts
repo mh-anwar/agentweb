@@ -206,13 +206,17 @@ export const tasks: Task[] = [
     prompt: 'On {{url}}/shop/, list the five cheapest products in the {{fiveCat}} category that have a customer rating of 4.0 or higher. Give their full names from cheapest to most expensive.',
     check(a, _s, t) {
       const p = P(t);
-      const got = mentioned(a, t);
+      // Grade the requested list. An explanatory sentence can legitimately name
+      // the sixth-place product without recommending it as one of the five.
+      const listed = a.split('\n').filter(line => /^\s*(?:[-*]|\d+[.)])\s/.test(line) && mentioned(line, t).length);
+      const answer = listed.length ? listed.join('\n') : a;
+      const got = mentioned(answer, t);
       const want = new Set(p.five.map((x) => x.id));
       const extra = got.filter((x) => !want.has(x.id));
       if (extra.length) return R(false, `lists products that should not be there: ${extra.map((x) => x.name).join('; ')}`);
       const miss = p.five.filter((x) => !got.some((g) => g.id === x.id));
       if (miss.length) return R(false, `missing: ${miss.map((x) => x.name).join('; ')}`);
-      const idx = orderOf(a, p.five);
+      const idx = orderOf(answer, p.five);
       return R(idx.every((v, i) => i === 0 || v > idx[i - 1]!), 'all five present, in price order');
     },
     example: (t) => ({ right: { answer: P(t).five.map((x, i) => `${i + 1}. ${x.name} (${money(x.priceCents)})`).join('\n') }, wrong: { answer: P(t).fiveCheapestAll.map((x, i) => `${i + 1}. ${x.name}`).join('\n') } }),

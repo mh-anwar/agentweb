@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { VERSIONS } from './baselines/tools.ts';
+import { VERSIONS, BIN, CHROME } from './baselines/tools.ts';
 import { startFarm } from './sites/farm.ts';
 import { fillPrompt, tasks, vars } from './sites/tasks.ts';
 import { runAgentTask, type ToolId } from './baselines/run-agent.ts';
@@ -81,6 +81,9 @@ const manifest = {
   gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: import.meta.dirname, encoding: 'utf8' }).trim(),
   diffSha256: createHash('sha256').update(execFileSync('git', ['diff', 'HEAD'], { cwd: import.meta.dirname })).digest('hex'),
   node: process.version, versions: VERSIONS,
+  browser: execFileSync(CHROME, ['--version'], { encoding: 'utf8' }).trim(),
+  agentBrowserBinary: tools.some(t => t.startsWith('agent-browser'))
+    ? execFileSync(BIN.agentBrowser, ['--version'], { encoding: 'utf8' }).trim() : undefined,
 };
 if (existsSync(manifestPath)) {
   if (JSON.stringify(JSON.parse(readFileSync(manifestPath, 'utf8'))) !== JSON.stringify(manifest)) {

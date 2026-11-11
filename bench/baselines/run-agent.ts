@@ -11,7 +11,7 @@
 // The stream-json transcript is parsed to count tool calls and the size of what tools returned.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, symlinkSync, createWriteStream } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, accessSync, constants, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -184,13 +184,34 @@ function prepare(input: AgentTaskInput, cwd: string, root: string): Prepared {
   const binDir = join(root, 'bin');
   mkdirSync(binDir, { recursive: true });
   if (t.id === 'agent-browser') {
-    symlinkSync(BIN.agentBrowser, join(binDir, 'agent-browser'));
-    Object.assign(env, AGENT_BROWSER_ENV);
+    // A non-executable symlink lets the shell silently fall through to a different binary
+    // on PATH. Fail before starting the model, and track every session the model creates.
+    accessSync(BIN.agentBrowser, constants.X_OK);
     const session = `aw-${randomUUID().slice(0, 8)}`;
+    const sessionLog = join(root, 'browser-sessions.jsonl');
+    writeFileSync(sessionLog, '');
+    writeFileSync(join(binDir, 'agent-browser'), `#!/usr/bin/env node
+const { appendFileSync } = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+let session = process.env.AGENT_BROWSER_SESSION;
+const prefix = ${JSON.stringify(session + '-')};
+const scoped = name => name.startsWith(prefix) ? name : prefix + name;
+for (let i = 0; i < args.length; i++) {
+  if (args[i] === '--session' && args[i + 1]) { session = scoped(args[++i]); args[i] = session; }
+  else if (args[i].startsWith('--session=')) { session = scoped(args[i].slice(10)); args[i] = '--session=' + session; }
+}
+if (session) appendFileSync(${JSON.stringify(sessionLog)}, JSON.stringify(session) + '\\n');
+const result = spawnSync(${JSON.stringify(BIN.agentBrowser)}, args, { stdio: 'inherit', env: process.env });
+if (result.error) { process.stderr.write(String(result.error) + '\\n'); process.exit(1); }
+process.exit(result.status ?? 1);
+`, { mode: 0o755 });
+    Object.assign(env, AGENT_BROWSER_ENV);
     env.AGENT_BROWSER_SESSION = session;
     env.AGENT_BROWSER_SCREENSHOT_DIR = cwd;
     cleanup = async () => {
-      await runQuiet(BIN.agentBrowser, ['--session', session, 'close'], { ...process.env, ...env }, cwd);
+      const sessions = new Set<string>([session, ...readFileSync(sessionLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line) as string)]);
+      for (const name of sessions) await runQuiet(BIN.agentBrowser, ['--session', name, 'close'], { ...process.env, ...env }, cwd);
     };
   } else {
     writeFileSync(join(binDir, 'playwright-cli'), `#!/bin/sh\nexec "${process.execPath}" "${BIN.playwrightCli}" "$@"\n`, {

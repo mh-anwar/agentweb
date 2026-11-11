@@ -220,3 +220,13 @@ test('chromium renders the SPA (delayed section after 2.5 s) and shadow DOM pric
   const ch = await dumpDom(`${farm.url}/misc/challenge`);
   assert.ok(ch.includes(farm.truth.misc.challengeCode), 'script sets the cookie and reloads');
 });
+
+test('five-cheapest grader accepts an excluded runner-up in prose, but rejects a sixth list item and wrong order', () => {
+  const task = taskById('shop-five-cheapest-rated');
+  const p = picks(farm.truth);
+  const other = farm.truth.shop.products.find(x => !p.five.some(y => y.id === x.id))!;
+  const list = p.five.map((x, i) => `${i + 1}. ${x.name}`).join('\n');
+  assert.ok(task.check(list + `\n\n${other.name} is outside the five.`, blankState(), farm.truth).pass);
+  assert.ok(!task.check(list + `\n6. ${other.name}`, blankState(), farm.truth).pass);
+  assert.ok(!task.check([...p.five].reverse().map((x, i) => `${i + 1}. ${x.name}`).join('\n'), blankState(), farm.truth).pass);
+});

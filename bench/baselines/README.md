@@ -24,13 +24,13 @@ node smoke.ts all|<id…>             # the six smoke runs → out/smoke/
 | `smoke.ts` | The six smoke runs. |
 | `mcp-configs/` | `--mcp-config` files for each MCP tool, and one for agentweb (`node src/cli.ts mcp`, not run yet). |
 
-## Versions (installed 2026-11-05)
+## Versions (comparison tools refreshed 2026-11-11)
 
 | Tool | npm package | Version | Engine |
 |---|---|---|---|
-| Playwright MCP | `@playwright/mcp` | 0.0.84 | playwright-core 1.65.0-alpha-2026-10-30 |
+| Playwright MCP | `@playwright/mcp` | 0.0.85 | playwright-core 1.65.0-alpha-2026-10-30 |
 | Chrome DevTools MCP | `chrome-devtools-mcp` | 1.12.0 | puppeteer |
-| agent-browser (Vercel) | `agent-browser` | 0.41.2 | native Rust binary over CDP |
+| agent-browser (Vercel) | `agent-browser` | 0.42.0 | native Rust binary over CDP |
 | Playwright CLI | `@playwright/cli` | 0.1.23 | playwright-core 1.65.0-alpha-2026-10-30 |
 | fetch baseline | `@mozilla/readability` 0.6.0, `turndown` 7.2.5, `jsdom` 31.0.0 | | Node 24 `fetch` |
 | Browser (all tools) | Chromium 156.0.8078.4 (`~/.cache/ms-playwright/chromium-1248`) | | |
@@ -112,3 +112,29 @@ favoured whichever tool snapshotted first, by up to 4×.
 `usage.{input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens, cache_creation.{ephemeral_1h_input_tokens, ephemeral_5m_input_tokens}, iterations[], server_tool_use, service_tier}`,
 `modelUsage.<model>.{inputTokens, outputTokens, cacheReadInputTokens, cacheCreationInputTokens, thinkingTokens, costUSD, contextWindow, costBasis}`,
 `permission_denials`, `terminal_reason`, `ttft_ms`, `is_error`, `subtype`, `result`. A saved sample is at `bench/out/baselines/claude-json-probe.json`.
+
+## Repeated trials and launcher checks (2026-11-11)
+
+`bench/run.ts --repeats 3` rotates tool order per repetition and gives every transcript a distinct
+repeat suffix. Results record actual model identifiers, errors and permission-denial counts.
+The run manifest pins source revision/diff, package versions, actual native CLI version and browser
+version. Resuming with a different manifest fails; select a new output directory.
+
+The native agent-browser binary must be executable. Some installs with scripts disabled leave it
+without execute permission; fix the mode before running. The harness now fails visibly instead
+of letting a non-executable PATH symlink fall through to an older global binary. Its launcher
+namespaces explicit sessions per run and closes every session it creates, including names chosen
+by the model. This prevents test browsers from accumulating and contaminating later runs.
+
+The first batch at `bench/out/hill-866acf0` is invalid: agent-browser commands fell through to the
+older global binary while the recorded package version said 0.42.0. Do not use it for comparisons.
+
+`node bench/summarize.ts <results.jsonl> <directory>` compares only matched task/repeat cells.
+`node bench/regrade-five.ts <run-directory> <new-results.jsonl>` preserves raw evidence while
+correcting the inspected five-product-list grader for all tools. That correction accepts a
+runner-up mentioned in explanatory prose, while rejecting a sixth recommended list item.
+The regrader is scoped to the original seed-7 farm and records its input and grader hashes.
+
+These trials use a constrained CLI harness: shell assignments and arbitrary helper programs are
+denied. Keep permission-denial counts visible; failures influenced by this harness are not clean
+estimates of the CLI's unrestricted capability. No result on the inspected farm is held out.
