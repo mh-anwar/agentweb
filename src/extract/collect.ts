@@ -62,10 +62,22 @@ export function extractRow(page: Page, block: Block, fields: Record<string, Sele
     }
     if (selector === 'money' || selector === 'number') {
       const re = selector === 'money'
-        ? /(?:[$£€]\s*-?\d[\d.,]*|\b(?:USD|GBP|EUR)\s+-?\d[\d.,]*)/g
+        ? /(?<![\p{L}\p{N}])(?<before>[+−-]?)\s*(?<currency>[A-Z]{1,3}\$|[$£€]|USD|GBP|EUR|CAD|AUD|NZD|HKD|SGD)\s*(?<after>[+−-]?)\s*(?<amount>\d[\d., \u00a0\u202f]*)/gu
         : /-?\d[\d.,]*/g;
       for (const m of text.matchAll(re)) {
-        const raw = m[0].replace(/^(?:[$£€]\s*|(?:USD|GBP|EUR)\s+)/, '');
+        const quote = m[0].trim();
+        const currency = m.groups?.currency;
+        const before = m.groups?.before ?? '';
+        const after = m.groups?.after ?? '';
+        const raw = selector === 'money' ? ((before || after).replace('−', '-') + m.groups!.amount.trim()) : quote;
+        // Consume the whole numeric token before validating it. Unsupported grouping and
+        // accounting/exponent notation must not turn a partial match into a positive price.
+        const prefix = text.slice(0, m.index).trimEnd();
+        const suffix = text.slice(m.index! + m[0].length);
+        if ((before && after) || (selector === 'money' && (prefix.endsWith('(') || (!/\s$/.test(m[0]) && /^[\p{L}\p{N}]/u.test(suffix))))) {
+          choices = [];
+          break;
+        }
         // Reject locale ambiguity (e.g. 12,50), malformed grouping, and multiple values.
         if (!/^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(raw)) { choices = []; break; }
         const decimal = raw.replaceAll(',', '');
@@ -74,8 +86,7 @@ export function extractRow(page: Page, block: Block, fields: Record<string, Sele
           choices = [];
           break;
         }
-        const currency = selector === 'money' ? /^(?:[$£€]|USD|GBP|EUR)/.exec(m[0])![0] : undefined;
-        choices.push({ value, quote: m[0], currency });
+        choices.push({ value, quote, currency });
       }
     }
     const unique = [...new Map(choices.map(c => [JSON.stringify([c.value, c.currency]), c])).values()];

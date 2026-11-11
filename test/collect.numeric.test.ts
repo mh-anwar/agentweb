@@ -32,3 +32,26 @@ test('money retains observed currency and refuses conflicting currencies', () =>
   assert.equal(row.values.amount, null);
   assert.equal(row.errors?.amount, 'ambiguous');
 });
+
+
+test('refund signs and qualified dollar symbols are preserved', () => {
+  for (const price of ['-$5.00', '$-5.00', '−$5.00', '- CA$5.00']) {
+    const row = extractRow(page, textBlock(price), { amount: 'money' });
+    assert.equal(row.values.amount, -5, price);
+    assert.equal(row.evidence.amount, price);
+  }
+  for (const currency of ['CA$', 'A$', 'NZ$', 'HK$', 'US$']) {
+    const row = extractRow(page, textBlock(currency + '12.00'), { amount: 'money' });
+    assert.equal(row.values.amount, 12);
+    assert.equal(row.currencies?.amount, currency);
+    assert.equal(row.evidence.amount, currency + '12.00');
+  }
+});
+
+test('unsupported numeric notation is rejected as a whole token', () => {
+  for (const price of ['€1 250,00', '€1\u202f250,00', '€1\u00a0250,00', '$1e3', '($5.00)', '-$-5']) {
+    const row = extractRow(page, textBlock(price), { amount: 'money' });
+    assert.equal(row.values.amount, null, price);
+    assert.ok(row.errors?.amount, price);
+  }
+});

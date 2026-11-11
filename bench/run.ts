@@ -26,9 +26,12 @@ const { values } = parseArgs({
     out: { type: 'string', default: join(import.meta.dirname, 'out', 'tasks') },
     port: { type: 'string', default: '4610' },
     repeats: { type: 'string', default: '1' },
+    seed: { type: 'string', default: '7' },
   },
 });
 
+const seed = Number(values.seed);
+if (!Number.isSafeInteger(seed)) throw new Error('--seed must be a safe integer');
 const repeats = Number(values.repeats);
 if (!Number.isInteger(repeats) || repeats < 1 || repeats > 20) throw new Error('--repeats must be an integer from 1 to 20');
 const outDir = values.out!;
@@ -77,7 +80,7 @@ const tools = values.tools!.split(',').map((s) => s.trim()) as ToolId[];
 if (!pick.length) throw new Error('no tasks matched');
 const manifestPath = join(outDir, 'manifest.json');
 const manifest = {
-  model: values.model, turns: Number(values.turns), repeats, tools, tasks: pick.map(t => t.id),
+  seed, model: values.model, turns: Number(values.turns), repeats, tools, tasks: pick.map(t => t.id),
   gitHead: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: import.meta.dirname, encoding: 'utf8' }).trim(),
   diffSha256: createHash('sha256').update(execFileSync('git', ['diff', 'HEAD'], { cwd: import.meta.dirname })).digest('hex'),
   node: process.version, versions: VERSIONS,
@@ -94,7 +97,7 @@ if (existsSync(manifestPath)) {
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
 }
 
-const farm = await startFarm({ port: Number(values.port) });
+const farm = await startFarm({ port: Number(values.port), seed });
 console.error(`farm at ${farm.url} (other ${farm.other}); ${pick.length} tasks × ${tools.length} tools × ${repeats} repeats`);
 const v = vars(farm.truth, farm);
 

@@ -87,7 +87,8 @@ number), or `number`. Missing or ambiguous values are `null` with per-field erro
 value includes the source quote; every row includes its page URL and block hash. Monetary numbers
 use US/UK punctuation; `currencies` retains the observed marker ($ is not assumed to mean USD).
 Numbers that exceed the safe range or fail an exact decimal round trip become invalid, rather
-than silently rounding. Currency markers participate in semantic comparisons.
+than silently rounding. Currency markers participate in semantic comparisons. Leading refund signs and qualified markers
+such as CA$ are preserved. Unsupported space-grouped or accounting notation is rejected as a whole.
 
 Always inspect `coverage.complete`: page limits, HTTP errors, cycles, missing records, truncation,
 validation failures and token limits are explicit. Completeness covers recognized records and
