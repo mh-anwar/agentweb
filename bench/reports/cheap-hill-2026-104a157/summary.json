@@ -1,0 +1,45 @@
+{
+  "note": "4 matched task/repeat cells per tool; 0 unmatched rows excluded. Development tasks, not held-out evidence. Raw failures, including infrastructure errors and permission denials, remain in the denominator.",
+  "input": "bench/reports/cheap-hill-2026-104a157/results.jsonl",
+  "summary": [
+    {
+      "tool": "agentweb",
+      "n": 4,
+      "passed": 4,
+      "rawPassed": 4,
+      "inputTokens": 405464,
+      "outputTokens": 5771,
+      "medianCalls": 7,
+      "medianWallMs": 12011,
+      "costUsd": 0.01678773,
+      "permissionDenials": 0,
+      "errors": 0
+    },
+    {
+      "tool": "agent-browser",
+      "n": 4,
+      "passed": 4,
+      "rawPassed": 4,
+      "inputTokens": 617300,
+      "outputTokens": 8809,
+      "medianCalls": 10.5,
+      "medianWallMs": 16870,
+      "costUsd": 0.02446536,
+      "permissionDenials": 2,
+      "errors": 0
+    },
+    {
+      "tool": "playwright-cli",
+      "n": 4,
+      "passed": 4,
+      "rawPassed": 4,
+      "inputTokens": 739303,
+      "outputTokens": 6342,
+      "medianCalls": 9.5,
+      "medianWallMs": 16366.5,
+      "costUsd": 0.03062246,
+      "permissionDenials": 1,
+      "errors": 0
+    }
+  ]
+}

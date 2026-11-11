@@ -15,6 +15,7 @@ import { AwError } from '../types.ts';
 import { estimateTokens } from '../tokens.ts';
 
 const CONTENT = new Set(['main', 'other', 'dialog']);
+const GENERIC_FIELDS = new Set(['price', 'prices', 'name', 'names', 'product', 'products', 'record', 'records', 'result', 'results', 'item', 'items']);
 const NEXT = /^(?:next(?: page)?|older(?: posts| entries)?|more|load more|›|»|→|next ›|next »|next →)$/i;
 
 const str = (a: unknown) => (a === undefined || a === null ? '' : String(a));
@@ -77,9 +78,10 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
   let q = [...new Set(terms(str(step.args[0])))];
   let dropped = '';
   if (q.length) {
-    // words that match no item on the first page are not a filter the agent meant: show everything
-    const first = recordBlocks(rc.page);
-    if (first.length && !first.some((b) => matches(b, q))) {
+    // Generic field requests like "price" mean show the data. Specific queries remain
+    // filters across all pages, even when the first page has no match.
+    const first = recordBlocks(rc.page, 1);
+    if (first.length && q.every(word => GENERIC_FIELDS.has(word)) && !first.some((b) => matches(b, q))) {
       dropped = `no record mentions '${str(step.args[0])}', so all are shown. `;
       q = [];
     }
@@ -94,7 +96,7 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
   for (;;) {
     const page = rc.page;
     visited++;
-    const recs = recordBlocks(page);
+    const recs = recordBlocks(page, 1).filter(b => !b.hd);
     for (const b of recs) {
       if (seen.has(b.hx) || !matches(b, q)) continue;
       seen.add(b.hx);
@@ -116,7 +118,7 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
     }
     // no pager: an infinite feed loads more as it scrolls
     if (!page.stats.scripts && !rc.isLive()) break;
-    const before = new Set(recordBlocks(rc.page).map((b) => b.hx));
+    const before = new Set(recordBlocks(rc.page, 1).map((b) => b.hx));
     try {
       await rc.verb('scroll', ['bottom']);
     } catch {
@@ -124,11 +126,11 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
     }
     // Engine escalation can regroup the first batch, and virtualized feeds replace rows
     // without growing the DOM. Progress is new content, rather than a larger row count.
-    if (!recordBlocks(rc.page).some((b) => !before.has(b.hx))) break;
+    if (!recordBlocks(rc.page, 1).some((b) => !before.has(b.hx))) break;
   }
   const head = `${dropped}${total} record${total === 1 ? '' : 's'}${q.length ? ` matching '${str(step.args[0])}'` : ''}${visited > 1 ? ` over ${visited} pages` : ''}`;
   if (!total) {
-    rc.emit(`${head}. No repeated items found here; try find('words') or view().`);
+    rc.emit(`${head}. ${seen.size || q.length ? `No records matched across ${visited} page${visited === 1 ? '' : 's'}; search('exact item name') uses this site's search when available.` : `No repeated items found here; try find('words') or view().`}`);
     return;
   }
   rc.emit([head + ':', ...lines, ...(more ? [`… +${more} more (raise budget, or narrow with words)`] : [])].join('\n'));

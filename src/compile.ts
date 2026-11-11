@@ -30,6 +30,8 @@ const BLOCK = new Set(
     'table tbody td tfoot th thead tr ul optgroup').split(' '),
 );
 const SKIP = new Set(['head', 'script', 'style', 'template', 'datalist', 'option', 'optgroup', 'colgroup', 'col', 'wbr', 'map', 'area', 'picture', 'source']);
+const CARD_HEADINGS = new Set(['h2', 'h3', 'h4', 'h5', 'h6']);
+const CARD_LINKS = new Set(['a']);
 const FOLD_TAGS = new Set(['div', 'article', 'section', 'a', 'li', 'dd']);
 const CONTROL = new Set(['input', 'select', 'textarea', 'button']);
 const CLICK_ROLES = new Set(['button', 'link', 'tab', 'menuitem', 'menuitemcheckbox', 'menuitemradio', 'option', 'switch', 'checkbox', 'radio', 'treeitem', 'textbox', 'combobox', 'searchbox']);
@@ -771,7 +773,13 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
   /** Three or more sibling elements with the same shape and little text each are records: one line each. */
   const foldPlan = (n: LNode): Set<LNode> | null => {
     const kids = n.c;
-    if (!kids || kids.length < 3) return null;
+    if (!kids) return null;
+    // Semantic article cards stay records even when a search or final page has only one.
+    // Keep long-form articles as prose; only compact, linked, heading-bearing items qualify.
+    const cards = kids.filter(c => c.t === 'article' && !c.h && wc(c) > 0 && wc(c) <= 90
+      && hasTag(c, CARD_HEADINGS) && hasTag(c, CARD_LINKS) && !hasTag(c, NESTED));
+    if (cards.length) return new Set(cards);
+    if (kids.length < 3) return null;
     const counts = new Map<string, number>();
     let els = 0;
     for (const c of kids) {

@@ -113,3 +113,12 @@ test('shipped MCP collects typed product data with evidence and coverage', async
   assert.equal(result.coverage.complete, false, 'one catalogue page is not the whole collection');
   assert.equal(result.coverage.stop, 'page_limit');
 });
+
+test('a single search result remains an actionable record through the shipped MCP', async () => {
+  const product = farm.truth.shop.products[0];
+  const r = await call(`open('${farm.url}/shop/'); search(${JSON.stringify(product.name)}); records(${JSON.stringify(product.name)})`);
+  assert.equal(r.isError, false, r.text);
+  assert.match(r.text, /1 record matching/);
+  assert.ok(r.text.includes(product.name), r.text);
+  assert.match(r.text, /Add to cart/);
+});

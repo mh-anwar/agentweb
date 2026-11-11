@@ -127,14 +127,31 @@ test('each says when a page needs JavaScript instead of showing an empty page', 
   assert.match(r.text, /needs JavaScript; click\(\d+\)/);
 });
 
-test('each without matches, and records without repeated items, say so', async () => {
+test('each reports missing links; records recognizes short data tables', async () => {
   const r = await rt.run(fresh(), `open('${url}/'); each('sofa')`);
   assert.match(r.text, /no links on this page match 'sofa'/);
   const r2 = await rt.run(fresh(), `open('${url}/p/3'); records()`);
-  assert.match(r2.text, /No repeated items found here/);
+  assert.match(r2.text, /2 records/);
+  assert.match(r2.text, /Weight/);
 });
 
-test('records with words that match nothing shows every item instead of nothing', async () => {
+test('records treats a generic field request as a request for all items', async () => {
   const r = await rt.run(fresh(), `open('${url}/list'); records('price', pages=2)`);
   assert.match(r.text, /no record mentions 'price', so all are shown\. 20 records over 2 pages:/);
+});
+
+
+test('specific record filters survive first-page misses and match only later pages', async () => {
+  const r = await rt.run(fresh(), `open('${url}/list'); records('stool', pages=3)`);
+  assert.ok(r.ok, r.text);
+  assert.match(r.text, /5 records matching 'stool' over 3 pages/);
+  assert.doesNotMatch(r.text, /Desk|Chair|Lamp|Shelf/);
+});
+
+test('unmatched specific queries do not turn into unrelated records', async () => {
+  const r = await rt.run(fresh(), `open('${url}/list'); records('unobtainium', pages=3)`);
+  assert.ok(r.ok, r.text);
+  assert.match(r.text, /0 records matching 'unobtainium'/);
+  assert.match(r.text, /search\('exact item name'\)/);
+  assert.doesNotMatch(r.text, /Oak Desk|Pine Chair/);
 });

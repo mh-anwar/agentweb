@@ -162,7 +162,8 @@ try {
 const rows = [...done.values()].filter((r) => tools.includes(r.tool as ToolId) && pick.some((t) => t.id === r.task));
 const med = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
-  return s.length ? s[Math.floor(s.length / 2)] : 0;
+  const mid = Math.floor(s.length / 2);
+  return s.length ? (s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2) : 0;
 };
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 const lines = [

@@ -1,0 +1,208 @@
+{
+  "shop-out-of-stock--agentweb--r1.jsonl": [
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); find('Backpack')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Backpacks'); records('product stock', pages=5)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Backpacks'); find('more'); find('Next'); find('results')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Backpacks'); click('2'); records('Backpack', pages=3)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Backpacks'); click('Next \u00bb'); find('Out of stock'); find('Add to cart (disabled)')"
+      }
+    }
+  ],
+  "shop-cart-edit--agentweb--r2.jsonl": [
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); records('Brightwell Juno 42 Camera Ostrava Ionic 506 Keyboard add to cart')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); records('Brightwell Ostrava Ionic', pages=5)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); find('Brightwell'); find('Ionic'); find('Juno')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Shop all products'); records('Brightwell Juno Ostrava Ionic', pages=6)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Cameras'); records('Brightwell Juno 42', pages=6)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Cameras'); click('Add to cart', near='Brightwell Juno 42 Camera'); wait('cart'); open('http://127.0.0.1:43073/shop/'); click('Shop all products'); click('Add to cart', near='Ostrava Ionic 506 Keyboard'); view()"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/cart'); view()"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); find('Cart')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Cart (1)'); read()"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); search('Ostrava Ionic 506'); records('Ostrava Ionic 506')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Keywords'); click('Keyboards'); records('Ostrava Ionic 506', pages=8)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Keyboards'); records('Ostrava Ionic 506', pages=8)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Keyboards'); click('Add to cart', near='Ostrava Ionic 506 Keyboard'); find('Cart')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); click('Cart (2)'); click('Remove', near='Brightwell Juno 42 Camera'); read()"
+      }
+    }
+  ],
+  "shop-out-of-stock--agentweb--r2.jsonl": [
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); find('Backpack'); links('Backpack')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/category/backpacks'); records('backpack stock', pages=5)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/category/backpacks'); find('Out of stock'); find('results'); find('Next'); find('Load more')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/category/backpacks?page=2'); records('Out of stock', pages=3)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/category/backpacks?page=2'); find('Backpack'); find('Next')"
+      }
+    }
+  ],
+  "shop-cart-edit--agentweb--r1.jsonl": [
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); view()"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); find('Juno 42'); find('Ionic 506'); click('All products'); records('Juno 42 Ionic 506', pages=5)"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "open('http://127.0.0.1:43073/shop/'); search('Brightwell Juno 42'); find('Juno 42'); search('Ostrava Ionic 506'); find('Ionic 506')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "search('Ostrava Ionic 506'); click('Ostrava Ionic 506 Keyboard'); view()"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "click('Add to cart'); find('Cart'); search('Brightwell Juno 42'); click('Brightwell Juno 42 Camera'); click('Add to cart'); find('Cart')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "click(134); find('Cart')"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "search('Brightwell Juno 42'); click('Brightwell Juno 42 Camera'); view()"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "click(138); find('Cart'); open('http://127.0.0.1:43073/shop/cart'); view()"
+      }
+    },
+    {
+      "name": "mcp__agentweb__web",
+      "input": {
+        "run": "click(149); view()"
+      }
+    }
+  ]
+}

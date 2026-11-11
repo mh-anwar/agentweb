@@ -8,7 +8,7 @@ const TEMPLATE = `Browse and act on the web. \`run\` is a short program: steps s
 Steps
 open(url) · search('query') (this site's search box if it has one; site='web' for the web) · back()
 find('words') - the lines of this page that match; use it instead of reading long pages
-records('words', pages=3) - the page's list items (products, results, rows), one per line, following Next
+records('words', pages=3) - matching list items/rows, following Next; words must all occur in ONE item. Use search('exact name') to locate a named item across a site
 collect(name='link', price='money', pages=3) - JSON rows with evidence and coverage; field rules: text, link, url, money, number. Check coverage.complete. Add diff='catalog', key='href' to compare complete collections across calls
 each('link words', find='words', n=8) - open matching links at once; shows the matching lines of each
 read() - full text from where the view stopped; read('Section name'); read(url)
