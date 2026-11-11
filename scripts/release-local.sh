@@ -41,7 +41,7 @@ release() {
   # dependencies: hard links to the main checkout's when the lockfile matches (no disk, no network), else npm ci
   lock_hash=$(sha256sum "$work/package-lock.json" | cut -c1-16)
   if [ -d "$REPO/node_modules" ] && [ "$(sha256sum "$REPO/package-lock.json" | cut -c1-16)" = "$lock_hash" ]; then
-    cp -al "$REPO/node_modules" "$work/node_modules"
+    cp -al "$REPO/node_modules" "$work/node_modules" 2>/dev/null || { rm -rf "$work/node_modules"; cp -a "$REPO/node_modules" "$work/node_modules"; }
   else
     (cd "$work" && npm ci --no-audit --no-fund >>"$LOG" 2>&1) || { log "npm ci failed: $sha"; fail "$sha" "$work"; return 1; }
   fi
