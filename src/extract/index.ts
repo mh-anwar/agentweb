@@ -52,9 +52,12 @@ export function nextLink(page: Page): Act | undefined {
   let best: Act | undefined;
   const first = page.blocks.indexOf(recordBlocks(page)[0]);
   for (const [index, b] of page.blocks.entries()) {
-    // A site's global menu may have a page called "Load more" or "Next". Only
-    // treat links at or after the records as continuation of this collection.
-    if (index < first) continue;
+    // Before the list, accept a pager-only block but not a mixed site menu that
+    // happens to include a page called "Load more" or "Next".
+    if (index < first) {
+      const links = b.i.filter((x): x is Act => typeof x !== 'string' && x.k === 'link');
+      if (!links.length || links.some(x => !NEXT.test(x.l.trim()) && !/^(?:next\b.*|previous(?: page)?|prev|first|last|\d+|«|‹|←)$/i.test(x.l.trim()))) continue;
+    }
     if (b.r === 'footer') continue;
     for (const x of b.i) {
       if (typeof x === 'string' || x.k !== 'link' || !x.href) continue;

@@ -21,7 +21,7 @@ See [the historical report](../bench/reports/recovered-2026-11-08/README.md).
   cache entry, including a private 304 response.
 - Multi-page record extraction recognizes new content when engines regroup rows or virtualized
   feeds replace rows without increasing DOM size. Global menu links before the collection no
-  longer masquerade as its pagination.
+  longer masquerade as its pagination; legitimate pagers above the list remain supported.
 - Benchmarks support repeated trials, rotating tool order, immutable source/version manifests,
   permission-denial counts, and matched-cell summaries. The native CLI is checked directly;
   a missing execute permission cannot silently select a different binary on PATH.
@@ -32,7 +32,7 @@ See [the historical report](../bench/reports/recovered-2026-11-08/README.md).
   incorrect ordering, a neighboring entry or an incorrect verification suffix. Both corrections
   are applied equally to every tool; raw verdicts remain available.
 
-Final combined verification: `npm test` ran 891 tests, with 877 passed, 14 skipped and zero
+Final combined verification: `npm test` ran 892 tests, with 878 passed, 14 skipped and zero
 failed. Public-provider checks are opt-in; the normal suite uses two workers. The typecheck,
 build, and packaged JavaScript/PDF smoke checks also passed. Two existing timing flakes were
 fixed by testing VM interruption behavior and waiting for Chromium child exits with a deadline.

@@ -35,14 +35,15 @@ before(async () => {
       res.writeHead(status, { 'content-type': 'text/html; charset=utf-8' });
       res.end(html);
     };
-    if (u.pathname === '/list') {
+    if (u.pathname === '/list' || u.pathname === '/top-list') {
       const n = Number(u.searchParams.get('page') ?? 1);
       const items = P.slice((n - 1) * 10, n * 10);
       const cards = items
         .map((p) => `<div class="card"><h3><a href="/p/${p.id}">${p.name}</a></h3><span>$${p.price}.00</span> <button>Add to cart</button></div>`)
         .join('');
-      const pager = `<nav class="pager">${n > 1 ? `<a href="/list?page=${n - 1}">Previous</a>` : ''} Page ${n} of 3 ${n < 3 ? `<a href="/list?page=${n + 1}">Next</a>` : ''}</nav>`;
-      return send(page(`Catalogue page ${n}`, `<h1>Catalogue</h1><p>Solid wood furniture, made to order.</p><div class="grid">${cards}</div>${pager}`));
+      const pager = `<nav class="pager">${n > 1 ? `<a href="${u.pathname}?page=${n - 1}">Previous</a>` : ''} Page ${n} of 3 ${n < 3 ? `<a href="${u.pathname}?page=${n + 1}">Next</a>` : ''}</nav>`;
+      const top = u.pathname === '/top-list';
+      return send(page(`Catalogue page ${n}`, `<h1>Catalogue</h1><p>Solid wood furniture, made to order.</p>${top ? pager : ''}<div class="grid">${cards}</div>${top ? '' : pager}`));
     }
     if (u.pathname.startsWith('/p/')) {
       const p = P.find((x) => x.id === Number(u.pathname.slice(3)));
@@ -96,6 +97,13 @@ test('records follows Next across pages and filters by words', async () => {
   assert.match(r.text, /5 records matching 'chair' over 3 pages:/);
   for (const w of ['Oak', 'Pine', 'Birch', 'Maple', 'Cedar']) assert.match(r.text, new RegExp(`${w} Chair`));
   assert.doesNotMatch(r.text, /Desk/);
+  assert.equal(r.stats.fetches, 3);
+});
+
+test('records follows pagination that appears only above the collection', async () => {
+  const r = await rt.run(fresh(), `open('${url}/top-list'); records(pages=3)`);
+  assert.ok(r.ok, r.text);
+  assert.match(r.text, /25 records over 3 pages/);
   assert.equal(r.stats.fetches, 3);
 });
 
