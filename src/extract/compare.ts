@@ -22,8 +22,8 @@ export function compareCollection(rows: CollectedRow[], fields: Record<string, S
   }
   const names = Object.keys(fields).sort();
   const snapshot: CollectionSnapshot = {
-    scope: JSON.stringify([scope, key, names.map(name => [name, fields[name]])]),
-    rows: rows.map((row, i) => [String(ids[i]), names.map(name => [name, createHash('sha256').update(JSON.stringify(row.values[name])).digest('hex')])]),
+    scope: JSON.stringify(['currency-v2', scope, key, names.map(name => [name, fields[name]])]),
+    rows: rows.map((row, i) => [String(ids[i]), names.map(name => [name, createHash('sha256').update(JSON.stringify(fields[name] === 'money' ? [row.values[name], row.currencies?.[name] ?? /^(?:[$£€]|USD|GBP|EUR)/.exec(row.evidence[name] ?? '')?.[0] ?? null] : row.values[name])).digest('hex')])]),
   };
   if (rows.length > 256 || JSON.stringify(snapshot).length > 64000) {
     return { changes: { status: 'withheld', reason: 'snapshot limit (256 rows / 64KB)' } };

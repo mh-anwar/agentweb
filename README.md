@@ -85,7 +85,9 @@ open('shop.example/catalog'); collect(name='link', price='money', href='url', pa
 using `text` (whole row), `link` (link label), `url` (link destination), `money` (currency-prefixed
 number), or `number`. Missing or ambiguous values are `null` with per-field errors. Every extracted
 value includes the source quote; every row includes its page URL and block hash. Monetary numbers
-use US/UK punctuation; retain the evidence to distinguish currencies.
+use US/UK punctuation; `currencies` retains the observed marker ($ is not assumed to mean USD).
+Numbers that exceed the safe range or fail an exact decimal round trip become invalid, rather
+than silently rounding. Currency markers participate in semantic comparisons.
 
 Always inspect `coverage.complete`: page limits, HTTP errors, cycles, missing records, truncation,
 validation failures and token limits are explicit. Completeness covers recognized records and

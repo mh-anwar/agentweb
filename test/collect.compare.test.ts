@@ -31,3 +31,15 @@ test('ambiguous keys and oversized snapshots cannot become baselines', () => {
     assert.equal(r.snapshot, undefined);
   }
 });
+
+
+test('currency-only changes are semantic changes even when amounts are equal', () => {
+  const before = row('a', 10);
+  before.currencies = { price: '$' };
+  const after = row('a', 10);
+  after.currencies = { price: '€' };
+  after.evidence.price = '€10';
+  const previous = compareCollection([before], fields, 'id', 'scope').snapshot;
+  const r = compareCollection([after], fields, 'id', 'scope', previous);
+  assert.deepEqual(r.changes.updated, [{ key: 'a', fields: ['price'] }]);
+});

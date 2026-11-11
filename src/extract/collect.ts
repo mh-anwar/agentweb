@@ -12,6 +12,8 @@ export type Selector = 'text' | 'link' | 'url' | 'money' | 'number';
 export interface CollectedRow {
   values: Record<string, string | number | null>;
   evidence: Record<string, string>;
+  /** Observed currency marker; $ stays $ because the symbol alone is not an ISO currency. */
+  currencies?: Record<string, string>;
   source: { url: string; block: string };
   errors?: Record<string, string>;
 }
@@ -36,13 +38,24 @@ interface CollectionResult {
 }
 const SELECTORS = new Set(['text', 'link', 'url', 'money', 'number']);
 
+// Compare decimal digits, not a rounded floating-point approximation. Exponents are needed
+// only for Number.toString(), since input selectors accept ordinary decimal notation.
+function decimalIdentity(value: string): string {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(value)!;
+  let digits = (match[2] + (match[3] ?? '')).replace(/^0+/, '');
+  if (!digits) return '0';
+  const tail = /0*$/.exec(digits)![0].length;
+  digits = digits.slice(0, digits.length - tail);
+  return `${match[1]}${digits}:${Number(match[4] ?? 0) - (match[3]?.length ?? 0) + tail}`;
+}
+
 /** Ambiguous fields are errors, not guesses. Currency numbers use explicit US/UK punctuation. */
 export function extractRow(page: Page, block: Block, fields: Record<string, Selector>): CollectedRow {
   const row: CollectedRow = { values: {}, evidence: {}, source: { url: page.url, block: block.hx } };
   const text = blockText(block);
   const links = block.i.filter((x): x is Act => typeof x !== 'string' && x.k === 'link' && !!x.href);
   for (const [name, selector] of Object.entries(fields)) {
-    let choices: { value: string | number; quote: string }[] = [];
+    let choices: { value: string | number; quote: string; currency?: string }[] = [];
     if (selector === 'text' && text) choices = [{ value: text, quote: text }];
     if (selector === 'link' || selector === 'url') {
       choices = links.map(a => ({ value: selector === 'url' ? a.href! : a.l, quote: a.l }));
@@ -55,14 +68,21 @@ export function extractRow(page: Page, block: Block, fields: Record<string, Sele
         const raw = m[0].replace(/^(?:[$£€]\s*|(?:USD|GBP|EUR)\s+)/, '');
         // Reject locale ambiguity (e.g. 12,50), malformed grouping, and multiple values.
         if (!/^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(raw)) { choices = []; break; }
-        const value = Number(raw.replaceAll(',', ''));
-        if (Number.isFinite(value)) choices.push({ value, quote: m[0] });
+        const decimal = raw.replaceAll(',', '');
+        const value = Number(decimal);
+        if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER || decimalIdentity(decimal) !== decimalIdentity(String(value))) {
+          choices = [];
+          break;
+        }
+        const currency = selector === 'money' ? /^(?:[$£€]|USD|GBP|EUR)/.exec(m[0])![0] : undefined;
+        choices.push({ value, quote: m[0], currency });
       }
     }
-    const unique = [...new Map(choices.map(c => [JSON.stringify(c.value), c])).values()];
+    const unique = [...new Map(choices.map(c => [JSON.stringify([c.value, c.currency]), c])).values()];
     if (unique.length === 1) {
       row.values[name] = unique[0].value;
       row.evidence[name] = unique[0].quote;
+      if (unique[0].currency) (row.currencies ??= {})[name] = unique[0].currency;
     } else {
       row.values[name] = null;
       (row.errors ??= {})[name] = unique.length ? 'ambiguous' : 'missing or unsupported format';
