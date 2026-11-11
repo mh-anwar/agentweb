@@ -94,3 +94,22 @@ test('a secret is refused on another origin', async () => {
   assert.equal(r.isError, true);
   assert.ok(!r.text.includes(farm.truth.bank.password));
 });
+
+
+test('shipped MCP collects typed product data with evidence and coverage', async () => {
+  const m = await rpc('tools/call', { name: 'web', arguments: {
+    run: `open('${farm.url}/shop/products'); collect(name='link', price='money', href='url')`,
+    session: 'collection-e2e', budget: 12000,
+  } });
+  assert.ok(m.result && !m.result.isError, JSON.stringify(m));
+  const text = m.result.content.map((c: any) => c.text ?? '').join('\n');
+  const result = JSON.parse(text.slice(text.indexOf('{"schema"')));
+  const first = farm.truth.shop.products[0];
+  const found = result.rows.find((row: any) => row.values.name === first.name);
+  assert.ok(found, text);
+  assert.equal(found.values.price, first.priceCents / 100);
+  assert.equal(found.source.url, farm.url + '/shop/products');
+  assert.ok(found.evidence.price.includes('$'));
+  assert.equal(result.coverage.complete, false, 'one catalogue page is not the whole collection');
+  assert.equal(result.coverage.stop, 'page_limit');
+});

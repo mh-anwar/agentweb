@@ -636,8 +636,12 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
       let w = 0;
       let acts = 0;
       for (const x of b.i) {
-        if (typeof x === 'string') w += words(x);
-        else {
+        if (typeof x === 'string') {
+          // Numeric data beside a link (prices, counts, measurements) is a record,
+          // even when the whole row is short. Keep its boundary for extraction.
+          if (/\d/.test(x)) return;
+          w += words(x);
+        } else {
           acts++;
           w += words(x.l);
         }

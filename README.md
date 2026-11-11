@@ -13,7 +13,7 @@ It answers with a compact text view of the page, bounded by a token budget (2,00
 which every link and field carries a number for the next step.
 
 - **Cheap:** the median page view is 1.3k tokens. On the same 10 live pages Playwright MCP returns
-  10.6k, Chrome DevTools MCP 8.2k and agent-browser 6.3k. The tool definition is about 490 tokens,
+  10.6k, Chrome DevTools MCP 8.2k and agent-browser 6.3k. The current tool definition is about 730 estimated tokens,
   against 3.9k for Playwright MCP (25 tools) and 6.2k for Chrome DevTools MCP (32 tools).
 - **Few turns:** a login-and-look-up task took 1 call and 10.4k input tokens in total, against 4
   calls and 47k for Playwright MCP, with the same model and harness. See [bench/RESULTS.md](bench/RESULTS.md).
@@ -64,6 +64,7 @@ prints the tool definition, and `agentweb serve` takes calls over HTTP (below).
 | `open(url)` · `back()` · `search('query')` · `search('query', site='shop.example')` | go somewhere; `site=` uses that site's own search |
 | `find('words')` | only the lines of this page that match |
 | `records('words', pages=3)` | the page's list items (products, results, rows), one per line, following "Next" |
+| `collect(name='link', price='money', pages=3)` | JSON rows, source evidence, validation errors, deduplication and explicit coverage |
 | `each('link words', find='words', n=8)` | open matching links at once; show the matching lines of each |
 | `read()` · `read('Section')` · `read(url)` | full text, continuing where the view stopped |
 | `click(t)` · `fill(t, 'text')` · `select(t, 'opt')` · `check(t)` · `submit()` · `press('Enter')` | act; a target `t` is a number from the page or its visible text |
@@ -73,6 +74,31 @@ prints the tool definition, and `agentweb serve` takes calls over HTTP (below).
 In the view, `[label]12` is clickable, `{label="value"}13` is fillable, `{label: *A|B}14` is a select and
 `{[x] label}15` is a checkbox. Numbers stay valid for the whole session. Calling again on the same page shows only
 what changed.
+
+## Verified collections and semantic changes
+
+```
+open('shop.example/catalog'); collect(name='link', price='money', href='url', pages=5)
+```
+
+`collect` extracts repeated lists, table rows and cards without a model call. Name 1–12 fields
+using `text` (whole row), `link` (link label), `url` (link destination), `money` (currency-prefixed
+number), or `number`. Missing or ambiguous values are `null` with per-field errors. Every extracted
+value includes the source quote; every row includes its page URL and block hash. Monetary numbers
+use US/UK punctuation; retain the evidence to distinguish currencies.
+
+Always inspect `coverage.complete`: page limits, HTTP errors, cycles, missing records, truncation,
+validation failures and token limits are explicit. Completeness covers recognized records and
+observable Next links, not hidden server data. Dynamic lists are reported as unverified. A short
+unrecognized card grid is incomplete rather than guessed. `pages` is an integer from 1 to 10.
+Output rows are never cut mid-JSON; raise `budget` when the coverage receipt itself cannot fit.
+
+Add `diff='catalog', key='href'` (with `href='url'` in the schema) to save a private session baseline.
+Later calls report added keys, removed keys, and exactly which fields changed, ignoring row order
+and markup changes. Incomplete results never advance the baseline or report removals. Schema or
+starting-URL changes reset it. Duplicate keys withhold comparisons. Each session retains at most
+four baselines, each bounded to 256 records / 64KB, with the session's normal expiry. There are no
+background watchers or extra browser processes.
 
 ## Running it for many agents
 

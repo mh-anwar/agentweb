@@ -5,6 +5,7 @@
 //   each('link words', find='q', n=8)     open up to n matching links at once (plain HTTP, shared cache)
 //                                         and show the lines of each that match q
 
+import { collect } from './collect.ts';
 import { blockText } from '../blocks.ts';
 import { rank, renderLine, terms } from '../render.ts';
 import { flagInjections, normalizeUrl, type RunCtx, type RuntimeImpl } from '../runtime.ts';
@@ -21,13 +22,14 @@ const num = (a: unknown, d: number) => (typeof a === 'number' && Number.isFinite
 
 export function register(rt: RuntimeImpl): void {
   rt.register('records', records);
+  rt.register('collect', collect);
   rt.register('each', each);
 }
 
 // ───────────────────────────── records ─────────────────────────────
 
-/** Blocks of the main repeated structure: the biggest content group(s) of 3+ members. */
-export function recordBlocks(page: Page): Block[] {
+/** Main repeated structures. min=1 retains every recognized group, including short final pages. */
+export function recordBlocks(page: Page, min = 3): Block[] {
   const groups = new Map<number, Block[]>();
   for (const b of page.blocks) {
     if (b.g === undefined || !CONTENT.has(b.r) || b.k === 'pre') continue;
@@ -35,10 +37,10 @@ export function recordBlocks(page: Page): Block[] {
     if (!g) groups.set(b.g, (g = []));
     g.push(b);
   }
-  const big = [...groups.values()].filter((g) => g.length >= 3).sort((a, b) => b.length - a.length);
+  const big = [...groups.values()].filter((g) => g.length >= min).sort((a, b) => b.length - a.length);
   if (!big.length) return [];
   // keep every group at least half the size of the largest (e.g. two product grids), in page order
-  const keep = new Set(big.filter((g) => g.length * 2 >= big[0].length).flat());
+  const keep = new Set(big.filter((g) => min === 1 || g.length * 2 >= big[0].length).flat());
   return page.blocks.filter((b) => keep.has(b));
 }
 

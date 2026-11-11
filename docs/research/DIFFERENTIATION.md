@@ -60,3 +60,31 @@ Keep a change only when it improves cost or latency without a repeatable correct
 Compare matched task/repeat cells, preserve failures, and show uncertainty. A target for a future
 release is equal-or-better completion with substantially lower tokens and compute on fresh tasks.
 No current evidence supports “dominates all existing solutions” or “millions of agents.”
+
+## Implemented increment: verified collection and semantic baselines
+
+Checked the current agent-browser command documentation and Rust implementation in
+[`cli/src/read.rs`](https://github.com/vercel-labs/agent-browser/blob/main/cli/src/read.rs).
+Its URL reader already tries direct markdown, a `.md` alternative, and ancestor `llms.txt`
+links, and can filter and outline output. This is capable browser-free reading; adding another
+fast URL reader would not establish an advantage. Read source for design comparison; no code
+was copied into this increment.
+
+Also checked [Firecrawl Extract](https://docs.firecrawl.dev/features/extract), which already
+accepts schemas/prompts and multiple URLs or domains, and the current
+[Playwright MCP guidance](https://github.com/microsoft/playwright-mcp#playwright-mcp-vs-playwright-cli)
+on using CLI skills for token efficiency. Schema extraction by itself is established functionality.
+These sources do not establish that competitors lack coverage or provenance capabilities.
+
+This increment adds `collect`: deterministic field rules, source evidence, explicit validation
+failures, cross-page deduplication and an output-budget-aware coverage receipt. It also adds
+session-private semantic baselines: key additions/removals and changed field names, independent
+of markup and row order. Incomplete collections never advance a baseline or infer removals.
+Baseline state is bounded to four snapshots of 256 rows / 64KB each; there are no resident watchers.
+
+Limits are deliberate and visible: recognized repeated structures, observable Next links, at
+most ten pages; dynamic feeds remain unverified; numeric punctuation is US/UK. No claim of
+competitive superiority follows from the local tests. Next evaluation should measure field
+accuracy, false completeness, missed changes, and end-to-end task cost on independently authored
+sites against the competitors' optimized paths. Replace this extraction strategy if it cannot
+reach useful accuracy without accumulating site-specific rules.

@@ -36,6 +36,8 @@ export interface SessionRecord {
   lastField?: string;
   /** values filled on the current wire-tier page: fingerprint -> value, replayed if the page moves to a script engine */
   dirty?: Record<string, string>;
+  /** At most four bounded semantic collection baselines, private to this session. */
+  collections?: [string, import('./extract/compare.ts').CollectionSnapshot][];
 }
 
 export const SESSION_NS = 'session';
