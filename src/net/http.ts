@@ -297,12 +297,15 @@ export function createWireEngine(opts: WireOptions = {}): WireEngine {
         if (cookie) headers.cookie = extra.cookie ? `${cookie}; ${extra.cookie}` : cookie;
 
         let hop: RawHop;
-        const cacheable = cache && method === 'GET' && req.read && !headers.cookie && !headers.authorization && body === undefined;
+        const cacheable = cache && method === 'GET' && !headers.cookie && !headers.authorization && body === undefined;
         if (cacheable) {
           const variant = hash(`${headers.accept}\n${headers['accept-language']}\n${Object.entries(extra).filter(([k]) => k !== 'referer' && k !== 'user-agent').sort().join('\n')}`);
-          const r = await cache.fetch(cache.key(url.href, variant), (cond) => originRequest(ctx, url, method, { ...headers, ...cond }, undefined, signal), signal);
+          // Navigation always checks the origin: GET links may perform actions, or reflect a
+          // previous mutation. Reuse a body only when the origin confirms its validator.
+          const r = await cache.fetch(cache.key(url.href, variant), (cond) => originRequest(ctx, url, method, { ...headers, ...cond }, undefined, signal), signal, !req.read);
           hop = r.hop;
           cached = r.via !== 'miss';
+          if (r.via === 'revalidated') events.push('304 Not Modified; reused the cached body after revalidation');
         } else {
           hop = await originRequest(ctx, url, method, headers, body, signal);
           cached = false;

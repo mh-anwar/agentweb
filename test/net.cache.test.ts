@@ -95,7 +95,7 @@ describe('never cached', () => {
     assert.equal(fx.last.get('/c/fresh')!.headers.cookie, 'sid=1');
   });
 
-  test('non-read GETs and POSTs do not use the cache', async () => {
+  test('navigations reach the origin even with a fresh cached response; POSTs bypass it', async () => {
     await read('/c/fresh');
     await eng.open(makeCtx(), { url: fx.base + '/c/fresh' });
     await eng.open(makeCtx(), { url: fx.base + '/c/fresh', method: 'POST', body: 'x', read: true });
@@ -110,6 +110,22 @@ describe('never cached', () => {
 });
 
 describe('revalidation', () => {
+  test('ordinary navigation revalidates and reports the 304 while retaining the document', async () => {
+    const ctx = makeCtx();
+    const a = await eng.open(ctx, { url: fx.base + '/c/etag' });
+    const b = await eng.open(ctx, { url: fx.base + '/c/etag' });
+    assert.equal(fx.hit('/c/etag'), 2);
+    assert.ok(fx.last.get('/c/etag')!.headers['if-none-match']);
+    assert.equal(b.doc!.meta.title, a.doc!.meta.title);
+    assert.equal(b.status, 200);
+    assert.match(b.events!.join(' '), /304 Not Modified/);
+  });
+
+  test('overlapping navigations each reach the origin instead of being coalesced', async () => {
+    await Promise.all(Array.from({ length: 4 }, () => eng.open(makeCtx(), { url: fx.base + '/c/slow?delay=30' })));
+    assert.equal(fx.hit('/c/slow'), 4);
+  });
+
   test('ETag: stale entry is revalidated with If-None-Match and a 304 serves the stored body', async () => {
     const a = await read('/c/etag');
     const b = await read('/c/etag');
@@ -193,6 +209,19 @@ describe('single-flight', () => {
 });
 
 describe('robustness', () => {
+  test('a response becoming private invalidates the old public body, including on 304', async () => {
+    for (const status of [200, 304]) {
+      const cache = createPageCache(memStore());
+      const base = { url: 'http://example.test/', status: 200, headers: { etag: '"v1"', 'cache-control': 'max-age=60' }, setCookie: [], body: new TextEncoder().encode('public') };
+      await cache.fetch('key', async () => base);
+      await cache.fetch('key', async () => ({ ...base, status, headers: { ...base.headers, 'cache-control': 'private' } }), undefined, true);
+      let fetched = false;
+      const r = await cache.fetch('key', async () => { fetched = true; return { ...base, body: new TextEncoder().encode('new public') }; });
+      assert.ok(fetched, 'old public entry must no longer be reusable');
+      assert.equal(new TextDecoder().decode(r.hop.body), 'new public');
+    }
+  });
+
   test('a failing store never fails the load', async () => {
     const broken: Store = {
       async get() { throw new Error('down'); },

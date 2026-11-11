@@ -60,7 +60,8 @@ export interface PageCache {
    * Serve one cacheable GET. `origin` performs the real request; it receives conditional headers
    * when a stale entry is being revalidated.
    */
-  fetch(key: string, origin: (cond: Record<string, string>) => Promise<RawHop>, signal?: AbortSignal): Promise<{ hop: RawHop; via: Via }>;
+  // revalidate forces an origin request, without coalescing navigation side effects.
+  fetch(key: string, origin: (cond: Record<string, string>) => Promise<RawHop>, signal?: AbortSignal, revalidate?: boolean): Promise<{ hop: RawHop; via: Via }>;
   stats(): CacheStats;
 }
 
@@ -151,9 +152,13 @@ export function createPageCache(store: Store, opts: CacheOptions = {}): PageCach
   };
 
   async function put(key: string, hop: RawHop, t: number): Promise<void> {
-    if (!shareable(hop) || hop.truncated || hop.body.length > maxEntry) { st.uncacheable++; return; }
+    const discard = async () => {
+      st.uncacheable++;
+      try { await store.del(ns, key); } catch { /* cache failures never fail a load */ }
+    };
+    if (!shareable(hop) || hop.truncated || hop.body.length > maxEntry) { await discard(); return; }
     const life = lifetime(hop, heuristic, t);
-    if (life === undefined) { st.uncacheable++; return; }
+    if (life === undefined) { await discard(); return; }
     const validators = !!(hop.headers.etag || hop.headers['last-modified']);
     const ttl = Math.max(1, Math.ceil(life + (validators ? staleKeep : 0)));
     const text = isTextual(sniff(parseContentType(hop.headers['content-type']).mime, hop.body, hop.url));
@@ -199,7 +204,7 @@ export function createPageCache(store: Store, opts: CacheOptions = {}): PageCach
       merged.setCookie = hop.setCookie;
       st.revalidated++;
       st.bytesSaved += merged.body.length;
-      if (!hop.setCookie.length) await put(key, merged, t);
+      await put(key, merged, t);
       return { hop: merged, via: 'revalidated' as Via, share: shareable(merged) };
     }
     st.misses++;
@@ -207,18 +212,18 @@ export function createPageCache(store: Store, opts: CacheOptions = {}): PageCach
     return { hop, via: 'miss' as Via, share: shareable(hop) && !hop.truncated };
   }
 
-  async function fetchCached(key: string, origin: (cond: Record<string, string>) => Promise<RawHop>, signal?: AbortSignal, depth = 0): Promise<{ hop: RawHop; via: Via }> {
-    let f = flights.get(key);
+  async function fetchCached(key: string, origin: (cond: Record<string, string>) => Promise<RawHop>, signal?: AbortSignal, revalidate = false, depth = 0): Promise<{ hop: RawHop; via: Via }> {
+    let f = revalidate ? undefined : flights.get(key);
     let entry: Entry | undefined;
     if (!f) {
       try { entry = await store.get<Entry>(ns, key); } catch { entry = undefined; }
       const t = now();
-      if (entry && entry.fu > t) {
+      if (entry && entry.fu > t && !revalidate) {
         st.hits++;
         st.bytesSaved += entry.d.length * (entry.e === 'b' ? 0.75 : 1);
         return { hop: toHop(entry, t), via: 'hit' };
       }
-      f = flights.get(key); // another caller may have become leader while we awaited the store
+      f = revalidate ? undefined : flights.get(key); // another caller may have become leader while we awaited the store
     }
     if (f) {
       let r: Awaited<Flight['p']>;
@@ -227,7 +232,7 @@ export function createPageCache(store: Store, opts: CacheOptions = {}): PageCach
       } catch (e) {
         if (signal?.aborted) throw e;
         // the leader was aborted by its own caller: try again ourselves
-        if (depth < 2 && isAbort(e)) return fetchCached(key, origin, signal, depth + 1);
+        if (depth < 2 && isAbort(e)) return fetchCached(key, origin, signal, revalidate, depth + 1);
         throw e;
       }
       if (r.share) {
@@ -239,6 +244,11 @@ export function createPageCache(store: Store, opts: CacheOptions = {}): PageCach
       const hop = await origin({});
       st.misses++;
       return { hop, via: 'miss' };
+    }
+    // Navigations must each reach the origin, even when identical requests overlap.
+    if (revalidate) {
+      const r = await lead(key, entry, origin);
+      return { hop: r.hop, via: r.via };
     }
     const flight: Flight = { p: lead(key, entry, origin) };
     flights.set(key, flight);
@@ -256,7 +266,7 @@ export function createPageCache(store: Store, opts: CacheOptions = {}): PageCach
       const i = url.indexOf('#');
       return `${i < 0 ? url : url.slice(0, i)} ${variant}`;
     },
-    fetch: (key, origin, signal) => fetchCached(key, origin, signal),
+    fetch: (key, origin, signal, revalidate) => fetchCached(key, origin, signal, revalidate),
     stats(): CacheStats {
       return { ...st, bytesSaved: Math.round(st.bytesSaved), inflight: flights.size };
     },

@@ -50,7 +50,12 @@ function matches(b: Block, q: string[]): boolean {
 
 export function nextLink(page: Page): Act | undefined {
   let best: Act | undefined;
-  for (const b of page.blocks) {
+  const first = page.blocks.indexOf(recordBlocks(page)[0]);
+  for (const [index, b] of page.blocks.entries()) {
+    // A site's global menu may have a page called "Load more" or "Next". Only
+    // treat links at or after the records as continuation of this collection.
+    if (index < first) continue;
+    if (b.r === 'footer') continue;
     for (const x of b.i) {
       if (typeof x === 'string' || x.k !== 'link' || !x.href) continue;
       const l = x.l.trim();
@@ -106,13 +111,15 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
     }
     // no pager: an infinite feed loads more as it scrolls
     if (!page.stats.scripts && !rc.isLive()) break;
-    const before = recordBlocks(rc.page).length;
+    const before = new Set(recordBlocks(rc.page).map((b) => b.hx));
     try {
       await rc.verb('scroll', ['bottom']);
     } catch {
       break;
     }
-    if (recordBlocks(rc.page).length <= before) break;
+    // Engine escalation can regroup the first batch, and virtualized feeds replace rows
+    // without growing the DOM. Progress is new content, rather than a larger row count.
+    if (!recordBlocks(rc.page).some((b) => !before.has(b.hx))) break;
   }
   const head = `${dropped}${total} record${total === 1 ? '' : 's'}${q.length ? ` matching '${str(step.args[0])}'` : ''}${visited > 1 ? ` over ${visited} pages` : ''}`;
   if (!total) {
