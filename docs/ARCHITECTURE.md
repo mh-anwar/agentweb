@@ -9,7 +9,11 @@ in [`src/types.ts`](../src/types.ts) and [`src/tree.ts`](../src/tree.ts).
 
 ## Why it exists
 
-Measured problems with existing agent browsers (sources in the README):
+Design motivations, informed by historical measurements (sources in the README):
+
+These are motivations, not a current feature comparison. Competing tools now include browser-free
+reads, alternate engines, diffs and batch commands. See the [current competitive research](research/DIFFERENTIATION.md)
+and [benchmark evidence](../bench/RESULTS.md) before making performance or feature-gap claims.
 
 1. **Round trips dominate cost.** Every tool call makes the model re-read its context. Tools that
    are cheap per call but need 40–50 calls lose to tools that need 15.
@@ -31,7 +35,7 @@ Measured problems with existing agent browsers (sources in the README):
 | Programs | The mini-language: several steps per call, fan-out, extraction, expectations | `src/dsl.ts`, `src/runtime.ts`, `src/extract` |
 | Atlas | What the fleet has learned about each site (cheapest working tier, search templates, …) | `src/atlas` |
 | Guard | URL policy and SSRF, secret handles, cross-origin data-flow checks, signed agent identity | `src/guard` |
-| Fabric | Sessions as data in a `Store`, shared page cache, watchers, servers, inspector | `src/store`, `src/server`, `src/watch` |
+| Fabric | Sessions as data in a `Store`, shared page cache and servers; watchers and inspector are planned | `src/store`, `src/server`, `src/watch` |
 
 ## One intermediate representation
 

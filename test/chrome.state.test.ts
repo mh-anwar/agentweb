@@ -15,6 +15,19 @@ let site: Site;
 const engines: ChromeEngine[] = [];
 const pids = new Set<number>();
 
+// Chromium's parent can exit before its children are reaped. Wait for the actual
+// process state, with a deadline that still fails a real leak, instead of a fixed sleep.
+async function remainingProcesses(ids: Iterable<number>): Promise<number[]> {
+  const tracked = [...ids];
+  const deadline = performance.now() + 5000;
+  let left = tracked.filter(alive);
+  while (left.length && performance.now() < deadline) {
+    await new Promise(resolve => setTimeout(resolve, 25));
+    left = tracked.filter(alive);
+  }
+  return left;
+}
+
 const make = (o: Parameters<typeof createChromeEngine>[0] = {}) => {
   const e = createChromeEngine({ noSandbox: true, ...o });
   engines.push(e);
@@ -39,7 +52,7 @@ before(async () => {
 after(async () => {
   for (const e of engines) await e.close();
   await site.close();
-  const left = [...pids].filter(alive);
+  const left = await remainingProcesses(pids);
   for (const p of left) {
     try {
       process.kill(p, 'SIGKILL');
@@ -206,8 +219,7 @@ describe('chrome concurrency and recovery', () => {
     const tree = treePids(e.browser()!.pid!);
     assert.ok(tree.length >= 2, `browser tree: ${tree}`);
     await e.close();
-    await new Promise((r) => setTimeout(r, 100));
-    assert.deepEqual(tree.filter(alive), []);
+    assert.deepEqual(await remainingProcesses(tree), [], 'browser children must finish exiting');
     await assert.rejects(e.open(makeCtx('closing'), { url: site.base + '/' }), (err: AwError) => err.code === 'gone');
   });
 });

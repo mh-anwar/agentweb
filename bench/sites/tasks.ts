@@ -575,7 +575,13 @@ export const tasks: Task[] = [
   {
     id: 'hard-infinite-scroll', site: 'hard', tags: ['extraction', 'js', 'infinite-scroll'], minTier: 'chrome',
     prompt: 'The activity feed at {{url}}/hard/infinite loads more entries as you scroll. What is the text of entry number 45?',
-    check: (a, _s, t) => { const e = t.hard.feed[44]!; return R(has(a, e), `expected "${e}"`); },
+    check: (a, _s, t) => {
+      const e = t.hard.feed[44]!;
+      // The requested entry number may be stated outside the quote. Its unique content,
+      // including the verification suffix, must still be reproduced in full.
+      const content = e.replace(/^Feed entry \d+:\s*/, '');
+      return R(has(a, content), `expected "${e}"`);
+    },
     example: (t) => ({ right: { answer: t.hard.feed[44]! }, wrong: { answer: t.hard.feed[43]! } }),
   },
   {

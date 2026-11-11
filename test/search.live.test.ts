@@ -1,4 +1,5 @@
-// Live checks against the real providers. Needs the public internet; set AGENTWEB_OFFLINE=1 to skip.
+// Opt-in checks against real providers. Run npm run test:live; normal npm test stays offline.
+// AGENTWEB_OFFLINE=1 also disables these checks.
 // A provider that is rate-limiting this machine is skipped (with the reason), not failed: that is
 // the situation the orchestrator's fallback exists for. The merged search must still work.
 
@@ -7,7 +8,7 @@ import assert from 'node:assert/strict';
 import { defaultProviders, search, SearchState, toBlocks } from '../src/search/index.ts';
 import { liveFetcher } from './search.helpers.ts';
 
-const offline = !!process.env.AGENTWEB_OFFLINE;
+const offline = process.env.AGENTWEB_LIVE_TESTS !== '1' || !!process.env.AGENTWEB_OFFLINE;
 const QUERIES: Record<string, string> = {
   wikipedia: 'brothers karamazov',
   github: 'rust async runtime',

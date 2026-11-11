@@ -102,8 +102,13 @@ This serves MCP (Streamable HTTP) at `/mcp` and REST at `POST /v1/run` with
 actions; a renderer prints a budgeted view with session-stable numbers, collapsing navigation and
 boilerplate; readers handle JSON, feeds, CSV, PDF and markdown directly.
 
-Status: v0, under active development. The JavaScript-without-pixels engine is not finished; the
-other two engines, the server, stores, guard, readers and search are.
+Status: v0, under active development. All three engines are implemented. See
+[progress and remaining gaps](docs/PROGRESS.md), the [latest benchmark](bench/reports/hill-2026-11-11/README.md),
+and [competitive research](docs/research/DIFFERENTIATION.md). Broad reliability and fleet-scale
+capacity still need independent validation.
+
+`npm test` runs the local suite with two test workers. Public-provider checks are opt-in with
+`npm run test:live`. Chromium is required for the browser integration tests.
 
 ---
 

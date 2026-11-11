@@ -19,8 +19,9 @@
     "dev": "node src/cli.ts",
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/*.test.ts",
-    "bench": "node bench/run.ts"
+    "test": "node --test --test-concurrency=2 test/*.test.ts",
+    "bench": "node bench/run.ts",
+    "test:live": "AGENTWEB_LIVE_TESTS=1 node --test --test-concurrency=2 test/search.live.test.ts"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",

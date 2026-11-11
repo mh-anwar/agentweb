@@ -355,7 +355,13 @@ export async function runAgentTask(input: AgentTaskInput): Promise<AgentTaskResu
   const transcriptPath = join(outDir, `${label}.jsonl`);
   const stderrPath = join(outDir, `${label}.stderr.txt`);
 
-  const prep = prepare(input, cwd, root);
+  let prep: Prepared;
+  try {
+    prep = prepare(input, cwd, root);
+  } catch (e) {
+    rmSync(root, { recursive: true, force: true });
+    throw e;
+  }
   const t0 = Date.now();
   const lines: string[] = [];
   let timedOut = false;

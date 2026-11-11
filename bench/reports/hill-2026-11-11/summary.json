@@ -1,0 +1,45 @@
+{
+  "note": "18 matched task/repeat cells per tool; 0 unmatched rows excluded. Development tasks, not held-out evidence. Raw failures, including infrastructure errors and permission denials, remain in the denominator.",
+  "input": "bench/reports/hill-2026-11-11/results.jsonl",
+  "summary": [
+    {
+      "tool": "agentweb",
+      "n": 18,
+      "passed": 18,
+      "rawPassed": 17,
+      "inputTokens": 633193,
+      "outputTokens": 14424,
+      "medianCalls": 3,
+      "medianWallMs": 7035.5,
+      "costUsd": 0.03837272,
+      "permissionDenials": 0,
+      "errors": 0
+    },
+    {
+      "tool": "agent-browser",
+      "n": 18,
+      "passed": 16,
+      "rawPassed": 16,
+      "inputTokens": 3348364,
+      "outputTokens": 48815,
+      "medianCalls": 9.5,
+      "medianWallMs": 19193.5,
+      "costUsd": 0.11866697,
+      "permissionDenials": 7,
+      "errors": 2
+    },
+    {
+      "tool": "playwright-mcp",
+      "n": 18,
+      "passed": 18,
+      "rawPassed": 18,
+      "inputTokens": 2506543,
+      "outputTokens": 27220,
+      "medianCalls": 6,
+      "medianWallMs": 12177.5,
+      "costUsd": 0.08987741,
+      "permissionDenials": 0,
+      "errors": 0
+    }
+  ]
+}

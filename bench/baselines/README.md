@@ -130,9 +130,10 @@ The first batch at `bench/out/hill-866acf0` is invalid: agent-browser commands f
 older global binary while the recorded package version said 0.42.0. Do not use it for comparisons.
 
 `node bench/summarize.ts <results.jsonl> <directory>` compares only matched task/repeat cells.
-`node bench/regrade-five.ts <run-directory> <new-results.jsonl>` preserves raw evidence while
-correcting the inspected five-product-list grader for all tools. That correction accepts a
-runner-up mentioned in explanatory prose, while rejecting a sixth recommended list item.
+`node bench/regrade-answers.ts <run-directory> <new-results.jsonl>` preserves raw evidence while
+correcting two inspected answer-format graders for all tools. A runner-up in prose is allowed
+outside the five recommended products, and an entry label may sit outside its quoted content.
+A sixth recommendation, wrong order, neighboring feed entry or wrong verification suffix still fails.
 The regrader is scoped to the original seed-7 farm and records its input and grader hashes.
 
 These trials use a constrained CLI harness: shell assignments and arbitrary helper programs are

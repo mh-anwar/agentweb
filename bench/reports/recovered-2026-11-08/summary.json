@@ -1,0 +1,45 @@
+{
+  "note": "52 matched task/repeat cells per tool; 1 unmatched rows excluded. Development tasks, not held-out evidence. Raw failures, including infrastructure errors and permission denials, remain in the denominator.",
+  "input": "bench/reports/recovered-2026-11-08/regraded-results.jsonl",
+  "summary": [
+    {
+      "tool": "agentweb",
+      "n": 52,
+      "passed": 52,
+      "rawPassed": 52,
+      "inputTokens": 1341212,
+      "outputTokens": 30874,
+      "medianCalls": 2.5,
+      "medianWallMs": 7887.5,
+      "costUsd": 0.09385893000000003,
+      "permissionDenials": null,
+      "errors": 0
+    },
+    {
+      "tool": "agent-browser",
+      "n": 52,
+      "passed": 49,
+      "rawPassed": 49,
+      "inputTokens": 4715911,
+      "outputTokens": 72665,
+      "medianCalls": 5,
+      "medianWallMs": 12684,
+      "costUsd": 0.21711040000000006,
+      "permissionDenials": null,
+      "errors": 0
+    },
+    {
+      "tool": "playwright-mcp",
+      "n": 52,
+      "passed": 50,
+      "rawPassed": 49,
+      "inputTokens": 4664132,
+      "outputTokens": 45419,
+      "medianCalls": 5,
+      "medianWallMs": 9452.5,
+      "costUsd": 0.20362130999999997,
+      "permissionDenials": null,
+      "errors": 0
+    }
+  ]
+}

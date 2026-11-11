@@ -1,0 +1,8 @@
+{
+  "originalResultsSha256": "5aa045b4319b77e3eb80809a595104f678989eb36cb9b982c029c72df03d8b96",
+  "originalDirectory": "/home/pippin/.t3/projects/agentweb/bench/out/baseline-02bbb16",
+  "seed": 7,
+  "regradedTask": "shop-five-cheapest-rated",
+  "changedVerdicts": 1,
+  "at": "2026-11-11T09:27:36.579Z"
+}

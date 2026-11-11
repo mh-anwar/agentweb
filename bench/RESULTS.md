@@ -1,3 +1,15 @@
+# Current checkpoint
+
+The [November 11 repeated comparison](reports/hill-2026-11-11/README.md) ran six inspected tasks
+three times against current pinned tools. Agentweb passed 18/18 after one answer-format grader
+correction (17/18 raw), Playwright MCP 18/18, and agent-browser 16/18. Aggregate model input was
+633,193 / 2,506,543 / 3,348,364 tokens respectively. The report includes raw rows, the grading
+audit, permission denials, package and actual-binary versions, and limitations.
+
+The [recovered November 8 baseline](reports/recovered-2026-11-08/README.md) is incomplete and
+infrastructure-confounded; it was never a finished three-way result. All measurements below are
+historical checkpoints. The inspected farm is development data, not held-out evidence.
+
 # First measurements: what one "open this page" costs
 
 Measured 2026-11-05/06 on this machine with `bench/baselines/snapshots.ts`, same 10 live URLs, same
@@ -86,8 +98,8 @@ First run, before any fixes: agentweb 35/40 with 1,380,750 input tokens.
 was wrong and is fixed. agentweb's three other held-out failures were real: `near=` clicked the
 previous item's button on a shadow-DOM page; `find()` could not see past the 6,000-block cap of a
 5 MB page; and agentweb does not send conditional requests (ETag/304) when a page is re-opened.
-The first two are fixed (commit `2f3c435`; a re-run of those tasks passed), the third is not.
+The first two are fixed (commit `2f3c435`; a re-run of those tasks passed), the third was not at that checkpoint (navigation revalidation is fixed in `866acf0`).
 Since the held-out set has now been looked at, it is no longer held out.
 
-**Known open issue:** `records(…, pages=N)` on an infinite-scroll feed stops after the first batch
+**Historical issue, fixed in `866acf0`:** `records(…, pages=N)` on an infinite-scroll feed stops after the first batch
 when it has to switch engines first; `scroll()` and `press('End')` work.

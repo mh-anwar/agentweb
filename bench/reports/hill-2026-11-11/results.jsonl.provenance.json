@@ -1,0 +1,12 @@
+{
+  "originalResultsSha256": "68b15ef780f75512e44e992363052b69d577daad88f7926042b5692d0e8d75b4",
+  "originalDirectory": "bench/out/hill-6556ee3",
+  "seed": 7,
+  "regradedTasks": [
+    "shop-five-cheapest-rated",
+    "hard-infinite-scroll"
+  ],
+  "graderSha256": "297e6815d9f6ac6eaf0f0a3495ff8b6c0cadae5268379872f7317cdac36e6e94",
+  "changedVerdicts": 1,
+  "at": "2026-11-11T09:46:00.866Z"
+}

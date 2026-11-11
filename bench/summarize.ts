@@ -54,7 +54,7 @@ const bars = (kind: 'tokens'|'pass') => summary.map((r,i) => {
 }).join('');
 const html = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><style>
 body{font-family:var(--font-sans);color:var(--foreground);margin:0}h2{font-size:16px;margin:0 0 16px}.section{padding:16px;background:var(--card);border-radius:var(--radius);margin-bottom:12px}.row{margin:12px 0}.label{display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px}.track{height:18px;border-radius:4px;background:var(--secondary);overflow:hidden}.bar{height:18px;min-width:2px}.note{font-size:12px;color:var(--muted-foreground);line-height:1.5}strong{font-family:var(--font-mono)}
-</style><div class="section"><h2>Total model input · lower is better</h2>${bars('tokens')}</div><div class="section"><h2>Tasks passed · corrected grader</h2>${bars('pass')}</div><p class="note">${esc(note)} One five-product-list grader was corrected equally for every tool; original scores remain in the accompanying report.</p>`;
+</style><div class="section"><h2>Total model input · lower is better</h2>${bars('tokens')}</div><div class="section"><h2>Tasks passed · corrected grader</h2>${bars('pass')}</div><p class="note">${esc(note)} Answer-format grading corrections apply equally to every tool; original scores remain in the accompanying report.</p>`;
 mkdirSync(out,{recursive:true});
 writeFileSync(join(out,'summary.md'),lines.join('\n'));
 writeFileSync(join(out,'summary.json'),JSON.stringify({note,input,summary},null,2)+'\n');

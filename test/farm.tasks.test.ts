@@ -230,3 +230,12 @@ test('five-cheapest grader accepts an excluded runner-up in prose, but rejects a
   assert.ok(!task.check(list + `\n6. ${other.name}`, blankState(), farm.truth).pass);
   assert.ok(!task.check([...p.five].reverse().map((x, i) => `${i + 1}. ${x.name}`).join('\n'), blankState(), farm.truth).pass);
 });
+
+test('feed grader accepts the requested entry label outside the quote, but not a neighboring entry or an incorrect verification suffix', () => {
+  const task = taskById('hard-infinite-scroll');
+  const full = farm.truth.hard.feed[44];
+  const content = full.replace(/^Feed entry \d+:\s*/, '');
+  assert.ok(task.check(`Entry 45 reads: "${content}"`, blankState(), farm.truth).pass);
+  assert.ok(!task.check(farm.truth.hard.feed[43], blankState(), farm.truth).pass);
+  assert.ok(!task.check(content.slice(0, -4) + 'wrong', blankState(), farm.truth).pass);
+});
