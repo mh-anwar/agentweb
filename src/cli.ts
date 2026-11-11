@@ -6,9 +6,12 @@
 //   agentweb serve           MCP over HTTP + REST, for many agents
 //   agentweb tool            print the tool definition (mcp | openai | anthropic)
 //   agentweb doctor          what works on this machine
+//   agentweb report "<site> | <task> | <why>"   log that an agent gave up on agentweb (needs AGENTWEB_USAGE_LOG)
+//   agentweb usage [--days N] summary of the usage log
 
 import { createAgentweb, type AgentwebConfig } from './index.ts';
 import { TOOL } from './tooldoc.ts';
+import { attachUsageLog, summary, usagePath, writeReport } from './usage.ts';
 
 const VERSION = '0.1.0';
 
@@ -52,6 +55,8 @@ const HELP = `agentweb ${VERSION} - a browser for agents
         --keys k1=tenant1,k2=…   bearer API keys (also AGENTWEB_KEYS)
   agentweb tool [--format mcp|openai|anthropic]
   agentweb doctor
+  agentweb report "<site> | <task> | <why>"   an agent fell back to another browser (AGENTWEB_USAGE_LOG)
+  agentweb usage [--days N]      summary of the usage log (AGENTWEB_USAGE_LOG)
 
   Common options: --store URL (memory: | file:/dir | sqlite:/file | redis://host)  --no-chrome  --no-ghost  --no-cache
 
@@ -87,6 +92,24 @@ async function main() {
     return void console.log(JSON.stringify(out, null, 2));
   }
 
+  if (cmd === 'report' || cmd === 'usage') {
+    const p = usagePath();
+    if (!p) {
+      console.error('agentweb: set AGENTWEB_USAGE_LOG=<file> to keep a usage log');
+      process.exitCode = 2;
+      return;
+    }
+    if (cmd === 'usage') return void console.log(summary(p, typeof f.days === 'string' ? Number(f.days) || 7 : 7));
+    const text = f._.slice(1).join(' ').trim();
+    if (!text) {
+      console.error('usage: agentweb report "<site> | <task> | <why>"');
+      process.exitCode = 2;
+      return;
+    }
+    writeReport(p, text);
+    return void console.log('reported');
+  }
+
   if (cmd === 'run') {
     const program = f._.slice(1).join(' ') || (process.stdin.isTTY ? '' : await readStdin());
     if (!program.trim()) {
@@ -95,6 +118,7 @@ async function main() {
       return;
     }
     const rt = await createAgentweb(config(f));
+    attachUsageLog(rt);
     try {
       const r = await rt.run(typeof f.session === 'string' ? f.session : 'cli', program, { budget: typeof f.budget === 'string' ? Number(f.budget) : undefined });
       if (f.json) console.log(JSON.stringify(r, null, 2));
@@ -113,6 +137,7 @@ async function main() {
   if (cmd === 'mcp') {
     const { serveStdio } = await import('./server/index.ts');
     const rt = await createAgentweb(config(f));
+    attachUsageLog(rt);
     const server = serveStdio(rt, { stdin: process.stdin, stdout: process.stdout });
     const done = (server as { closed?: Promise<void> }).closed;
     const stop = async () => {
