@@ -115,3 +115,20 @@ nothing explain that site search locates exact item names. The one-result path i
 the built MCP server. The full regression suite passed 921 tests with 14 skips and zero failures.
 The proposed implicit primary-control preference remains unimplemented; explicit targets are
 retained. A fresh same-seed cart-task run will measure whether these changes reduce wasted calls.
+
+
+## Follow-up: same-seed cart trials at 241b71a
+
+After the singleton-card/filter changes, two fresh Haiku runs of the same `shop-cart-edit`
+task and seed passed. Calls were **4 and 8**, compared with **9 and 14** at 104a157.
+Total model input across the two cart trials fell from **313,470 to 90,866 tokens**. The new
+runs cost **$0.00504** combined. All four before/after cart trials have zero permission denials.
+The after-run manifest, unmodified result rows and summary are saved in
+`bench/reports/cheap-hill-cart-after/`; tool inputs are preserved as `agentweb-calls.json`.
+
+This is a noisy follow-up, not a controlled causal ablation: only two repetitions, sequential
+runs at different times, stochastic agent choices, and an agent-selected output budget (3,000
+in part of the first after run). The after agent used `find` and site search rather than
+`records`; better call counts cannot be attributed solely to the new record handler. No
+competitor was rerun after the change. The result is sufficient to retain the correctness
+fixes and investigate more broadly, not to claim a stable speedup or general superiority.

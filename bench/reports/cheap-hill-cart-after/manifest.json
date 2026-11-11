@@ -1,0 +1,27 @@
+{
+  "seed": 2026,
+  "model": "haiku",
+  "turns": 15,
+  "repeats": 2,
+  "tools": [
+    "agentweb"
+  ],
+  "tasks": [
+    "shop-cart-edit"
+  ],
+  "gitHead": "241b71a12183bb5d86ea7edddfb558b5ec774106",
+  "diffSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "node": "v24.22.1",
+  "versions": {
+    "@playwright/mcp": "0.0.84",
+    "chrome-devtools-mcp": "1.12.0",
+    "agent-browser": "0.41.2",
+    "@playwright/cli": "0.1.23",
+    "playwright-core (bundled with @playwright/mcp and @playwright/cli)": "1.65.0-alpha-2026-10-30",
+    "@mozilla/readability": "0.6.0",
+    "turndown": "7.2.5",
+    "jsdom": "31.0.0",
+    "gpt-tokenizer": "4.1.0"
+  },
+  "browser": "Google Chrome for Testing 156.0.8078.4"
+}
