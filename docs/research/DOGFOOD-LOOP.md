@@ -10,9 +10,9 @@ Inputs, once deployed:
 - `~/.local/state/agentweb/reports.jsonl`: use the reported task and fallback reason to find a
   reproducible failure. The usage log deliberately cannot reconstruct typed text or page content.
 
-At the November 11 handoff these files had not been created, so this iteration contains no
-claimed telemetry-derived tasks. An agentweb CLI lookup of the official agent-browser command
-reference succeeded during this iteration without falling back.
+The log was created during this handoff. A lookup of the official agent-browser command
+reference through the installed build succeeded on the HTTP tier: one logged run, zero failures,
+zero fallbacks. There are no recurring failures to turn into telemetry-derived tasks yet.
 
 For each recurring issue, reproduce it once, then add a synthetic local fixture under
 `bench/sites` with the same relevant behavior and randomized values. Give it an outcome check:
@@ -34,5 +34,5 @@ The release hook and deployment symlink remain the owner's responsibility.
 Deployment detail for the auto-release owner: `scripts/build.mjs` deliberately keeps `jsdom`
 and `unpdf` external. Retain the clean build's dependency tree where each release can resolve
 those packages; copying only the two `.mjs` files loses optional engine/reader capabilities.
-Validate the packaged artifact, including one JavaScript page and one PDF, rather than relying
-only on tests that import TypeScript source. Keep `ghost-child.mjs` beside `agentweb.mjs`.
+The `scripts/smoke-build.mjs` check exercises a JavaScript page and a PDF through the packaged
+CLI, complementing tests that import TypeScript source. Keep `ghost-child.mjs` beside `agentweb.mjs`.
