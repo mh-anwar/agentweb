@@ -11,7 +11,7 @@
 //     with the guard for data-flow checks.
 
 import { searchTemplate } from './atlas/index.ts';
-import { blockText } from './blocks.ts';
+import { actText, blockText } from './blocks.ts';
 import { compile, TRUNCATED } from './compile.ts';
 import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
@@ -100,6 +100,9 @@ export interface RuntimeOptions {
 export type BrowserTier = 'chrome' | 'firefox' | 'webkit';
 /** real browsers, in the order they are tried as a fallback when one meets a bot wall */
 export const BROWSERS: BrowserTier[] = ['chrome', 'firefox', 'webkit'];
+/** Frames that are players, maps, ads and widgets: nothing to read in them. */
+const EMBED_HOSTS = /(?:^|\.)(?:youtube(?:-nocookie)?\.com|youtu\.be|vimeo\.com|google\.com|googletagmanager\.com|doubleclick\.net|googlesyndication\.com|facebook\.com|twitter\.com|x\.com|instagram\.com|tiktok\.com|spotify\.com|soundcloud\.com|recaptcha\.net|hcaptcha\.com|cloudflare\.com|stripe\.com|paypal\.com|disqus\.com|typeform\.com|calendly\.com|intercom\.io|zendesk\.com)$/i;
+
 /** A page without its query: what an engine hint is remembered under. */
 export function hintKey(url: string): string {
   try {
@@ -255,7 +258,45 @@ export class RunCtx {
     }
     if (loaded.events) for (const e of loaded.events.slice(0, 6)) page.notes.push(e);
     if (loaded.cached) page.notes.push('from shared cache');
+    if (tier === 'wire' && loaded.doc && (loaded.method ?? 'GET') === 'GET') await this.inlineFrames(page);
     return page;
+  }
+
+  /**
+   * A page fetched without a browser names its frames but does not hold them. The text of up to three frames that
+   * the page titles or serves itself is read in under each frame's line, as a browser would show it. Links inside
+   * stay links; a frame's own controls are shown as text (open the frame to use them).
+   */
+  async inlineFrames(page: Page): Promise<void> {
+    let done = 0;
+    for (let i = 0; i < page.blocks.length && done < 3; i++) {
+      const b = page.blocks[i];
+      const act = b.i.length === 1 && typeof b.i[0] !== 'string' ? b.i[0] : undefined;
+      if (!act || act.k !== 'link' || !act.href || !act.l.startsWith('frame: ') || (b.r !== 'main' && b.r !== 'other')) continue;
+      if (EMBED_HOSTS.test(new URL(act.href).hostname)) continue;
+      done++;
+      try {
+        const v = await this.guard.checkUrl(act.href, 'sub');
+        if (!v.ok) continue;
+        const loaded = await this.engine('wire').open(this.ctx, { url: act.href, referer: page.url });
+        this.fetches++;
+        if (!loaded.doc) continue;
+        const inner = compile(loaded.doc, loaded.url, { tier: 'wire' });
+        const body = inner.blocks.filter((x) => (x.r === 'main' || x.r === 'other') && blockText(x)).slice(0, 40);
+        if (!body.length) continue;
+        const copies = body.map((x) => {
+          const c: Block = { ...x, r: b.r, i: x.i.map((it) => (typeof it === 'string' || (it.k === 'link' && it.href) ? it : `[${actText(it)}]`)) };
+          delete c.g;
+          delete c.hd;
+          rehash(c);
+          return c;
+        });
+        page.blocks.splice(i + 1, 0, ...copies);
+        i += copies.length;
+      } catch {
+        // the frame did not load: its line stays, and can be opened
+      }
+    }
   }
 
   setPage(page: Page, o?: { push?: boolean }) {

@@ -119,3 +119,11 @@ test("records('price stock'): a field name that is written on no item is dropped
     await full.close();
   }
 });
+
+test('the text of a frame the page titles or serves itself is read in under its line, without a browser', async () => {
+  const text = await run("open('$U/hard/frames'); read()");
+  assert.match(text, /frame: Order status\n### Order status\nVerification code: SAMEFRAME-\w+/);
+  assert.match(text, /frame: Partner widget\n### Partner widget\nPartner code: CROSSFRAME-\w+/);
+  // the frame's line is still a link to the frame itself
+  assert.match(await run("open('$U/hard/frames'); links('frame')"), /\[frame: Order status\]\d+ http:\/\/[^\s]+\/hard\/frame-inner/);
+});
