@@ -116,9 +116,10 @@ export function extractPage(win: any, opts?: ExtractOptions): Extracted {
     const clipPath = cs.clipPath || '';
     if (/rect\(\s*0(px)?[, ]+0(px)?[, ]+0(px)?[, ]+0(px)?\s*\)/.test(clip) || /rect\(\s*1px[, ]+1px[, ]+1px[, ]+1px\s*\)/.test(clip) || /inset\(\s*(50|100)%/.test(clipPath)) return 2;
     if (!layout) return 0;
-    // closed <details>, content-visibility:hidden and friends: no box at all although display is not none
+    // closed <details>, content-visibility:hidden and friends: no box at all although display is not none.
+    // display:contents has no box either, yet its children are laid out: it is a wrapper, not a hidden thing.
     try {
-      if (typeof el.checkVisibility === 'function' && !el.checkVisibility()) return 1;
+      if (cs.display !== 'contents' && typeof el.checkVisibility === 'function' && !el.checkVisibility()) return 1;
     } catch {}
     const indent = parseFloat(cs.textIndent);
     if (indent <= -999) return 2; // image-replacement text

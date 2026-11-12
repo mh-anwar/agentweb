@@ -46,6 +46,8 @@ export interface SessionRecord {
   tab?: number;
   /** the session's other tabs, set aside; they share its cookies and storage */
   tabs?: ParkedTab[];
+  /** the previous call, for bug(): the program with secrets masked, and the status lines it produced (never the page) */
+  last?: { p: string; ok: boolean; tier?: string; head?: string };
   /** At most four bounded semantic collection baselines, private to this session. */
   collections?: [string, import('./extract/compare.ts').CollectionSnapshot][];
 }

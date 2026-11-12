@@ -15,6 +15,7 @@ import { blockText } from './blocks.ts';
 import { compile, TRUNCATED } from './compile.ts';
 import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
+import { redactProgram, writeBug } from './usage.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
@@ -140,6 +141,10 @@ export class RunCtx {
   wallSeen?: string;
   /** the page changed (or was never shown) since the agent last saw something of it */
   stale = true;
+  /** bytes the last live action fetched (0 = it reached no server) */
+  lastBytes = 0;
+  /** the program this run is executing, as written */
+  program = '';
   /** the page as the agent last saw it, for "what changed" */
   baseline?: { blocks: { hx: string; r: Region; i: string[] }[] };
 
@@ -353,6 +358,7 @@ export class RunCtx {
     const eng = this.engine(p.tier);
     if (!eng.act) throw new AwError('unsupported', `the ${p.tier} engine cannot act on pages`);
     const loaded = await eng.act(this.ctx, action);
+    this.lastBytes = loaded.bytes;
     if (loaded.image) this.images.push(loaded.image);
     if (loaded.doc || loaded.body) this.setPage(await this.toPage(loaded, p.tier));
     return loaded;
@@ -626,6 +632,32 @@ export function searchEngineQuery(u: URL): { engine: string; q: string } | undef
   return undefined;
 }
 
+const pageSig = (p: Page) => p.url + '\n' + p.blocks.map((b) => b.hx).join(',');
+
+/**
+ * Click on a live page. The light script engine has no real pointer, so some controls (dialogs and
+ * menus that listen for pointer events, handlers that want a trusted event) do nothing there. When a
+ * click in it changes nothing and reached no server, the page moves to the real browser and the
+ * click is made once more. A click that did reach a server is never repeated.
+ */
+async function liveClick(rc: RunCtx, step: Step): Promise<void> {
+  const click = (n: number): Action => ({ do: 'click', n });
+  const p0 = rc.page;
+  const eligible = p0.tier === 'ghost' && !rc.rec.engine && p0.method === 'GET' && /^https?:/.test(p0.url);
+  if (!eligible) return rc.liveOn(step, click);
+  const r = rc.resolve(step);
+  const sig = pageSig(p0);
+  await rc.liveOn(step, click);
+  const p1 = rc.page;
+  if ('portable' in r || p1.tier !== 'ghost' || pageSig(p1) !== sig || rc.lastBytes > 0) return;
+  const up = await rc.nextTier('ghost');
+  if (!up) return;
+  rc.rt.count('escalations');
+  rc.note(`[${r.act.l}] did nothing without a real browser; page re-opened in ${up} and clicked again`);
+  await rc.navigate({ url: p1.url }, { tier: up, push: false });
+  await rc.liveOn(retarget(step, r.act), click);
+}
+
 const VERBS: Record<string, VerbHandler> = {
   async open(rc, step) {
     const url = normalizeUrl(str(step.args[0]), rc.rec.page?.url);
@@ -802,7 +834,7 @@ const VERBS: Record<string, VerbHandler> = {
       await rc.escalate(count ? 'double-click needs a script engine' : 'right-click needs a script engine');
       return rc.liveOn(step, (n) => ({ do: 'click', n, count, button }));
     }
-    if (rc.isLive()) return rc.liveOn(step, (n) => ({ do: 'click', n }));
+    if (rc.isLive()) return liveClick(rc, step);
     const r = rc.resolve(step);
     if ('portable' in r) {
       rc.note(`${r.n} is from an earlier page; followed its link`);
@@ -822,7 +854,7 @@ const VERBS: Record<string, VerbHandler> = {
     }
     if (act.k === 'button' && act.form !== undefined && !act.js) return rc.submitForm(act.form, act);
     await rc.escalate(`[${act.l}] is driven by JavaScript`);
-    return rc.liveOn(retarget(step, act), (n) => ({ do: 'click', n }));
+    return liveClick(rc, retarget(step, act));
   },
 
   async fill(rc, step) {
@@ -1184,6 +1216,38 @@ const VERBS: Record<string, VerbHandler> = {
 };
 VERBS.uncheck = VERBS.check;
 
+// bug('expected | got'): an agent tells the maintainers that agentweb itself got something wrong. Saved: the
+// program of this call (or, when bug() is alone, of the previous call), the engine, the status lines and the
+// version. Never the page, and typed secrets are masked.
+VERBS.bug = async (rc, step) => {
+  const said = step.args.map((a) => str(a)).join(' | ').trim();
+  if (!said) throw new AwError('bad_request', "bug needs what you expected and what happened: bug('expected the cart to show 1 item | click reported nothing clickable')");
+  const [expected, ...rest] = said.split(/\s+\|\s+/).map((x) => x.trim());
+  const own = (() => {
+    try {
+      return parseProgram(rc.program).some((st) => st.verb !== 'bug');
+    } catch {
+      return true;
+    }
+  })();
+  const last = rc.rec.last;
+  const page = rc.rec.page;
+  let site = '';
+  try {
+    site = page ? new URL(page.url).host : '';
+  } catch {}
+  const path = writeBug({
+    site,
+    program: own ? rc.program : last?.p ?? '(no earlier call in this session)',
+    engine: (own ? page?.tier : last?.tier ?? page?.tier) || undefined,
+    expected: rest.length ? expected : '',
+    got: rest.length ? rest.join(' | ') : expected,
+    result: own ? undefined : last?.head,
+    from: 'tool',
+  });
+  rc.emit(`bug recorded (${path}): the program, engine and agentweb version, no page text. Carry on with the task another way if you can.`);
+};
+
 // Tabs: several pages kept open in one session, sharing its cookies and storage. tabs() lists them,
 // tab('new', url) opens one, tab(2) goes to one, tab('close') closes the current one.
 const tabLine = (n: number, page: Page | undefined, cur: boolean) => `${cur ? '*' : ' '} tab ${n}: ${page ? `${page.title || '(untitled)'} - ${page.url}` : '(empty)'}`;
@@ -1384,6 +1448,7 @@ export class RuntimeImpl implements Runtime {
     const rec = await loadSession(this.deps.store, session, opts.fork);
     rec.view.seq++;
     const rc = new RunCtx(this, rec, budget, signal);
+    rc.program = program;
 
     let failed: { step: Step; err: AwError } | undefined;
     let done = 0;
@@ -1455,6 +1520,9 @@ export class RuntimeImpl implements Runtime {
       if (/^https?:/.test(p.url)) rc.guard.observe(originOf(p.url), safe, rc.jar.has(p.url));
     }
     const text = parts.join('\n');
+
+    // what bug() in a later call reports: this call's program (typed secrets masked) and its status lines
+    if (steps.some((st) => st.verb !== 'bug')) rec.last = { p: redactProgram(program).slice(0, 1500), ok: !failed, tier: rec.page?.tier, head: head.join('\n').slice(0, 500) || undefined };
 
     rec.cookies = rc.jar.all();
     rec.guard = rc.guard.state();

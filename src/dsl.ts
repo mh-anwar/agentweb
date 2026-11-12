@@ -51,6 +51,7 @@ const ALIAS: Record<string, string> = {
   dragto: 'drag', draganddrop: 'drag', dragndrop: 'drag',
   dblclick: 'click', doubleclick: 'click', rightclick: 'click', contextclick: 'click', contextmenu: 'click',
   pdf: 'shot', savepdf: 'shot', screencast: 'shot',
+  reportbug: 'bug', bugreport: 'bug',
   listtabs: 'tabs', tablist: 'tabs', pages: 'tabs', listpages: 'tabs', switchtab: 'tab', selecttab: 'tab', selectpage: 'tab', switchto: 'tab', newpage: 'newtab', opentab: 'newtab', createtab: 'newtab',
   storagestate: 'profile', loadstate: 'profile', usestate: 'profile', usesession: 'profile', signin_as: 'profile', signinas: 'profile', loginas: 'profile',
 };
@@ -60,7 +61,7 @@ export const VERBS = new Set([
   'view', 'read', 'find', 'links', 'outline', 'shot',
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
   'expect', 'engine', 'confirm', 'js', 'console', 'network', 'dialog', 'emulate', 'forward', 'drag',
-  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab',
+  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab', 'bug',
 ]);
 
 /** Playwright locator builders: the string they carry is the target. */

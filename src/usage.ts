@@ -9,7 +9,9 @@
 // gives up on agentweb and uses another browser. `agentweb usage` sums both up.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { VERSION } from './version.ts';
 import { parseProgram } from './dsl.ts';
 import type { RunEvent } from './types.ts';
 
@@ -137,5 +139,99 @@ export function summary(usage: string, days = 7): string {
   const errs = count(failed.map((r) => r.error ?? '(no message)')).slice(0, 10);
   if (errs.length) out.push('', 'failure messages:', ...errs.map(([e, n]) => `  ${n}  ${e}`));
   if (reports.length) out.push('', 'fallbacks (agent gave up on agentweb):', ...reports.slice(-15).map((r) => `  ${r.at.slice(0, 10)}  ${r.site} | ${r.task} | ${r.why}`));
+  return out.join('\n');
+}
+
+// ───────────────────────────── bug reports ─────────────────────────────
+//
+// `agentweb bug "<site> | <program> | <expected> | <got>"` on the command line, or bug('expected | got')
+// inside a program, appends one line to bugs.jsonl: the program as written (with typed secrets, e-mail
+// addresses and tokens masked), the engine, the status lines of the result and the agentweb version.
+// Never the page. `agentweb bugs` prints them for whoever maintains agentweb on this machine.
+
+export interface BugLine {
+  at: string;
+  version: string;
+  site: string;
+  program: string;
+  engine?: string;
+  expected: string;
+  got: string;
+  /** the status lines agentweb printed for that program (errors, notes), never the page view */
+  result?: string;
+  from: 'cli' | 'tool';
+}
+
+/** Where reports and bugs are kept: next to the usage log when there is one, else ~/.agentweb. */
+export function stateDir(env: Record<string, string | undefined> = process.env): string {
+  const u = env.AGENTWEB_USAGE_LOG;
+  if (u && u.trim()) return dirname(u.trim());
+  return env.AGENTWEB_HOME ?? join(homedir(), '.agentweb');
+}
+
+export const bugsPath = (env: Record<string, string | undefined> = process.env) => join(stateDir(env), 'bugs.jsonl');
+
+const SENSITIVE_FIELD = /pass|pwd|secret|token|otp|one.?time|verification|card|cvv|cvc|ssn|api.?key|\bpin\b|security code/i;
+
+/** Mask what should not travel in a bug report: e-mail addresses, long random strings, URL credentials and query values. */
+export function redactText(text: string): string {
+  return text
+    .replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, '<email>')
+    .replace(/(\/\/)[^/@\s'"]+:[^/@\s'"]+@/g, '$1<credentials>@')
+    .replace(/([?&][\w.\-[\]%]+=)[^&#\s'")]+/g, '$1<v>')
+    .replace(/\b(?=[A-Za-z0-9_\-+/=]*\d)(?=[A-Za-z0-9_\-+/=]*[A-Za-z])[A-Za-z0-9_\-+=]{24,}\b/g, '<token>');
+}
+
+/** The program as the agent wrote it, with values typed into sensitive fields and credentials replaced. */
+export function redactProgram(program: string): string {
+  let steps: ReturnType<typeof parseProgram>;
+  try {
+    steps = parseProgram(program);
+  } catch {
+    return redactText(program);
+  }
+  const q = (v: unknown) => (typeof v === 'string' ? `'${v.replace(/'/g, "\\'")}'` : String(v));
+  return steps
+    .map((st) => {
+      const target = typeof st.args[0] === 'string' ? st.args[0] : '';
+      const secretHandle = typeof st.args[1] === 'string' && /^\{\{secret:/.test(st.args[1]);
+      if (st.verb === 'fill' && st.args.length > 1 && !secretHandle && SENSITIVE_FIELD.test(target)) return `fill(${q(st.args[0])}, '<redacted>')`;
+      if (st.verb === 'auth' && st.args.length > 1) return `auth(${q(st.args[0])}, '<redacted>')`;
+      return redactText(st.src);
+    })
+    .join('; ');
+}
+
+export function writeBug(b: Omit<BugLine, 'at' | 'version'>, env: Record<string, string | undefined> = process.env): string {
+  const path = bugsPath(env);
+  const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…' : s);
+  const line: BugLine = {
+    at: new Date().toISOString(),
+    version: VERSION,
+    site: clip(redactText(b.site), 200),
+    program: clip(redactProgram(b.program), 2000),
+    expected: clip(redactText(b.expected), 600),
+    got: clip(redactText(b.got), 600),
+    from: b.from,
+  };
+  if (b.engine) line.engine = b.engine;
+  if (b.result) line.result = clip(redactText(b.result), 600);
+  append(path, line);
+  return path;
+}
+
+export function readBugs(days = 30, env: Record<string, string | undefined> = process.env): BugLine[] {
+  const since = Date.now() - days * 86_400_000;
+  return readLines<BugLine>(bugsPath(env)).filter((b) => Date.parse(b.at) >= since);
+}
+
+export function bugsText(days = 30, env: Record<string, string | undefined> = process.env): string {
+  const bugs = readBugs(days, env);
+  if (!bugs.length) return `no bugs reported in the last ${days} days (${bugsPath(env)})`;
+  const out = [`${bugs.length} bug report(s), last ${days} days (${bugsPath(env)})`];
+  for (const b of bugs) {
+    out.push('', `${b.at.slice(0, 16).replace('T', ' ')}  ${b.site || '(no site)'}  agentweb ${b.version}${b.engine ? `, ${b.engine} engine` : ''}  [${b.from}]`, `  program:  ${b.program}`, `  expected: ${b.expected}`, `  got:      ${b.got}`);
+    if (b.result) out.push(`  result:   ${b.result.replace(/\n/g, '\n            ')}`);
+  }
   return out.join('\n');
 }

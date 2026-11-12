@@ -14,7 +14,7 @@ import { createAgentweb, type AgentwebConfig } from './index.ts';
 import { TOOL } from './tooldoc.ts';
 import { attachUsageLog, summary, usagePath, writeReport } from './usage.ts';
 
-const VERSION = '0.1.0';
+import { VERSION } from './version.ts';
 
 interface Flags {
   _: string[];
@@ -62,7 +62,9 @@ const HELP = `agentweb ${VERSION} - a browser for agents
   agentweb bridge                run the extension bridge by itself and show who is connected
   agentweb tool [--format mcp|openai|anthropic]
   agentweb doctor
-  agentweb report "<site> | <task> | <what went wrong>"   report a bug or a page agentweb could not handle
+  agentweb bug "<site> | <program> | <expected> | <got>"  report an agentweb bug (--engine chrome|ghost|wire); no page
+                                 contents are saved, typed secrets are masked.   agentweb bugs [--days N] lists them
+  agentweb report "<site> | <task> | <why>"   you gave up on agentweb for a task and used another browser
   agentweb usage [--days N]      summary of the usage log (AGENTWEB_USAGE_LOG)
 
   Common options: --store URL (memory: | file:/dir | sqlite:/file | redis://host)  --no-chrome  --no-ghost  --no-cache
@@ -143,6 +145,25 @@ async function main() {
           ? { name: TOOL.name, description: TOOL.description, input_schema: TOOL.inputSchema }
           : TOOL;
     return void console.log(JSON.stringify(out, null, 2));
+  }
+
+  if (cmd === 'bug' || cmd === 'bugs') {
+    const { writeBug, bugsText, readBugs } = await import('./usage.ts');
+    if (cmd === 'bugs') {
+      const days = typeof f.days === 'string' ? Number(f.days) || 30 : 30;
+      return void console.log(f.json ? JSON.stringify(readBugs(days), null, 2) : bugsText(days));
+    }
+    // the program may itself contain '|': the site is the first field, expected and got are the last two
+    const parts = f._.slice(1).join(' ').split(/\s+\|\s+/).map((x) => x.trim());
+    if (parts.length < 4 || !parts[1]) {
+      console.error('usage: agentweb bug "<site> | <program you ran> | <what you expected> | <what you got>" [--engine chrome|ghost|wire]\n' + "example: agentweb bug \"shop.example | open('shop.example'); click('Add to cart') | cart shows 1 item | nothing clickable matches\"");
+      process.exitCode = 2;
+      return;
+    }
+    const got = parts.pop()!;
+    const expected = parts.pop()!;
+    const path = writeBug({ site: parts[0], program: parts.slice(1).join(' | '), expected, got, engine: typeof f.engine === 'string' ? f.engine : undefined, from: 'cli' });
+    return void console.log(`bug recorded (${path}). Thank you; carry on with the task another way if you can.`);
   }
 
   if (cmd === 'report' || cmd === 'usage') {

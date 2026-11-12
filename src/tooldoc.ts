@@ -20,6 +20,7 @@ js('code') - run JavaScript · console() · network('words', failed=1) - page lo
 click(t, double=1) · drag(a, b) · forward() · dialog('dismiss') · emulate('iPhone 15') or emulate(locale='fr-FR', geo='lat,lon', dark=1)
 profile('name') - use a saved sign-in (Playwright storageState file); profile('name', save=1) saves the current one
 tabs() · tab('new', url) · tab(2) · tab('close') - several pages open at once in this session, same cookies
+bug('expected | what happened') - report a bug in this tool itself (saves your program, never page text)
 engine('mine') - work in the user's own browser with their sign-ins (needs the agentweb extension); engine('auto') goes back
 
 A target is a number shown on the page or its visible text: click(12), click('Sign in'), click('Add to cart', near='USB hub').
