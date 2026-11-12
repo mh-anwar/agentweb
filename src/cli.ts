@@ -57,7 +57,10 @@ const HELP = `agentweb ${VERSION} - a browser for agents
         -p, --port N             default 4455        --host H   default 127.0.0.1
         --workers N              processes (default 1)
         --keys k1=tenant1,k2=…   bearer API keys (also AGENTWEB_KEYS)
+        --schedules              also run the programs set with 'agentweb schedule add'
   agentweb test [paths] [--base URL] [--json] [--update] [--record out.aw "program"]   end-to-end tests (agentweb test --help)
+  agentweb program list|show|save|run|delete   saved programs you can run again (agentweb program --help)
+  agentweb schedule add|list|run|log|remove|daemon   programs on a timetable (agentweb schedule --help)
   agentweb extension             where the browser extension is and how to load it (lets agents use your own Chrome)
   agentweb bridge                run the extension bridge by itself and show who is connected
   agentweb tool [--format mcp|openai|anthropic]
@@ -95,6 +98,18 @@ async function main() {
   if (cmd === 'test') {
     const { testCommand } = await import('./test/cli.ts');
     process.exitCode = await testCommand(argv.slice(argv.indexOf('test') + 1));
+    return;
+  }
+
+  if (cmd === 'program') {
+    const { programCommand } = await import('./programs/cli.ts');
+    process.exitCode = await programCommand(argv.slice(argv.indexOf('program') + 1));
+    return;
+  }
+
+  if (cmd === 'schedule') {
+    const { scheduleCommand } = await import('./schedule/cli.ts');
+    process.exitCode = await scheduleCommand(argv.slice(argv.indexOf('schedule') + 1));
     return;
   }
 
@@ -240,7 +255,10 @@ async function main() {
     const server = createHttpServer(rt, { keys, secret: process.env.AGENTWEB_SECRET, workers: f.workers ? Number(f.workers) : undefined } as never);
     const { url } = await server.listen(port, host);
     console.error(`agentweb listening on ${url}  (MCP: ${url}/mcp  REST: ${url}/v1/run  metrics: ${url}/metrics)`);
+    const sched = f.schedules ? (await import('./schedule/index.ts')).startDaemon(rt, process.env) : undefined;
+    if (sched) console.error('agentweb: running scheduled programs (agentweb schedule list)');
     const stop = async () => {
+      await sched?.stop();
       await server.close().catch(() => {});
       await rt.close().catch(() => {});
       process.exit(0);
