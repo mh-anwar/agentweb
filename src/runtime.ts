@@ -242,13 +242,25 @@ export class RunCtx {
     const before = this.rec.page?.tier;
     let page: Page;
     for (;;) {
-      const loaded = await this.engine(tier).open(this.ctx, req);
+      let loaded: Loaded;
+      try {
+        loaded = await this.engine(tier).open(this.ctx, req);
+      } catch (e) {
+        // the light script engine ran out of time on a heavy page: a real browser is the next try
+        const up = tier === 'ghost' && method === 'GET' && !pinned && e instanceof AwError && e.code === 'timeout' && !this.ctx.signal?.aborted ? await this.nextTier(tier) : undefined;
+        if (!up) throw e;
+        this.rt.count('escalations');
+        this.note(`${(e as AwError).message}; opened in ${up} instead`);
+        tier = up;
+        continue;
+      }
       this.fetches++;
       page = await this.toPage(loaded, tier);
-      const failed = !!page.shell || !!loaded.escalate;
+      const hollow = tier === 'ghost' && !loaded.escalate && hollowMain(page);
+      const failed = !!page.shell || !!loaded.escalate || hollow;
       this.rt.deps.atlas?.observe({ type: 'load', origin: originOf(loaded.url), url: loaded.url, tier, ok: !failed, shell: !!page.shell, ms: loaded.ms });
       if (!failed) break;
-      const why = loaded.escalate ?? 'the page is an empty shell that needs JavaScript';
+      const why = loaded.escalate ?? (hollow ? "the page's main content did not render without a full browser" : 'the page is an empty shell that needs JavaScript');
       const up = method === 'GET' && !pinned ? await this.nextTier(tier) : undefined;
       if (up) {
         this.rt.count('escalations');
@@ -1049,6 +1061,24 @@ export class RuntimeImpl implements Runtime {
     }
     return result;
   }
+}
+
+/** Site chrome (nav, header, footer) rendered but the main area is next to empty: its content failed to load. */
+export function hollowMain(page: Page): boolean {
+  if (!page.stats.scripts) return false;
+  let words = 0;
+  let acts = 0;
+  for (const b of page.blocks) {
+    if (b.r !== 'main' && b.r !== 'dialog') continue;
+    for (const x of b.i) {
+      if (typeof x === 'string') words += x.split(/\s+/).filter(Boolean).length;
+      else {
+        acts++;
+        words += (x.l ?? '').split(/\s+/).filter(Boolean).length;
+      }
+    }
+  }
+  return words < 15 && acts < 3;
 }
 
 function shortError(e: unknown): string {

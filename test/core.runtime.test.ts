@@ -260,3 +260,13 @@ test("a bare target on a detail page picks the page's own control over related-i
   const amb = await rt.run(s, `open('${site.url}/products'); click('Add to cart')`);
   assert.equal(amb.ok, false);
 });
+
+test('a script page whose main area is empty is hollow; a short login form is not', async () => {
+  const { hollowMain } = await import('../src/runtime.ts');
+  const page = (blocks: any[]) => ({ stats: { scripts: 3 }, blocks }) as any;
+  const nav = { k: 'p', r: 'nav', i: ['Stays', 'Flights', 'Car rental', 'Attractions', 'Sign in', 'Register', 'Customer support'], hx: '' };
+  assert.equal(hollowMain(page([nav, { k: 'p', r: 'main', i: ['Skip to main content'], hx: '' }])), true);
+  const act = (l: string) => ({ k: 'input', l, f: l });
+  assert.equal(hollowMain(page([nav, { k: 'p', r: 'main', i: [act('Email'), act('Password'), { k: 'submit', l: 'Sign in', f: 's' }], hx: '' }])), false);
+  assert.equal(hollowMain({ stats: { scripts: 0 }, blocks: [] } as any), false);
+});
