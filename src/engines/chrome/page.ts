@@ -3,6 +3,7 @@
 // what happened that the agent should hear about.
 
 import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { release as osRelease } from 'node:os';
 import { join } from 'node:path';
 import { extractPage, nodeById, type Extracted } from '../../inpage/extract.ts';
 import { hash } from '../../tree.ts';
@@ -23,6 +24,10 @@ export interface DriverOptions {
   /** after the page has loaded, wait at most this long for it to go quiet */
   settleCapMs: number;
   defaultUserAgent: string;
+  /** the browser's real full version ("156.0.8078.4"), for the client hints that go with the user agent */
+  browserVersion?: string;
+  /** the pages live in the user's own browser profile: leave its cookies, storage and download settings alone */
+  shared?: boolean;
   /** where downloads are kept (one folder per session); false refuses them */
   downloadDir?: string | false;
   /** how a dialog is answered until the agent says otherwise */
@@ -224,8 +229,8 @@ export class PageDriver {
       s.send('Page.setInterceptFileChooserDialog', { enabled: true }).catch(noop),
       s.send('Page.addScriptToEvaluateOnNewDocument', { source: this.boot, worldName: WORLD }),
       s.send('Log.enable').catch(noop),
-      this.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny', browserContextId: this.contextId, eventsEnabled: true }).catch(noop),
     ];
+    if (!this.opts.shared) tasks.push(this.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny', browserContextId: this.contextId, eventsEnabled: true }).catch(noop));
     if (this.opts.probe) {
       tasks.push(s.send('Page.addScriptToEvaluateOnNewDocument', { source: `(${listenerProbe.toString()})(self,${JSON.stringify(this.probeName)})` }));
     }
@@ -526,7 +531,7 @@ export class PageDriver {
     if (ua && (ua !== this.userAgent || lang !== this.langSig)) {
       this.userAgent = ua;
       this.langSig = lang;
-      await this.s.send('Emulation.setUserAgentOverride', { userAgent: ua, acceptLanguage: lang });
+      await this.s.send('Emulation.setUserAgentOverride', { userAgent: ua, acceptLanguage: lang, userAgentMetadata: uaMetadata(ua, this.opts.browserVersion) });
     }
     await this.emulate(ctx.emulate ?? {});
     await this.allowDownloads(ctx.id);
@@ -553,7 +558,7 @@ export class PageDriver {
       e.geo
         ? Promise.all([
             s.send('Emulation.setGeolocationOverride', { latitude: e.geo.lat, longitude: e.geo.lon, accuracy: 50 }),
-            this.cdp.send('Browser.grantPermissions', { permissions: ['geolocation'], browserContextId: this.contextId }).catch(noop),
+            this.opts.shared ? undefined : this.cdp.send('Browser.grantPermissions', { permissions: ['geolocation'], browserContextId: this.contextId }).catch(noop),
           ])
         : s.send('Emulation.setGeolocationOverride', {}).catch(noop),
     ]);
@@ -566,7 +571,7 @@ export class PageDriver {
   /** Files the page saves land in a folder of this session instead of being refused. */
   private async allowDownloads(session: string): Promise<void> {
     const root = this.opts.downloadDir;
-    if (!root || this.downloadPath) return;
+    if (!root || this.downloadPath || this.opts.shared) return;
     const dir = join(root, session.replace(/[^\w.-]+/g, '_').slice(0, 64) || 'session');
     try {
       mkdirSync(dir, { recursive: true });
@@ -964,6 +969,7 @@ export class PageDriver {
    * refuses is never mistaken for one the site deleted.
    */
   async cookiesIn(ctx: SessionCtx): Promise<void> {
+    if (this.opts.shared) return; // the profile's own cookies are the truth; never copied into or out of the session
     const nowSec = Date.now() / 1000;
     const want = new Map<string, { sig: string; c: CookieData }>();
     for (const c of ctx.jar.all()) {
@@ -999,6 +1005,7 @@ export class PageDriver {
 
   /** Browser -> jar. Cookies the site removed are expired in the jar so they do not come back. */
   async cookiesOut(ctx: SessionCtx): Promise<void> {
+    if (this.opts.shared) return;
     const { map, list } = await this.readCookies();
     if (this.cookieState) {
       for (const [k, h] of this.cookieState) {
@@ -1041,6 +1048,7 @@ export class PageDriver {
    * now (the origin on screen) or when the page next lands there (all others), before any page script.
    */
   async storageIn(ctx: SessionCtx): Promise<void> {
+    if (this.opts.shared) return;
     const here = originOf(this.url);
     let seedsChanged = false;
     for (const origin of Object.keys(ctx.storage ?? {})) {
@@ -1062,6 +1070,7 @@ export class PageDriver {
 
   /** Browser -> session, for the origin on screen. */
   async storageOut(ctx: SessionCtx): Promise<void> {
+    if (this.opts.shared) return;
     let r: { origin: string; items: Record<string, string> | null } | undefined;
     try {
       r = await this.call('storage');
@@ -1112,3 +1121,38 @@ export function consistentUa(wanted: string | undefined, real: string): string {
   const v = /(?:Headless)?Chrome\/([\d.]+)/.exec(real)?.[1];
   return v ? wanted.replace(/Chrome\/[\d.]+/, 'Chrome/' + v) : wanted;
 }
+
+/**
+ * Client hints (`navigator.userAgentData`, Sec-CH-UA-*) that agree with a user agent string, so
+ * the header and the script-visible brands tell one story. Only Chrome-family UAs get them; for
+ * anything else the browser's own hints are left alone.
+ */
+export function uaMetadata(ua: string, fullVersion?: string): Record<string, unknown> | undefined {
+  const m = /Chrome\/([\d.]+)/.exec(ua);
+  if (!m) return undefined;
+  const full = fullVersion && fullVersion.split('.')[0] === m[1].split('.')[0] ? fullVersion : m[1];
+  const major = full.split('.')[0];
+  const android = /Android/.test(ua);
+  const platform = android ? 'Android' : /Windows/.test(ua) ? 'Windows' : /Macintosh|Mac OS X/.test(ua) ? 'macOS' : /CrOS/.test(ua) ? 'Chrome OS' : 'Linux';
+  const mobile = android && /Mobile/.test(ua);
+  const arm = /aarch64|arm/i.test(ua) || (platform === 'Linux' && process.arch === 'arm64');
+  const brands = (v: string) => [
+    { brand: 'Not=A?Brand', version: v === major ? '24' : '24.0.0.0' },
+    { brand: 'Chromium', version: v },
+    { brand: 'Google Chrome', version: v },
+  ];
+  return {
+    brands: brands(major),
+    fullVersionList: brands(full),
+    fullVersion: full,
+    platform,
+    platformVersion: platform === 'Linux' ? release() : platform === 'Android' ? (/Android ([\d.]+)/.exec(ua)?.[1] ?? '') : '',
+    architecture: mobile ? '' : arm ? 'arm' : 'x86',
+    model: '',
+    mobile,
+    bitness: mobile ? '' : '64',
+    wow64: false,
+  };
+}
+
+const release = (): string => osRelease().split('-')[0];

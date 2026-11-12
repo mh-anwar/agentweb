@@ -20,6 +20,11 @@ export interface LaunchOptions {
   noSandbox?: boolean;
   /** extra command-line switches */
   args?: string[];
+  /**
+   * With `endpoint`: open pages in the browser's DEFAULT context, i.e. the user's own profile
+   * (their cookies and logins), instead of a fresh isolated one. Opt-in only.
+   */
+  shared?: boolean;
   /** proxy for all contexts, e.g. http://host:3128 */
   proxy?: string;
   launchTimeoutMs?: number;
@@ -287,6 +292,8 @@ export function chromeArgs(userDataDir: string, opts: { images?: boolean; noSand
     '--force-color-profile=srgb',
     '--window-size=1280,800',
     `--disable-features=${DISABLED_FEATURES.join(',')}`,
+    // navigator.webdriver is false, like a browser nobody is automating
+    '--disable-blink-features=AutomationControlled',
     `--blink-settings=${blink.join(',')}`,
   ];
   if (opts.noSandbox) args.push('--no-sandbox');

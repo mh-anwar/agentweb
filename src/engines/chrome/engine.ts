@@ -37,6 +37,7 @@ export interface ChromeEngine extends Engine {
   browser(): Browser | undefined;
 }
 
+export const SHARED_NOTE = "this tab is in the user's own browser profile (AGENTWEB_CDP_SHARED): their logins are live here, so act only on what was asked";
 export const RESTORED = 'browser state restored from cookies; in-page state was reset';
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -61,6 +62,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     domQuietMs: opts.domQuietMs ?? 200,
     settleCapMs: opts.settleCapMs ?? 3000,
     defaultUserAgent: '',
+    shared: !!opts.shared && !!opts.endpoint,
     downloadDir: opts.downloadDir === false ? false : opts.downloadDir ?? join(process.env.AGENTWEB_HOME ?? join(homedir(), '.agentweb'), 'downloads'),
   };
   const n = { opens: 0, acts: 0, snapshots: 0, rehydrations: 0 };
@@ -71,6 +73,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         ...driverOpts,
         // a headless shell says so in its user agent, which gets it refused before it is even looked at
         defaultUserAgent: slot.browser.userAgent.replace('HeadlessChrome', 'Chrome'),
+        browserVersion: /Chrome\/([\d.]+)/.exec(slot.browser.product)?.[1],
       });
       await d.init();
       return d;
@@ -113,6 +116,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
   async function hydrate(d: PageDriver, ctx: SessionCtx): Promise<void> {
     await d.begin(ctx);
     await Promise.all([d.cookiesIn(ctx), d.storageIn(ctx)]);
+    if (driverOpts.shared) d.note(SHARED_NOTE);
   }
 
   /** A call arrived for a session whose page is gone: reopen where it was, from cookies and storage. */
