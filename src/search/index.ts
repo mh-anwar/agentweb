@@ -10,4 +10,4 @@ export type { Provider, Vertical } from './provider.ts';
 export { RateLimited } from './util.ts';
 export { bing, bingHtml, brave, ddg, ddgLite, mwmbl, seznam, yahoo } from './providers/web.ts';
 export { github, hackerNews, stackExchange, wikipedia } from './providers/vertical.ts';
-export { braveApi, searxng, serper, tavily } from './providers/keyed.ts';
+export { braveApi, googleCse, searxng, serper, tavily } from './providers/keyed.ts';

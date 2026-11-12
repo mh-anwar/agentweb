@@ -4,7 +4,7 @@
 import type { SearchResult } from '../../types.ts';
 import { AwError } from '../../types.ts';
 import { collect, env, type Provider } from '../provider.ts';
-import { enc, getJson, RateLimited, stripTags } from '../util.ts';
+import { bodyText, enc, getJson, RateLimited, stripTags } from '../util.ts';
 import type { Fetcher, Loaded } from '../../types.ts';
 
 function quota(l: Loaded, name: string): void {
@@ -116,6 +116,34 @@ export function serper(opts: { key?: string } = {}): Provider {
         body: JSON.stringify({ q, num: Math.min(Math.max(n, 10), 100) }),
       }, 'serper');
       return parseSerper(data, n);
+    },
+  };
+}
+
+// ───────────── Google Programmable Search JSON API (AGENTWEB_GOOGLE_CSE_KEY + AGENTWEB_GOOGLE_CSE_CX) ─────────────
+
+export function parseGoogleCse(data: any, n: number): SearchResult[] {
+  const rows = data?.items;
+  if (!Array.isArray(rows)) {
+    if (data?.error) throw new AwError('internal', `google-cse: ${data.error.message ?? data.error.status ?? 'error'}`);
+    return []; // a query with no hits has no `items`
+  }
+  return collect('google-cse', n, rows.map((r: any): [string, string, string] => [stripTags(r.title), r.link, stripTags(r.snippet)]));
+}
+
+export function googleCse(opts: { key?: string; cx?: string } = {}): Provider {
+  const key = () => opts.key ?? env('AGENTWEB_GOOGLE_CSE_KEY');
+  const cx = () => opts.cx ?? env('AGENTWEB_GOOGLE_CSE_CX');
+  return {
+    name: 'google-cse', kind: 'web', rank: 1, family: 'google-cse', siteOp: true,
+    available: () => !!key() && !!cx(),
+    async search(q, { n, fetch }) {
+      const l = await fetch({ url: `https://www.googleapis.com/customsearch/v1?key=${enc(key()!)}&cx=${enc(cx()!)}&q=${enc(q)}&num=${Math.min(n, 10)}`, headers: { accept: 'application/json' } });
+      // 403 is also how this API reports an exhausted daily quota
+      if (l.status === 403 && /quota|limit/i.test(String(bodyText(l) ?? ''))) throw new RateLimited('google-cse: daily quota exhausted (HTTP 403)', 3600);
+      quota(l, 'google-cse');
+      const { data } = await getJson(async () => l, { url: l.url }, 'google-cse');
+      return parseGoogleCse(data, n);
     },
   };
 }

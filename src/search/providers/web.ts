@@ -5,7 +5,7 @@ import { walk, type Doc, type LNode } from '../../tree.ts';
 import type { Loaded, SearchResult } from '../../types.ts';
 import { AwError } from '../../types.ts';
 import { collect, type Provider } from '../provider.ts';
-import { all, bodyText, checkStatus, cls, decodeEntities, enc, first, form, getDoc, getJson, hasClass, RateLimited, tagCls, txt } from '../util.ts';
+import { all, bodyText, WALL_COOLDOWN_SEC, checkStatus, cls, decodeEntities, enc, first, form, getDoc, getJson, hasClass, RateLimited, tagCls, txt } from '../util.ts';
 
 const HTML_HEADERS = { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8', 'accept-language': 'en-US,en;q=0.9' };
 
@@ -22,7 +22,7 @@ export function botWall(doc: Doc): string | undefined {
 
 function guard(l: Loaded & { doc: Doc }, name: string): Doc {
   const w = botWall(l.doc);
-  if (w) throw new RateLimited(`${name}: bot challenge (${w.slice(0, 60)})`);
+  if (w) throw new RateLimited(`${name}: bot challenge (${w.slice(0, 60)})`, WALL_COOLDOWN_SEC);
   return l.doc;
 }
 
@@ -47,7 +47,7 @@ export function ddg(): Provider {
         url: 'https://html.duckduckgo.com/html/', method: 'POST', body: form({ q, b: '', kl: 'wt-wt' }),
         contentType: 'application/x-www-form-urlencoded', referer: 'https://html.duckduckgo.com/', headers: HTML_HEADERS,
       }, 'ddg');
-      if (l.status === 202) throw new RateLimited('ddg: bot challenge (HTTP 202)');
+      if (l.status === 202) throw new RateLimited('ddg: bot challenge (HTTP 202)', WALL_COOLDOWN_SEC);
       const doc = guard(l, 'ddg');
       return parseDdgHtml(doc, n);
     },

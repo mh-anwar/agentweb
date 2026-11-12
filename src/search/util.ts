@@ -88,6 +88,9 @@ export const form = (o: Record<string, string>) =>
 
 // ───────────── fetching ─────────────
 
+/** How long a provider that walled us (429, anomaly page, captcha) is left alone, when it names no time of its own. */
+export const WALL_COOLDOWN_SEC = 15 * 60;
+
 /** A provider that is temporarily refusing us (429, captcha, quota): the orchestrator cools it down. */
 export class RateLimited extends AwError {
   retryAfterSec?: number;
@@ -110,7 +113,7 @@ function retryAfter(l: Loaded): number | undefined {
 export function checkStatus(l: Loaded, name: string): void {
   const s = l.status;
   if (s >= 200 && s < 300) return;
-  if (s === 429) throw new RateLimited(`${name}: rate-limited (HTTP 429)`, retryAfter(l));
+  if (s === 429) throw new RateLimited(`${name}: rate-limited (HTTP 429)`, retryAfter(l) ?? WALL_COOLDOWN_SEC);
   if (s === 401 || s === 403) throw new AwError('blocked', `${name}: refused (HTTP ${s})`);
   if (s >= 500) throw new AwError('net', `${name}: server error (HTTP ${s})`);
   throw new AwError('net', `${name}: unexpected HTTP ${s}`);

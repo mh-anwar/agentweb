@@ -136,6 +136,8 @@ export class RunCtx {
   images: { mime: string; data: string }[] = [];
   notes: string[] = [];
   fetches = 0;
+  /** what the last navigate() ended on if it was a bot wall (vendor or reason), else undefined */
+  wallSeen?: string;
   /** the page changed (or was never shown) since the agent last saw something of it */
   stale = true;
   /** the page as the agent last saw it, for "what changed" */
@@ -286,6 +288,7 @@ export class RunCtx {
       }
       this.fetches++;
       page = await this.toPage(loaded, tier);
+      this.wallSeen = method === 'GET' ? browserWall(loaded) ?? (loaded.escalate?.startsWith('bot wall') ? loaded.escalate.replace(/^bot wall \(?|\)$/g, '') : undefined) : undefined;
       const hollow = tier === 'ghost' && !loaded.escalate && hollowMain(page);
       // a real browser that is shown a bot wall: another browser engine may be let through
       // one retry only: a wall that two browser engines both get is not going to open for a third
@@ -543,12 +546,59 @@ async function readLog(rc: RunCtx, step: Step, kind: 'console' | 'network'): Pro
   rc.emit(clipTokens(res.value ?? '', rc.remaining));
 }
 
+/** Run the web search and build the results page (not yet shown). */
+async function webSearchPage(rc: RunCtx, query: string, q: string, n: number): Promise<Page> {
+  const { search, searchBlocks } = rc.rt.deps;
+  if (!search || !searchBlocks) throw new AwError('unsupported', 'web search is not configured');
+  const fetch: Fetcher = (req) => {
+    rc.fetches++;
+    return rc.rt.deps.engines.wire.open(rc.ctx, req);
+  };
+  const res = await search(query, { n, fetch });
+  const page: Page = {
+    url: 'search:' + query,
+    status: 200,
+    title: `Search: ${query}`,
+    tier: 'wire',
+    kind: 'html',
+    method: 'GET',
+    blocks: searchBlocks(res.results, q),
+    forms: [],
+    notes: [],
+    stats: { bytes: 0, ms: 0, hidden: 0, scripts: 0, words: 0, acts: res.results.length },
+  };
+  if (!res.results.length) page.notes.push('no results' + (res.failed.length ? ': ' + res.failed.map((f) => `${f.name} ${f.why}`).join('; ') : ''));
+  return page;
+}
+
+/** The query of a web-search results URL on a major engine (google, bing, duckduckgo), if this is one. */
+export function searchEngineQuery(u: URL): { engine: string; q: string } | undefined {
+  const h = u.hostname.replace(/^(www|html|lite)\./, '');
+  const q = u.searchParams.get('q')?.trim();
+  if (!q) return undefined;
+  if (/^google\.[a-z.]+$/.test(h) && u.pathname === '/search') return { engine: 'google', q };
+  if (h === 'bing.com' && u.pathname === '/search') return { engine: 'bing', q };
+  if (h === 'duckduckgo.com' && (u.pathname === '/' || u.pathname === '/html' || u.pathname === '/html/' || u.pathname === '/lite' || u.pathname === '/lite/')) return { engine: 'duckduckgo', q };
+  return undefined;
+}
+
 const VERBS: Record<string, VerbHandler> = {
   async open(rc, step) {
     const url = normalizeUrl(str(step.args[0]), rc.rec.page?.url);
     const u = new URL(url);
     rc.outflow(u.pathname + u.search + u.hash, u.origin);
     await rc.navigate({ url });
+    const eq = rc.wallSeen ? searchEngineQuery(u) : undefined;
+    if (eq) {
+      // a search engine is walling this address: answer with agentweb's own search instead, and say so
+      const wall = rc.wallSeen!;
+      const walled = rc.rec.page?.url;
+      const alt = await webSearchPage(rc, eq.q, eq.q, 8).catch(() => undefined);
+      if (!alt || !alt.blocks.length) throw new AwError('blocked', `${eq.engine} is walling this address (${wall})`, `use search('${eq.q.replace(/'/g, "\\'")}'): it queries other engines and keyed APIs`);
+      alt.notes.push(`${eq.engine} is walling this address (${wall}); these are search() results, not ${eq.engine}'s page`);
+      rc.setPage(alt);
+      if (walled && rc.rec.history[rc.rec.history.length - 1] === walled) rc.rec.history.pop();
+    }
   },
 
   async forward(rc) {
@@ -608,27 +658,7 @@ const VERBS: Record<string, VerbHandler> = {
       }
       query = `${q} site:${new URL(origin).host}`;
     }
-    const { search, searchBlocks } = rc.rt.deps;
-    if (!search || !searchBlocks) throw new AwError('unsupported', 'web search is not configured');
-    const fetch: Fetcher = (req) => {
-      rc.fetches++;
-      return rc.rt.deps.engines.wire.open(rc.ctx, req);
-    };
-    const res = await search(query, { n: typeof step.opts.n === 'number' ? step.opts.n : 8, fetch });
-    const page: Page = {
-      url: 'search:' + query,
-      status: 200,
-      title: `Search: ${query}`,
-      tier: 'wire',
-      kind: 'html',
-      method: 'GET',
-      blocks: searchBlocks(res.results, q),
-      forms: [],
-      notes: [],
-      stats: { bytes: 0, ms: 0, hidden: 0, scripts: 0, words: 0, acts: res.results.length },
-    };
-    if (!res.results.length) page.notes.push('no results' + (res.failed.length ? ': ' + res.failed.map((f) => `${f.name} ${f.why}`).join('; ') : ''));
-    rc.setPage(page);
+    rc.setPage(await webSearchPage(rc, query, q, typeof step.opts.n === 'number' ? step.opts.n : 8));
   },
 
   async view(rc, step) {
