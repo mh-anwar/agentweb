@@ -335,6 +335,9 @@ export class RunCtx {
           continue;
         }
       }
+      // the script engine was shown a wall too: a real browser is the next thing to try, not the place to stop
+      const ghostWall = tier === 'ghost' && method === 'GET' && !loaded.escalate ? browserWall(loaded) : undefined;
+      if (ghostWall) loaded.escalate = `bot wall (${ghostWall})`;
       const failed = !!page.shell || !!loaded.escalate || hollow;
       this.rt.deps.atlas?.observe({ type: 'load', origin: originOf(loaded.url), url: loaded.url, tier, ok: !failed, shell: !!page.shell, ms: loaded.ms });
       if (!failed) break;
@@ -356,6 +359,12 @@ export class RunCtx {
       }
       page.notes.push(tier === 'wire' && !(await this.nextTier('wire')) ? `${why}; no script engine is available (install Chrome or set AGENTWEB_CHROME)` : why);
       break;
+    }
+    if (this.wallSeen && method === 'GET' && !page.notes.some((n) => /refus|bot wall|blocked/i.test(n))) {
+      page.notes.push(
+        `this site refuses automated visitors from this address (${this.wallSeen}); every engine got the same answer. ` +
+          "It may open through another network (AGENTWEB_PROXY) or in the user's own browser (engine('mine')); search('...') can still find the information elsewhere",
+      );
     }
     if (before && before !== 'wire' && before !== tier) await this.engine(before).release(this.ctx.id).catch(() => {});
     if (tier !== 'wire' && method === 'GET' && /^https?:/.test(page.url) && (this.rt.ladder.includes(tier) || tried.size > 1)) (this.rec.tiers ??= {})[originOf(page.url)] = tier;

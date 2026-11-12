@@ -20,7 +20,7 @@ const CAPTCHA_WIDGET = /class="g-recaptcha|www\.google\.com\/recaptcha\/(?:api|e
 const HUMAN_CHECK = /verify (?:that )?you(?:'re| are) (?:a )?human|are you a (?:human|robot)|confirm you are not a robot|i(?:'m| am) not a robot|unusual traffic from your computer|automated (?:queries|requests|access)|please (?:complete|solve) the (?:security check|captcha)|security check to access|enable javascript and cookies to continue|bot (?:detection|protection|check)|access to this page has been denied|checking if the site connection is secure|ddos protection by/i;
 const JS_REQUIRED = /enable javascript|javascript is (?:disabled|required)|requires javascript|turn on javascript/i;
 
-const SUSPECT = /just a moment|attention required|please wait|checking (?:your browser|if the site)|_cf_chl|challenge-platform|cf-browser-verification|cf-error-details|turnstile|captcha|_px|perimeterx|press\s*(?:&amp;|&)\s*hold|edgesuite|ak_bmsc|bm-verify|_abck|incapsula|imperva|awswaf|aws-waf|recaptcha|hcaptcha|arkoselabs|geetest|human|robot|unusual traffic|automated (?:queries|requests|access)|security check|enable javascript|javascript is|requires javascript|turn on javascript|bot (?:detection|protection|check)|has been denied|ddos protection|dd=\{|access denied/i;
+const SUSPECT = /errors\.edgesuite\.net|access denied|just a moment|attention required|please wait|checking (?:your browser|if the site)|_cf_chl|challenge-platform|cf-browser-verification|cf-error-details|turnstile|captcha|_px|perimeterx|press\s*(?:&amp;|&)\s*hold|edgesuite|ak_bmsc|bm-verify|_abck|incapsula|imperva|awswaf|aws-waf|recaptcha|hcaptcha|arkoselabs|geetest|human|robot|unusual traffic|automated (?:queries|requests|access)|security check|enable javascript|javascript is|requires javascript|turn on javascript|bot (?:detection|protection|check)|has been denied|ddos protection|dd=\{|access denied/i;
 
 const visibleLength = (html: string) =>
   html.replace(/<(script|style|noscript)\b[^]*?<\/\1>/gi, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().length;
@@ -40,7 +40,8 @@ export function detectBotWall(r: WallInput): string | undefined {
   if (h['x-px-blocked'] || (status === 403 && h['x-px'])) return 'perimeterx';
 
   const challengeStatus = status === 403 || status === 429 || status === 503 || status === 401;
-  if ((server.includes('akamaighost') || h['akamai-grn'] || h['x-akamai-transformed']) && status === 403) return 'akamai';
+  // Akamai's refusal often carries no server header at all: its bot-manager cookies or its error page give it away
+  if ((server.includes('akamaighost') || h['akamai-grn'] || h['x-akamai-transformed'] || /(?:^|[\s,;])(?:bm_s|bm_sz|bm_so|_abck|ak_bmsc)=/.test(h['set-cookie'] ?? '')) && status === 403) return 'akamai';
   if ((h['x-iinfo'] || /imperva|incapsula/i.test(h['x-cdn'] ?? '')) && challengeStatus) return 'imperva';
   if (h['x-amzn-waf-action'] === 'captcha' || h['x-amzn-waf-action'] === 'challenge') return 'aws waf';
 

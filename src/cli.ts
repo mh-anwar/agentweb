@@ -21,6 +21,9 @@ interface Flags {
   [k: string]: string | boolean | string[];
 }
 
+/** options that never take a value: `agentweb run --stats "program"` must not read the program as the value of --stats */
+const SWITCHES = new Set(['json', 'stats', 'no-chrome', 'no-ghost', 'no-cache', 'dry-run', 'remove', 'help', 'version', 'schedules', 'on-change', 'verbose']);
+
 function parseArgs(argv: string[]): Flags {
   const f: Flags = { _: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -32,7 +35,7 @@ function parseArgs(argv: string[]): Flags {
     if (a.startsWith('--')) {
       const eq = a.indexOf('=');
       if (eq > 0) f[a.slice(2, eq)] = a.slice(eq + 1);
-      else if (i + 1 < argv.length && !argv[i + 1].startsWith('-')) f[a.slice(2)] = argv[++i];
+      else if (!SWITCHES.has(a.slice(2)) && i + 1 < argv.length && !argv[i + 1].startsWith('-')) f[a.slice(2)] = argv[++i];
       else f[a.slice(2)] = true;
     } else if (a.length === 2 && a[0] === '-') {
       const k = { s: 'session', b: 'budget', p: 'port', h: 'help', v: 'version' }[a[1]] ?? a[1];

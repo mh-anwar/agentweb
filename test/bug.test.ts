@@ -152,3 +152,10 @@ test('a control answers to its test id: as plain text and as testid=', async () 
     await new Promise<void>((r) => server.close(() => r()));
   }
 });
+
+test("Akamai's bare refusal page is recognised as a bot wall; an ordinary 403 is not", async () => {
+  const { detectBotWall } = await import('../src/net/botwall.ts');
+  const page = '<HTML><HEAD><TITLE>Access Denied</TITLE></HEAD><BODY><H1>Access Denied</H1>You don\'t have permission to access "http://www.shop.example/search?" on this server.<P>Reference&#32;&#35;18&#46;8eca2c17<P>https&#58;&#47;&#47;errors&#46;edgesuite&#46;net&#47;18&#46;8eca2c17</BODY></HTML>';
+  assert.equal(detectBotWall({ status: 403, headers: { 'content-type': 'text/html', 'set-cookie': 'bm_s=YAAQabc; Domain=.shop.example; Path=/' }, text: page, mime: 'text/html' } as any), 'akamai');
+  assert.equal(detectBotWall({ status: 403, headers: { 'content-type': 'text/html' }, text: '<html><title>Forbidden</title><body><h1>Members only</h1><p>Sign in to see this page.</p></body></html>', mime: 'text/html' } as any), undefined);
+});
