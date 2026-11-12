@@ -18,7 +18,7 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 ### Tabs and sessions
 | Capability | Competitors | Status |
 |:--|:--|:--|
-| list/switch/close tabs, new tab | PW `browser_tabs`, AB tab_*, CDT pages, browser-use | PARTIAL: one page per session by design; `session` parameter = independent tab (own cookies), `fork` copies a session; popups/`target=_blank` are followed in place (`pool.ts`, `page.ts windowOpen`). Shared-cookie multi-tab in one session: MISSING (medium, by design, see remaining) |
+| list/switch/close tabs, new tab | PW `browser_tabs`, AB tab_*, CDT pages, browser-use, Claude in Chrome | FIXED: `tabs()`, `tab('new', url)`, `tab(N)`, `tab('close')` (`runtime.ts`, `session.ts`): tabs of one session share its cookies and storage, each keeps its page, history and live browser page. Also `session` = independent tab with its own cookies, `fork` copies a session; popups are followed in place |
 | isolated vs persistent profile | PW `--isolated/--user-data-dir` | PARTIAL: every session is isolated; persistence is the session store + `profile()` |
 
 ### Input
@@ -92,7 +92,7 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 |:--|:--|:--|
 | attach to a running browser over CDP | PW `--cdp-endpoint`, AB, CDT `--browserUrl` | PARTIAL: `AGENTWEB_CDP` works (`engine.ts`, `launch.ts`) but each session gets a new isolated context, so the user's own logged-in tabs and cookies are not visible. Using the default context: MISSING (medium) |
 | CDP headers/timeouts | PW | MISSING (low) |
-| browser extension mode | PW `--extension` | N/A in design; the same need is served by `profile()` (import a storageState) |
+| browser extension mode (act in the user's own signed-in browser) | Claude in Chrome, PW `--extension`, Browser MCP | FIXED: `extension/` (Manifest V3) + `src/bridge/hub.ts`; `engine('mine')` per session or `AGENTWEB_EXTENSION=1`; agent tabs in a tab group, tabs shared by the user, "Stop the agent" |
 | custom executable, headless, no-sandbox | PW | HAS (`AGENTWEB_CHROME`, `AGENTWEB_NO_SANDBOX`); headed mode MISSING (low) |
 | proxy | PW `--proxy-server`, `--proxy-bypass` | FIXED: `AGENTWEB_PROXY` (HTTP tiers and Chrome); SOCKS is browser-only (HTTP tiers are pinned to Chrome, `search` still goes direct); proxy credentials in the URL work for the HTTP tiers only; bypass list MISSING (low) |
 | ignore HTTPS errors | PW `--ignore-https-errors` | FIXED for the browser: `AGENTWEB_IGNORE_HTTPS_ERRORS=1` |
@@ -119,7 +119,7 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 7. **Screenshot options and PDF** - FIXED.
 8. **Proxy** and **ignore HTTPS errors** - FIXED (see limits above).
 9. forward, double/right click, drag and drop - FIXED.
-10. Attach to the user's own running Chrome with its logins (default context) - REMAINING (needs the pool to adopt the default browser context and not dispose it; privacy implications: agent would see all the user's cookies, so it deserves an explicit opt-in design).
-11. Shared-cookie multiple tabs in one session - REMAINING (breaks the "one page per session, session = small JSON record" scaling design; sessions plus `profile()` cover most flows).
+10. Attach to the user's own running Chrome with its logins - FIXED twice over: `AGENTWEB_CDP_SHARED=1` (a debugging port) and the browser extension with `engine('mine')` (no flags, no restart).
+11. Shared-cookie multiple tabs in one session - FIXED (`tabs`, `tab`); the record stays plain data: parked tabs are page models, cookies stay the session's.
 12. Request mocking/routing, extra headers, throttling, init scripts, HAR/trace/video, Lighthouse, heap snapshots - REMAINING (low; developer tools, not browsing).
 13. Drop files/data onto an element, coordinate mouse, headed mode, CDP headers - REMAINING (low).

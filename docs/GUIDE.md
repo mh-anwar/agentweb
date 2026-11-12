@@ -9,19 +9,25 @@ Needs Node 22.6 or later. Chromium is optional: without it, pages that need Java
 from the data embedded in the HTML where possible, and the tool says what it could not do.
 
 ```bash
-git clone <this repo> agentweb && cd agentweb
-npm install
-npm run build            # → dist/agentweb.mjs, a single file
-node dist/agentweb.mjs doctor
+npx -y github:mh-anwar/agentweb setup
 ```
 
-**Claude Code**
+`setup` finds the coding agents on the machine by their config folders and adds an MCP server named
+`agentweb` to each: Claude Code, Claude Desktop, Codex, Cursor, VS Code (Copilot), Windsurf, Gemini CLI,
+opencode and GitHub Copilot CLI. It prints what it changed and what each agent needs to pick it up.
 
-```bash
-claude mcp add agentweb -- node /path/to/agentweb/dist/agentweb.mjs mcp
-```
+- Each config file is parsed, only the `agentweb` entry is added or replaced, and a backup
+  (`<file>.agentweb-backup`) is written before the first change. A file that does not parse (comments,
+  a syntax error) is left alone and the entry to add by hand is printed.
+- Run from `npx`, it copies itself to `~/.agentweb/app` first, so the registered path stays valid.
+- It writes a launcher, `~/.agentweb/bin/agentweb`, for agents without MCP and for shell use.
+- `--agent cursor,codex` limits it (`--agent all` writes every known config even if the agent was not
+  found), `--dry-run` shows what would change, `agentweb uninstall` removes the entries.
 
-**Claude Desktop, Cursor, Windsurf, any MCP client** (`mcpServers` in the client's config):
+From a checkout: `git clone … && cd agentweb && npm install && node dist/agentweb.mjs setup`
+(`npm install` builds `dist/`). `agentweb doctor` says which engines work on the machine.
+
+**Any other MCP client** (`mcpServers` in the client's config):
 
 ```json
 { "mcpServers": { "agentweb": { "command": "node", "args": ["/path/to/agentweb/dist/agentweb.mjs", "mcp"] } } }
@@ -31,6 +37,22 @@ claude mcp add agentweb -- node /path/to/agentweb/dist/agentweb.mjs mcp
 prints the tool definition, and `agentweb serve` takes calls over HTTP (below).
 
 **From a shell:** `agentweb run "open('news.ycombinator.com'); find('rust')"`.
+
+### Reporting a bug
+
+An agent that finds agentweb itself getting something wrong (a control missing from the view, a click
+that does nothing, a wrong result) reports it in one step:
+
+- in a program: `bug('expected the dialog to open | click reported no visible change')`. Alone in a
+  call it reports the previous call; with other steps, that call.
+- from a shell: `agentweb bug "<site> | <program> | <expected> | <got>" [--engine chrome|ghost|wire]`
+
+Saved: the program as written, the engine, the status lines agentweb printed (errors and notes) and
+the agentweb version. Never the page. Values typed into password, token, card and similar fields are
+replaced, as are e-mail addresses, long random strings and URL query values. Reports go to
+`bugs.jsonl` next to the usage log (`AGENTWEB_USAGE_LOG`), or `~/.agentweb/bugs.jsonl`;
+`agentweb bugs [--days N] [--json]` lists them. `agentweb report "<site> | <task> | <why>"` is for the
+other case: the agent gave up on agentweb for a task and used another browser.
 
 ## The language
 
@@ -48,6 +70,9 @@ prints the tool definition, and `agentweb serve` takes calls over HTTP (below).
 | `js('code')` · `console()` · `network('words', failed=1, body=1)` | run JavaScript in the page; what the page logged and requested |
 | `click(t, double=1)` · `click(t, button='right')` · `drag(a, b)` · `forward()` · `dialog('dismiss')` | more input; how alert/confirm boxes are answered |
 | `emulate('iPhone 15')` · `emulate(390, 844, locale='fr-FR', tz='Europe/Paris', geo='48.8,2.3', dark=1)` | device, viewport, locale, timezone, location, dark mode; `emulate()` resets |
+| `tabs()` · `tab('new', url)` · `tab(2)` · `tab('close')` · `tab('close', 2)` | several pages open in one session; they share its cookies, each keeps its own page, history and live state (at most 8) |
+| `engine('mine')` · `engine('auto')` | work in the user's own browser with their sign-ins (needs the browser extension, below); back to isolated browsing |
+| `bug('expected \| what happened')` | report a bug in agentweb itself (see Install) |
 
 In the view, `[label]12` is clickable, `{label="value"}13` is fillable, `{label: *A|B}14` is a select and
 `{[x] label}15` is a checkbox. Numbers stay valid for the whole session. Calling again on the same page shows only
@@ -171,6 +196,32 @@ This serves MCP (Streamable HTTP) at `/mcp` and REST at `POST /v1/run` with
 | `AGENTWEB_CDP_SHARED=1` | with `AGENTWEB_CDP`: open pages in that browser's own profile, see below |
 | `AGENTWEB_GOOGLE_CSE_KEY` + `AGENTWEB_GOOGLE_CSE_CX` | a Google Programmable Search API key and engine id: `search()` then uses Google's results through the official API |
 | `AGENTWEB_STORE`, `AGENTWEB_BUDGET`, `AGENTWEB_USER_AGENT` | store URL, default budget, user agent |
+
+## Your own browser (the extension)
+
+The agentweb browser extension lets an agent work in the Chrome you already use, with your sign-ins,
+the way Claude for Chrome or Playwright's extension bridge do. Nothing is copied out of the browser:
+no cookies, no storage.
+
+1. `agentweb extension` prints the folder. In `chrome://extensions` switch on Developer mode, press
+   "Load unpacked" and choose it. (Any Chromium browser from version 125: Chrome, Edge, Brave, Arc.)
+2. The agent starts a task with `engine('mine')`. That session's browser pages now open as tabs in
+   your browser, in a tab group named `agentweb`. Other sessions, and this one after `engine('auto')`,
+   stay in agentweb's own isolated browser. `AGENTWEB_EXTENSION=1` sends every session to your browser.
+
+What the agent can touch: tabs it opened, and tabs you share with the toolbar button ("Share this tab
+with the agent"). The toolbar icon shows how many tabs an agent is using; "Stop the agent" takes them
+all back at once and keeps the extension off until you switch it on again. Chrome shows its
+"is debugging this browser" bar while a tab is in use; that is Chrome's own notice.
+
+How it connects: the extension dials out to a small hub on `127.0.0.1:4466`
+(`AGENTWEB_EXTENSION_PORT`, and the same port in the extension's popup) that the first agentweb
+process to need it starts; other agentweb processes join it. The hub accepts DevTools connections only
+with a token kept in `~/.agentweb/bridge.json` (readable by you alone) and refuses any connection that
+carries a web page's `Origin`, so a site cannot reach it. `agentweb bridge` runs the hub by itself and
+prints who is connected. The guard still applies: `AGENTWEB_ALLOW` / `AGENTWEB_DENY`, confirmations
+before purchases and transfers, and the prompt-injection flags. An agent acting in your browser acts
+as you, so keep the allow list as narrow as the work needs.
 
 ## Bot walls and Google
 
