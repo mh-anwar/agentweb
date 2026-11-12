@@ -51,6 +51,7 @@ const ALIAS: Record<string, string> = {
   dragto: 'drag', draganddrop: 'drag', dragndrop: 'drag',
   dblclick: 'click', doubleclick: 'click', rightclick: 'click', contextclick: 'click', contextmenu: 'click',
   pdf: 'shot', savepdf: 'shot', screencast: 'shot',
+  takeover: 'handoff', askuser: 'handoff', askhuman: 'handoff', human: 'handoff', handover: 'handoff',
   reportbug: 'bug', bugreport: 'bug', man: 'help', docs: 'help', usage: 'help', verbs: 'help', commands: 'help',
   listtabs: 'tabs', tablist: 'tabs', pages: 'tabs', listpages: 'tabs', switchtab: 'tab', selecttab: 'tab', selectpage: 'tab', switchto: 'tab', newpage: 'newtab', opentab: 'newtab', createtab: 'newtab',
   mock: 'route', mockroute: 'route', unroute: 'route', intercept: 'route', mockrequest: 'route', blockrequest: 'route', listroutes: 'routes',
@@ -66,7 +67,7 @@ export const VERBS = new Set([
   'view', 'read', 'find', 'links', 'outline', 'shot',
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
   'expect', 'engine', 'confirm', 'js', 'console', 'network', 'dialog', 'emulate', 'forward', 'drag',
-  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab', 'bug', 'help',
+  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab', 'bug', 'help', 'handoff',
   'route', 'routes', 'headers', 'auth', 'init', 'drop',
 ]);
 

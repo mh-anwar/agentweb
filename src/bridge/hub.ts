@@ -211,6 +211,14 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
         await extCall('detachTab', { tabId }).catch(() => {});
         return {};
       }
+      case 'Agentweb.handoff':
+      case 'Agentweb.handoffDone': {
+        // the agent needs the person (a sign-in, a captcha): the extension brings the tab forward and says why
+        const hit = [...tabs].find(([, t]) => t.targetId === p?.targetId && t.client === c);
+        if (!hit) throw new Error('No target with given id');
+        await extCall(method === 'Agentweb.handoff' ? 'handoff' : 'handoffDone', { tabId: hit[0], message: String(p?.message ?? '') }, 10_000);
+        return {};
+      }
       default:
         throw new Error(`'${method}' is not available through the browser extension`);
     }

@@ -87,7 +87,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
   const budget = (ctx: SessionCtx) => Math.max(1000, ctx.timeoutMs > 0 ? ctx.timeoutMs : 30_000);
 
   /** Run a call body, turning an abort signal into an error and a dead page into a disposed slot. */
-  async function serve<R>(ctx: SessionCtx, body: (slot: Slot<PageDriver>, fresh: boolean, deadline: number) => Promise<R>): Promise<R> {
+  async function serve<R>(ctx: SessionCtx, body: (slot: Slot<PageDriver>, fresh: boolean, deadline: number) => Promise<R>, adopt?: string): Promise<R> {
     if (ctx.signal?.aborted) throw new AwError('timeout', 'the call was cancelled');
     const total = budget(ctx);
     return pool.use(ctx.id, total, async (slot, fresh) => {
@@ -110,7 +110,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         d.setActing(false);
         if (onAbort) ctx.signal!.removeEventListener('abort', onAbort);
       }
-    });
+    }, adopt);
   }
 
   /** Bring a new context up to the session: cookies in, localStorage queued for its origins. */
@@ -511,6 +511,30 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
       case 'dialog':
         d.dialogAnswer = { accept: action.accept, text: action.text ?? '' };
         return;
+      case 'handoff': {
+        // Only the extension can bring the tab forward and notify; on a plain debugging port the person is told by the caller.
+        await slot.browser.cdp.send('Agentweb.handoff', { targetId: slot.targetId, message: action.message }, { timeoutMs: 8000 }).catch(() => {});
+        const sig = () => d.run<string>('location.href+"|"+document.title+"|"+(document.body?document.body.innerText.length:0)', { timeoutMs: 3000 }).catch(() => '');
+        const before = await sig();
+        const end = Math.min(deadline - 2500, Date.now() + action.waitMs);
+        let changed = false;
+        let last = before;
+        let stableAt = 0;
+        while (Date.now() < end) {
+          await sleep(400);
+          const now = await sig();
+          if (now && now !== before) changed = true;
+          if (changed) {
+            // wait for the page to stop moving: the person may still be mid-way (a redirect chain after signing in)
+            if (now !== last) stableAt = Date.now();
+            else if (Date.now() - stableAt > 1500) break;
+          }
+          last = now;
+        }
+        if (changed) await slot.browser.cdp.send('Agentweb.handoffDone', { targetId: slot.targetId }, { timeoutMs: 3000 }).catch(() => {});
+        out.value = changed ? 'changed' : 'unchanged';
+        return;
+      }
       case 'forward':
         slot.committed = true;
         await forward(d);
@@ -676,6 +700,39 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
 
     live(sessionId: string): boolean {
       return pool.live(sessionId);
+    },
+
+    async targets(): Promise<{ id: string; title: string; url: string }[]> {
+      if (!driverOpts.shared) return [];
+      const b = await pool.browserNow();
+      const r = await b.cdp.send<{ targetInfos: { targetId: string; type: string; title: string; url: string }[] }>('Target.getTargets', undefined, { timeoutMs: 10_000 });
+      const mine = new Set(pool.targetIds());
+      return (r.targetInfos ?? []).filter((t) => t.type === 'page' && !mine.has(t.targetId) && /^https?:/i.test(t.url)).map((t) => ({ id: t.targetId, title: t.title, url: t.url }));
+    },
+
+    async adopt(ctx: SessionCtx, targetId: string): Promise<Loaded> {
+      const t0 = performance.now();
+      if (!driverOpts.shared) throw new AwError('unsupported', "taking over a tab needs the user's own browser", "engine('mine') first");
+      return serve(
+        ctx,
+        async (slot, fresh, deadline) => {
+          const d = slot.data;
+          if (!fresh) throw new AwError('bad_request', 'this tab already has a page');
+          await hydrate(d, ctx);
+          const url = String(await d.run<string>('location.href', { timeoutMs: 5000 }).catch(() => ''));
+          // the same rule as opening it: a page the guard would not open is not taken over either
+          const v = await ctx.guard.checkUrl(url, 'open');
+          if (!v.ok) {
+            pool.kill(slot, 'policy');
+            throw new AwError('policy', v.reason);
+          }
+          d.url = url;
+          d.note("this is a tab the user shared: it is theirs, and it stays open when you are done");
+          await d.settle({ deadline: settleBy(deadline) });
+          return finish(d, ctx, t0, d.bytes, deadline);
+        },
+        targetId,
+      );
     },
 
     async release(sessionId: string): Promise<void> {

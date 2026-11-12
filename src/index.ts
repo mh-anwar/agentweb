@@ -11,7 +11,7 @@ import { createGuard, isPublicAddress, loadPolicy, scoreInjection, type Policy }
 import { openStore } from './store/index.ts';
 import { mineEmbedded, readBody } from './readers/index.ts';
 import { search, toBlocks } from './search/index.ts';
-import type { Atlas, Engine, Store, Tier } from './types.ts';
+import { AwError, type Atlas, type Engine, type Store, type Tier } from './types.ts';
 
 export interface AgentwebConfig extends RuntimeOptions {
   /** store URL (memory:, file:/path, sqlite:/path, redis://…, tiered+…) or a Store. Default: sqlite in ~/.agentweb */
@@ -80,6 +80,8 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
     cache: config.cache === false ? undefined : store,
   });
   const engines: Partial<Record<Tier, Engine>> & { wire: Engine } = { wire };
+  /** every session's browser pages are in the user's own browser (the extension, or a shared debugging port) */
+  let userBrowser = false;
 
   const want = (v: boolean | 'auto' | undefined, envName: string) => (v === undefined ? env[envName] !== '0' && env[envName] !== 'off' : v !== false);
   if (want(config.ghost, 'AGENTWEB_GHOST')) {
@@ -100,6 +102,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       // the bridge. AGENTWEB_EXTENSION=1 sends every session there; otherwise a session asks with engine('mine').
       const viaExtension = config.extension ?? /^(1|true|yes|on)$/i.test(env.AGENTWEB_EXTENSION ?? '');
       if (viaExtension) void import('./bridge/hub.ts').then((m) => m.bridgeEndpoint(env)).catch(() => {}); // listen now, so the extension is connected by the first call
+      userBrowser = viaExtension || (!!(config.cdp ?? env.AGENTWEB_CDP) && (config.cdpShared ?? /^(1|true|yes|on)$/i.test(env.AGENTWEB_CDP_SHARED ?? '')));
       const common = {
         proxy: proxy ? proxy.replace(/\/\/[^@/]*@/, '//') : undefined,
         viewport: config.viewport ?? (vp ? { width: Number(vp[1]), height: Number(vp[2]) } : undefined),
@@ -121,6 +124,13 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
         act: (ctx, action) => pick(ctx).act!(ctx, action),
         snapshot: (ctx) => pick(ctx).snapshot!(ctx),
         live: (id) => !!isolated.live?.(id) || !!own?.live?.(id),
+        // only the user's own browser has tabs to take over
+        targets: async (ctx) => (viaExtension || ctx.own ? (await pick(ctx).targets?.(ctx)) ?? [] : []),
+        adopt: (ctx, targetId) => {
+          const e = pick(ctx);
+          if (!e.adopt) throw new AwError('unsupported', 'this engine cannot take over a tab');
+          return e.adopt(ctx, targetId);
+        },
         release: async (id) => {
           await Promise.all([isolated.release(id), own?.release(id)]);
         },
@@ -179,6 +189,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       sessionTtlSec: config.sessionTtlSec,
       secretNames: policy.secrets.map((x) => x.name),
       browser,
+      userBrowser,
       // drop() reads files from the downloads folder, AGENTWEB_FILES (a path list) and the working directory
       fileRoots: [
         env.AGENTWEB_DOWNLOADS && !/^(off|0)$/.test(env.AGENTWEB_DOWNLOADS) ? env.AGENTWEB_DOWNLOADS : join(env.AGENTWEB_HOME ?? join(homedir(), '.agentweb'), 'downloads'),

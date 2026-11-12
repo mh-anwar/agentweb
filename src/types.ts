@@ -240,6 +240,8 @@ export type Action =
   | { do: 'js'; code: string }
   | { do: 'log'; kind: 'console' | 'network'; match?: string; failed?: boolean; body?: boolean; n?: number }
   | { do: 'dialog'; accept: boolean; text?: string }
+  /** ask the person at the browser to do something in this tab, and wait until the page changes (or waitMs passes) */
+  | { do: 'handoff'; message: string; waitMs: number }
   | { do: 'shot'; full?: boolean; n?: number; pdf?: boolean; save?: boolean }
   | { do: 'upload'; n: number; files: { name: string; mime: string; data: string }[] }
   | { do: 'drop'; n: number; files: { name: string; mime: string; data: string }[] }
@@ -302,6 +304,10 @@ export interface Engine {
   snapshot?(ctx: SessionCtx): Promise<Loaded>;
   /** does a live page exist for this session right now? */
   live?(sessionId: string): boolean;
+  /** tabs of the user's own browser this engine may take over (those they shared; all of them on a shared debugging port) */
+  targets?(ctx: SessionCtx): Promise<{ id: string; title: string; url: string }[]>;
+  /** take over one of those tabs as this session's page, as it is, without loading anything */
+  adopt?(ctx: SessionCtx, targetId: string): Promise<Loaded>;
   /** drop live resources for the session; the session record is unaffected */
   release(sessionId: string): Promise<void>;
   close(): Promise<void>;

@@ -89,6 +89,8 @@ export interface RuntimeOptions {
   secretNames?: string[];
   /** the real browser automatic escalation ends at (default chrome) */
   browser?: BrowserTier;
+  /** browser pages of every session open in the user's own browser, where a person can see and use them */
+  userBrowser?: boolean;
   /** folders drop() may read files from, besides the working directory */
   fileRoots?: string[];
 }
@@ -1303,11 +1305,52 @@ VERBS.bug = async (rc, step) => {
 // Tabs: several pages kept open in one session, sharing its cookies and storage. tabs() lists them,
 // tab('new', url) opens one, tab(2) goes to one, tab('close') closes the current one.
 const tabLine = (n: number, page: Page | undefined, cur: boolean) => `${cur ? '*' : ' '} tab ${n}: ${page ? `${page.title || '(untitled)'} - ${page.url}` : '(empty)'}`;
+/** Tabs of the user's own browser that this session may take over (they shared them from the extension). */
+async function sharedTabs(rc: RunCtx): Promise<{ id: string; title: string; url: string }[]> {
+  const eng = rc.rt.deps.engines.chrome;
+  if (!eng?.targets) return [];
+  try {
+    return await eng.targets(rc.ctx);
+  } catch {
+    return [];
+  }
+}
+
 VERBS.tabs = async (rc) => {
   const rec = rc.rec;
   const cur = rec.tab ?? 1;
   const all = [{ n: cur, page: rec.page }, ...(rec.tabs ?? [])].sort((a, b) => a.n - b.n);
-  rc.emit(all.map((t) => tabLine(t.n, t.page, t.n === cur)).join('\n') + "\n(tab(N) goes to one, tab('new', 'url') opens one, tab('close') closes this one)");
+  const lines = all.map((t) => tabLine(t.n, t.page, t.n === cur));
+  const shared = await sharedTabs(rc);
+  if (shared.length) lines.push("shared by the user from their browser (tab('shared') takes the first, tab('shared', 'words') picks one):", ...shared.slice(0, 8).map((t) => `  ${t.title || '(untitled)'} - ${t.url}`));
+  rc.emit(lines.join('\n') + "\n(tab(N) goes to one, tab('new', 'url') opens one, tab('close') closes this one)");
+};
+
+// handoff('Please sign in'): something only the person can do (a sign-in, a captcha, a 2-factor prompt). In their
+// own browser the tab comes to the front with a notification; the step waits until the page changes, then shows it.
+VERBS.handoff = async (rc, step) => {
+  const message = step.args.length ? str(step.args[0]) : 'The agent needs you in this tab';
+  const p = rc.page;
+  const inTheirs = !!rc.rec.own || !!rc.rt.opts.userBrowser;
+  if (!inTheirs || !isBrowser(p.tier) || !rc.isLive()) {
+    throw new AwError(
+      'unsupported',
+      'nobody can see this page: it is in a browser without a window',
+      "engine('mine') opens it in the user's own browser (they need the agentweb extension); then handoff('what to do') asks them. Without it, tell the user what is needed and stop",
+    );
+  }
+  await rc.ensureLive();
+  const total = Math.min(600, Math.max(5, Number(step.opts.wait ?? step.opts.timeout) || 90)) * 1000;
+  const end = Date.now() + total;
+  let state = 'unchanged';
+  // one engine call may not outlast the call timeout: wait in slices
+  while (Date.now() < end && !rc.ctx.signal?.aborted) {
+    const slice = Math.min(end - Date.now(), Math.max(3000, (rc.ctx.timeoutMs || 30_000) - 6000));
+    const loaded = await rc.live({ do: 'handoff', message, waitMs: slice });
+    state = loaded.value ?? 'unchanged';
+    if (state === 'changed') break;
+  }
+  rc.note(state === 'changed' ? `the user was asked: "${message}"; the page changed, here it is now` : `the user was asked: "${message}"; nothing changed in ${Math.round(total / 1000)} s. Call handoff again to keep waiting, or tell the user`);
 };
 VERBS.tab = async (rc, step) => {
   const rec = rc.rec;
@@ -1322,6 +1365,34 @@ VERBS.tab = async (rc, step) => {
     const url = step.args.length > 1 ? str(step.args[1]) : '';
     rc.note(`tab ${n} (new); tab(${cur}) goes back`);
     if (url) await rc.verb('open', [url]);
+    return;
+  }
+  if (word === 'shared' || word === 'adopt' || word === 'theirs') {
+    const eng = rc.rt.deps.engines.chrome;
+    if (!eng?.adopt || !(rc.rec.own || rc.rt.opts.userBrowser)) throw new AwError('unsupported', "taking over a tab the user shared needs their own browser", "engine('mine') first; the user shares a tab from the agentweb extension's toolbar button");
+    const shared = await sharedTabs(rc);
+    const want = step.args.length > 1 ? lc(str(step.args[1])) : '';
+    const pick = want ? shared.find((t) => want.split(/\s+/).every((w) => (t.title + ' ' + t.url).toLowerCase().includes(w))) : shared[0];
+    if (!pick) throw new AwError('bad_request', shared.length ? `no shared tab matches '${want}'` : 'the user has not shared a tab', shared.length ? 'shared: ' + shared.map((t) => t.title || t.url).join(' · ') : "ask them to press 'Share this tab with the agent' in the agentweb extension, then try again");
+    if (known.length >= MAX_TABS) throw new AwError('bad_request', `a session keeps at most ${MAX_TABS} tabs`, "close one with tab('close', N)");
+    const v = await rc.guard.checkStep({ verb: 'open', origin: rec.page ? originOf(rec.page.url) : undefined, dest: pick.url, method: 'GET' });
+    if (!v.ok) throw new AwError('policy', v.reason);
+    const n = Math.max(...known) + 1;
+    const hadPage = !!rec.page;
+    if (hadPage) rc.switchTab(n);
+    try {
+      const loaded = await eng.adopt(rc.ctx, pick.id);
+      rc.fetches++;
+      rc.setPage(await rc.toPage(loaded, 'chrome'), { push: false });
+    } catch (e) {
+      if (hadPage) {
+        rc.switchTab(cur);
+        rec.tabs = (rec.tabs ?? []).filter((t) => t.n !== n);
+        if (!rec.tabs.length) rec.tabs = undefined;
+      }
+      throw e;
+    }
+    rc.note(`tab ${rec.tab ?? 1}: the user's own tab; tab('close') gives it back without closing it`);
     return;
   }
   if (word === 'close') {
@@ -1412,6 +1483,7 @@ export class RuntimeImpl implements Runtime {
       emulate: o.emulate,
       fileRoots: o.fileRoots,
       browser: (this.ladder[2] as BrowserTier) ?? 'chrome',
+      userBrowser: !!o.userBrowser,
     };
   }
 
