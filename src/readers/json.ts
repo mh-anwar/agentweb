@@ -759,7 +759,37 @@ export class JsonWriter {
         return inlineVal(v, this.base, c.prose >= c.count / 2 ? PROSE_CELL_MAX : CELL_MAX, 1);
       }), g);
     }
-    if (n > shown) em.text(`… +${n - shown} more rows`);
+    if (n > shown) {
+      em.text(`… +${n - shown} more rows`);
+      // The rows that do not fit are still counted: a column with a few distinct values gets how often each occurs,
+      // a numeric column its range, over ALL rows. "How many are active?" is then answered without a script.
+      const facts: string[] = [];
+      for (const c of chosen) {
+        if (c.key === '\u0000key' || facts.length >= 6) continue;
+        const tally = new Map<string, number>();
+        let nums = 0;
+        let lo = Infinity;
+        let hi = -Infinity;
+        let plain = true;
+        for (let i = 0; i < n && plain; i++) {
+          const v = c.vals[i];
+          if (isEmpty(v)) continue;
+          if (typeof v === 'number') {
+            nums++;
+            if (v < lo) lo = v;
+            if (v > hi) hi = v;
+          } else if (typeof v === 'string' || typeof v === 'boolean') {
+            const k = String(v);
+            tally.set(k, (tally.get(k) ?? 0) + 1);
+            if (tally.size > 8 || k.length > 40) plain = false;
+          } else plain = false;
+        }
+        if (!plain) continue;
+        if (tally.size >= 2 && !nums) facts.push(`${c.key}: ` + [...tally].sort((a, b) => b[1] - a[1]).map(([k, m]) => `${k} ${m}`).join(' · '));
+        else if (nums >= n / 2 && !tally.size && lo < hi) facts.push(`${c.key}: ${lo} to ${hi}`);
+      }
+      if (facts.length) em.text(`over all ${n} rows — ` + facts.join('; '));
+    }
   }
 }
 

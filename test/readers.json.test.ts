@@ -202,3 +202,16 @@ test('scalars and arrays of scalars at the root', () => {
   assert.equal(many.blocks.length, 12);
   assert.equal(many.blocks[0].k, 'li');
 });
+
+test('a long array is still counted: value counts and ranges over all rows, not only the ones shown', () => {
+  const status = ['active', 'pending', 'archived'];
+  const items = Array.from({ length: 900 }, (_, i) => ({ id: i + 1, name: 'item-' + i.toString(16), status: status[i % 4 === 3 ? 0 : i % 3], score: (i * 7) % 501 }));
+  const out = read({ total: 900, items });
+  const text = out.blocks.map((b) => b.i.map((x) => (typeof x === 'string' ? x : x.l)).join('')).join('\n');
+  const want = status.map((s) => [s, items.filter((x) => x.status === s).length] as const).sort((a, b) => b[1] - a[1]).map(([s, n]) => `${s} ${n}`).join(' · ');
+  assert.ok(text.includes(`over all 900 rows — id: 1 to 900; status: ${want}; score: 0 to 500`), text.slice(-400));
+  // names are all different: no line for them
+  assert.doesNotMatch(text, /name: item/);
+  // a short array shows every row and needs no summary
+  assert.doesNotMatch(read({ items: items.slice(0, 5) }).blocks.map((b) => b.i.join('')).join('\n'), /over all/);
+});
