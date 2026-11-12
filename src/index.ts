@@ -2,7 +2,7 @@
 // interfaces only; this is the single place that knows the concrete pieces.
 
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { createRuntime, type RuntimeImpl, type RuntimeOptions } from './runtime.ts';
 import { findDevice } from './devices.ts';
@@ -179,6 +179,11 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       sessionTtlSec: config.sessionTtlSec,
       secretNames: policy.secrets.map((x) => x.name),
       browser,
+      // drop() reads files from the downloads folder, AGENTWEB_FILES (a path list) and the working directory
+      fileRoots: [
+        env.AGENTWEB_DOWNLOADS && !/^(off|0)$/.test(env.AGENTWEB_DOWNLOADS) ? env.AGENTWEB_DOWNLOADS : join(env.AGENTWEB_HOME ?? join(homedir(), '.agentweb'), 'downloads'),
+        ...(env.AGENTWEB_FILES ?? '').split(delimiter).filter(Boolean),
+      ],
     },
   });
 

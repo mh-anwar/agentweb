@@ -594,6 +594,59 @@ export function installHelpers(win: any): void {
       });
     },
 
+    /**
+     * One look at wait()'s conditions: which of `any` is on the page, whether `gone` still is, and the state of
+     * target `n`. Cheap enough to run every 100 ms.
+     */
+    probe(spec: any): any {
+      const text = spec.any || spec.gone ? norm(allText()) : '';
+      let hit: string | undefined;
+      if (spec.any) {
+        hit = (spec.any as string[]).find((t) => text.includes(norm(t)));
+        if (hit === undefined) return { ok: false };
+      }
+      if (spec.gone && text.includes(norm(spec.gone))) return { ok: false };
+      if (spec.state) {
+        const el = spec.n !== undefined ? node(spec.n) : null;
+        let vis = false;
+        if (el) {
+          const rects = el.getClientRects();
+          const cs = viewOf(el).getComputedStyle(el);
+          vis = cs.visibility !== 'hidden' && cs.display !== 'none' && Array.prototype.some.call(rects, (r: any) => r.width > 0 || r.height > 0);
+        }
+        const ok = spec.state === 'hidden' ? !vis : spec.state === 'visible' ? vis : !!el && !isDisabled(el);
+        if (!ok) return { ok: false, st: !el ? 'gone' : !vis ? 'hidden' : isDisabled(el) ? 'disabled' : 'visible' };
+      }
+      return { ok: true, hit };
+    },
+
+    /** the start of what the page says, for a timeout message */
+    glance(): string {
+      return String((doc.body && doc.body.innerText) || '').replace(/\s+/g, ' ').trim().slice(0, 160);
+    },
+
+    /** drop files on an element: dragenter, dragover, drop with a DataTransfer that carries them */
+    drop(id: number, files: { name: string; mime: string; data: string }[]): any {
+      const el = node(id);
+      if (!el) return STALE;
+      const V = viewOf(el);
+      const dt = new V.DataTransfer();
+      for (const f of files) {
+        const bin = V.atob(f.data);
+        const bytes = new V.Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        dt.items.add(new V.File([bytes], f.name, { type: f.mime }));
+      }
+      scrollTo(el);
+      const r = el.getBoundingClientRect();
+      const init = { bubbles: true, cancelable: true, composed: true, dataTransfer: dt, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+      el.dispatchEvent(new V.DragEvent('dragenter', init));
+      // a page that allows the drop cancels dragover
+      const accepted = !el.dispatchEvent(new V.DragEvent('dragover', init));
+      el.dispatchEvent(new V.DragEvent('drop', init));
+      return { ok: true, accepted, tag: tagOf(el) };
+    },
+
     /** localStorage of this document's origin, bounded so a session record stays small */
     storage(): any {
       const out: Record<string, string> = {};

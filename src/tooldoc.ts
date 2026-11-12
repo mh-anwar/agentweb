@@ -14,10 +14,11 @@ each('link words', find='words', n=8) - open matching links at once; shows the m
 read() - full text from where the view stopped; read('Section name'); read(url)
 click(target) · fill(target, 'text') · select(target, 'option') · check(target) · uncheck(target) · submit() · press('Enter')
 expect('text') - stop here unless the page contains it
-wait('text') - wait until the page shows it (content that appears late)
+wait('text') - wait until the page shows it (content that appears late); wait('a','b') any · wait(url='/x') · wait(gone='text') · wait(12, state='hidden')
 view() - the whole page again · links('words') - URLs · shot() - screenshot (full=1, pdf=1)
 js('code') - run JavaScript · console() · network('words', failed=1) - page log
 click(t, double=1) · drag(a, b) · forward() · dialog('dismiss') · emulate('iPhone 15') or emulate(locale='fr-FR', geo='lat,lon', dark=1)
+route('*/api/*', status=500, body='x' | json='{}' | abort=1 | off=1) · headers('X: 1') · auth(user, pass) · init('js') · emulate(throttle='slow3g', cpu=4)
 profile('name') - use a saved sign-in (Playwright storageState file); profile('name', save=1) saves the current one
 tabs() · tab('new', url) · tab(2) · tab('close') - several pages open at once in this session, same cookies
 bug('expected | what happened') - report a bug in this tool itself (saves your program, never page text)
