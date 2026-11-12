@@ -81,8 +81,13 @@ async function atWidths<T>(rc: RunCtx, widths: number[], fn: (w: number) => Prom
   return out;
 }
 
-function widthsOf(step: Step): number[] | undefined {
+/** widths='375,768' as numbers; 'now' is the viewport as it is. */
+async function widthsOf(rc: RunCtx, step: Step): Promise<number[] | undefined> {
   if (step.opts.widths === undefined) return undefined;
+  if (/^(now|current)$/i.test(String(step.opts.widths))) {
+    const res = await rc.live({ do: 'js', code: 'innerWidth' });
+    return [Number(JSON.parse(res.value ?? '1280'))];
+  }
   try {
     return parseWidths(step.opts.widths);
   } catch (e) {
@@ -102,7 +107,7 @@ async function overflow(rc: RunCtx, step: Step): Promise<void> {
   await inChrome(rc, 'overflow()');
   await rc.ensureLive();
   const clipped = truthy(step.opts.clipped);
-  const widths = widthsOf(step);
+  const widths = await widthsOf(rc, step);
   const lines = widths ? (await atWidths(rc, widths, () => overflowReport(rc, clipped))).flatMap((x) => x.lines) : (await overflowReport(rc, clipped)).lines;
   rc.emit(lines.join('\n'));
 }
@@ -247,9 +252,9 @@ function labelsFor(rc: RunCtx): { n: number; num: number }[] {
 
 /** shot(widths='375,768', save=1, full=1) and shot(annotate=1): what `shot` hands over when it has one of these. */
 async function shotMore(rc: RunCtx, step: Step): Promise<void> {
-  const widths = widthsOf(step);
   await inChrome(rc, 'screenshots');
   await rc.ensureLive();
+  const widths = await widthsOf(rc, step);
   const full = truthy(step.opts.full);
   const save = truthy(step.opts.save);
   const annotate = truthy(step.opts.annotate);
