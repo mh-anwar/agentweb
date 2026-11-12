@@ -73,6 +73,16 @@ one tier up **only if the request was a GET**. A step that needs scripting (an `
 `js: true`) from the wire tier re-opens the current page one tier up, again only if that page was
 reached by GET. A POST result is never replayed; the runtime fails loudly instead.
 
+The top rung is a *real browser*: `chrome` (raw CDP, the default), or `firefox` / `webkit` (driven
+through Playwright, `src/engines/playwright`, when `playwright-core` and its browser builds are
+installed). `AGENTWEB_BROWSER` / `options.browser` picks which one escalation uses; `engine(...)`
+pins any of them per session. The three share the chrome engine's in-page helpers and extractor,
+so their output is identical. If a real browser is shown a bot wall (`browserWall`: Google's
+`/sorry`, challenge interstitials) on an automatic GET, the runtime retries once in the next
+installed browser. Playwright does not route redirect hops, so the firefox/webkit engines check a
+hop as the browser follows it and retire the page if the guard refuses it (chrome refuses the hop
+before it is sent).
+
 ## Sessions are data
 
 A session is a JSON record in a `Store` (cookies, current `Page`, ref table, seen-set, history,
@@ -106,6 +116,7 @@ src/inpage/        in-page extractor shared by ghost and chrome
 src/net/           wire engine: HTTP client, cookie jar, shared page cache, politeness
 src/engines/chrome CDP client, launcher, context pool, Chromium engine
 src/engines/ghost  JS-without-pixels engine
+src/engines/playwright  Firefox and WebKit engines (optional playwright-core)
 src/readers/       JSON, feeds, CSV, markdown, PDF, embedded data → blocks
 src/guard/         policy, SSRF, secrets, data-flow, Web Bot Auth
 src/store/         memory, file, sqlite, redis stores
