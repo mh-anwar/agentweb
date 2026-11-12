@@ -68,12 +68,73 @@ prints the tool definition, and `agentweb serve` takes calls over HTTP (below).
 | `each('link words', find='words', n=8)` | open matching links at once; show the matching lines of each |
 | `read()` · `read('Section')` · `read(url)` | full text, continuing where the view stopped |
 | `click(t)` · `fill(t, 'text')` · `select(t, 'opt')` · `check(t)` · `submit()` · `press('Enter')` | act; a target `t` is a number from the page or its visible text |
-| `expect('text')` | stop here unless the page contains it |
+| `expect('text')` · `expect('Item', n=3)` · `expect(not='Error')` · `expect(url='/cart')` · `expect(title='Cart')` | stop here unless the page matches (see Testing) |
 | `view()` · `links('words')` · `shot()` | whole page again, URLs, screenshot |
 
 In the view, `[label]12` is clickable, `{label="value"}13` is fillable, `{label: *A|B}14` is a select and
 `{[x] label}15` is a checkbox. Numbers stay valid for the whole session. Calling again on the same page shows only
 what changed.
+
+## Testing with agentweb
+
+`agentweb test` runs end-to-end tests written in the same tiny language, with no model and no browser
+install for server-rendered pages. A passing run is one line; a failure is four facts and a few lines of
+the page, never a trace.
+
+```
+# tests/shop.aw
+# base: http://localhost:3000
+# profile: parent                    (a saved sign-in, see profile())
+
+## search finds keyboards
+open('/shop'); fill('Search', 'keyboard'); click('Go')
+expect(url='search'); expect('keyboard'); expect(not='No products found')
+
+## cart is empty at first
+open('/shop/cart'); expect('Your cart is empty')
+```
+
+The same test in Playwright, and what each prints when `expect('Order placed')` fails:
+
+```ts
+test('cart is empty at first', async ({ page }) => {
+  await page.goto('/shop/cart');
+  await expect(page.getByText('Order placed')).toBeVisible();
+});
+```
+
+```
+✗ checkout  tests/shop.aw:9                  Playwright: 25 lines, 279 tokens, 5 s wait,
+  step:  expect('Order placed')              plus a 1,981-token error-context.md it tells you to read
+  error: 'Order placed' is not on the page
+  page:
+    Your cart — Tradewind Store — http://127.0.0.1:4611/shop/cart
+    # Shopping cart
+    Your cart is empty. [Continue shopping]25.
+```
+
+That is 81 tokens, instantly. On an ambiguous click the numbers are 666 vs 262 (Playwright's page snapshot adds
+another 7,125). Measurements and method: [docs/research/TESTING.md](docs/research/TESTING.md).
+
+```bash
+agentweb test                          # ./tests/**/*.aw, 3 tests in parallel
+agentweb test tests/shop.aw --base http://localhost:3000 --grep cart --bail --json
+agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); expect('Welcome')" --base http://localhost:3000
+```
+
+* **Files.** `*.aw` / `*.awtest`; steps one per line or `;`-separated; `## name` starts a test; headers `# base:`,
+  `# profile:`, `# timeout:`, `# skip:` (file level, or per test after its `##`). Relative `open('/x')` resolves
+  against `--base` / `AGENTWEB_BASE` / `# base:` (in that order).
+* **Isolation.** Every test starts from an empty session (no cookies, no history; a `profile` is loaded first).
+  Pages are never served from the shared cache.
+* **Assertions.** `expect('text')`, `expect('Item', n=3)`, `expect(not='Error')`, `expect(url='/dashboard')`
+  (`/path` matches the path, `*` is a glob, anything else a substring), `expect(title='Cart')`; combine freely.
+* **Snapshots.** `snapshot('name')` compares the page's text view (ports and engine tags removed) with
+  `__aw_snapshots__/<file>/<test>.<name>.txt`. A missing baseline is written (`--ci` fails instead); a change shows
+  a few `-`/`+` lines; `--update` accepts it.
+* **Record.** `--record out.aw "program"` runs the program and, if it passes and passes again in a fresh session,
+  saves it with numbered targets replaced by their visible labels and URLs made relative to `--base`.
+* **Exit code** 0 all passed, 1 a failure, 2 bad usage.
 
 ## Verified collections and semantic changes
 

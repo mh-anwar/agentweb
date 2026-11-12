@@ -20,7 +20,7 @@ export function summarize(tests: TestResult[], ms: number): Summary {
 const secs = (ms: number) => (ms < 950 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
 
 /** keep an excerpt short whatever the budget produced */
-function clip(text: string, maxLines = 12, maxChars = 160): string {
+function clip(text: string, maxLines = 8, maxChars = 160): string {
   const lines = text.split('\n').filter((l) => l.trim());
   const shown = lines.slice(0, maxLines).map((l) => (l.length > maxChars ? l.slice(0, maxChars - 1) + '…' : l));
   if (lines.length > maxLines) shown.push(`… ${lines.length - maxLines} more lines`);

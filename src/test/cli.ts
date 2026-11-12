@@ -19,7 +19,7 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
         --json                      machine-readable result
         --verbose                   one line per test
         --timeout SEC               per-test limit (default 60)
-        --excerpt N                 tokens of page shown with a failure (default 300)
+        --excerpt N                 tokens of page shown with a failure (default 200)
   agentweb test --record out.aw "open('/'); click('Sign in'); expect('Welcome')" [--base URL] [--profile NAME]
                                     run the program; if it passes (and passes again in a fresh session), write it as a test
                                     with numbered targets replaced by their visible labels
@@ -95,7 +95,7 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     update: f.bool.has('update'),
     ci: f.bool.has('ci') || (!!env.CI && env.CI !== '0' && env.CI !== 'false'),
     timeoutMs: (Number(f.str.timeout) || 60) * 1000,
-    excerptTokens: Math.max(200, Number(f.str.excerpt) || 300),
+    excerptTokens: Math.max(200, Number(f.str.excerpt) || 200),
   };
 
   const mk = () => createAgentweb({ store: 'memory:', cache: false, atlas: false, budget: opts.excerptTokens });

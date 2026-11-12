@@ -196,10 +196,13 @@ function firstError(text: string, src: string): string {
   return body;
 }
 
+/** The main content of the page where the step failed (not the site chrome), in a small budget. */
 async function pageExcerpt(rt: RuntimeImpl, sid: string, tokens: number): Promise<string> {
   try {
-    const r = await rt.run(sid, 'view()', { budget: tokens });
-    return r.ok ? r.text : '';
+    let r = await rt.run(sid, "view('main')", { budget: tokens });
+    if (!r.ok) return '';
+    if (/\(no main region/.test(r.text)) r = await rt.run(sid, 'view()', { budget: tokens });
+    return r.ok ? r.text.split('\n').filter((l) => !/^\(\d+ hidden text block/.test(l)).join('\n') : '';
   } catch {
     return '';
   }
