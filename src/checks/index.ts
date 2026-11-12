@@ -298,6 +298,9 @@ async function expectChecks(rc: RunCtx, step: Step): Promise<void> {
   if (o.console !== undefined || o.requests !== undefined) {
     const { doc, url, problems } = await probe(rc, 'problems');
     const allow = String(o.allow ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+    // allow_status='401,403': requests answered with these statuses are expected (and the console line Chrome writes for each)
+    const statuses = String(o.allow_status ?? '').split(',').map((s) => s.trim()).filter((s) => /^\d{3}$/.test(s));
+    for (const st of statuses) allow.push(`status of ${st}`, ` ${st} `);
     const scope = truthy(o.all) ? undefined : doc;
     if (o.console !== undefined) {
       const warn = /^warn/i.test(String(o.console));

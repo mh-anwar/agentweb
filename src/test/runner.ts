@@ -3,8 +3,8 @@
 // and a failure carries a small excerpt of the page instead of a trace.
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, extname, join } from 'node:path';
 import { parseProgram, type Arg, type Step } from '../dsl.ts';
 import { liveId, SESSION_NS, type SessionRecord } from '../session.ts';
 import type { RuntimeImpl } from '../runtime.ts';
@@ -28,6 +28,8 @@ export interface RunOptions {
   engine?: string;
   /** false: `# setup:`, `# teardown:` and exec() are refused (--no-exec) */
   exec?: boolean;
+  /** --report dir: a full-page screenshot of where each test ended is saved there (tests that ran in a real browser) */
+  report?: string;
 }
 
 export interface Failure {
@@ -56,6 +58,10 @@ export interface TestResult {
   engines?: string[];
   /** device, viewport, locale, timezone the test ran with (these force a real browser) */
   emulation?: string;
+  /** things the person should know that did not fail the test (a sign-in with no cookies for this host) */
+  warnings?: string[];
+  /** --report: file name of the screenshot of where the test ended */
+  shot?: string;
 }
 
 // ───────────────────────────── hooks ─────────────────────────────
@@ -187,7 +193,11 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
   const sid = `aw-test-${process.pid}-${++sessionCounter}`;
   const base = o.base ?? tc.base;
   // `# timeout:` is how long assertions wait for a script-rendered page; the test as a whole gets at least the run limit
-  const deadline = AbortSignal.timeout(Math.max(o.timeoutMs, (tc.timeoutMs ?? 0) * 4));
+  // With `# expect-timeout:` the two are separate: that is the wait of one assertion, `# timeout:` the limit of the test.
+  const expectMs = tc.expectTimeoutMs ?? tc.timeoutMs;
+  const deadline = AbortSignal.timeout(tc.expectTimeoutMs !== undefined ? (tc.timeoutMs ?? o.timeoutMs) : Math.max(o.timeoutMs, (tc.timeoutMs ?? 0) * 4));
+  // `# soft: on` or expect(…, soft=1): a failing assertion is kept and the test goes on; all are reported together
+  const soft: { st: TestStep; message: string }[] = [];
   const origins = new Set<string>();
   if (base) try { origins.add(new URL(base).origin); } catch {}
 
@@ -274,7 +284,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         if (snap) step = { verb: 'view', args: [], opts: {}, src: st.src };
         else {
           step = parseProgram(st.src)[0];
-          if (step.verb === 'expect' && tc.timeoutMs && step.opts.timeout === undefined) step = { ...step, opts: { ...step.opts, timeout: tc.timeoutMs / 1000 } };
+          if (step.verb === 'expect' && expectMs && step.opts.timeout === undefined) step = { ...step, opts: { ...step.opts, timeout: expectMs / 1000 } };
           if (step.verb === 'open' && typeof step.args[0] === 'string') step = { ...step, args: [withBase(step.args[0], base), ...step.args.slice(1)] };
         }
       } catch (e) {
@@ -284,9 +294,33 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       if (step.verb === 'open' && typeof step.args[0] === 'string') {
         try { origins.add(new URL(step.args[0]).origin); } catch {}
       }
+      const isSoft = step.verb === 'expect' && (step.opts.soft !== undefined ? !/^(0|false|no|off)$/i.test(String(step.opts.soft)) : !!tc.soft);
+      if (step.verb === 'expect' && step.opts.soft !== undefined) {
+        const { soft: _soft, ...rest } = step.opts;
+        step = { ...step, opts: rest };
+      }
+      if (step.verb === 'expect' && step.opts.same !== undefined) {
+        // expect(same='menu', of='nav a'): the text of those elements is the same in every test of this run that says so
+        res.steps++;
+        const v = await sameAcross(rt, sid, tc, step, deadline);
+        if (v.tier && tiers[tiers.length - 1] !== v.tier) tiers.push(v.tier);
+        if (v.failure) {
+          if (isSoft) soft.push({ st, message: v.failure });
+          else {
+            await fail(st, v.failure, '');
+            break;
+          }
+        }
+        continue;
+      }
       const r = await rt.run(sid, snap ? 'view()' : stepToSource(step), { budget: snap ? 1500 : o.excerptTokens, signal: deadline });
       res.steps++;
       if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
+      for (const m of r.text.matchAll(/^note: (profile '.*' has no cookies for .*)$/gm)) (res.warnings ??= []).push(m[1]);
+      if (!r.ok && isSoft && !deadline.aborted) {
+        soft.push({ st, message: firstError(r.text, step.src) });
+        continue;
+      }
       if (snap) {
         if (!r.ok) {
           await fail(st, firstError(r.text, 'view()'), '');
@@ -320,6 +354,11 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         break;
       }
     }
+    if (soft.length) {
+      const also = (x: { st: TestStep; message: string }) => `also line ${x.st.line}: ${x.st.src} — ${x.message}`;
+      if (res.ok) await fail(soft[0].st, [soft[0].message, ...soft.slice(1).map(also)].join('\n'));
+      else if (res.failure) res.failure.message += '\n' + soft.map(also).join('\n');
+    }
     if (res.ok && tc.console) {
       // `# console: clean`: no console errors (or, with warn, warnings) on any page this test visited
       const allow = tc.console.allow ? `, allow=${JSON.stringify(tc.console.allow)}` : '';
@@ -330,6 +369,20 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       if (!r.ok) await fail({ line: tc.line, src: `# console: clean${tc.console.warn ? ', warn' : ''}${tc.console.allow ? ', allow=' + tc.console.allow : ''}` }, firstError(r.text, src), '');
     }
   } finally {
+    if (o.report && tiers.length && ['chrome', 'firefox', 'webkit'].includes(tiers[tiers.length - 1])) {
+      // the screen as the test left it, for a person to look at afterwards
+      try {
+        const r = await rt.run(sid, 'shot(full=1, save=1)', { budget: 200, signal: AbortSignal.timeout(20_000) });
+        const from = /saved screenshot: (.+?) \(\d+ bytes\)/.exec(r.text)?.[1];
+        if (from && existsSync(from)) {
+          mkdirSync(o.report, { recursive: true });
+          const name = `${String(sessionCounter).padStart(3, '0')}-${tc.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'test'}${extname(from) || '.jpg'}`;
+          copyFileSync(from, join(o.report, name));
+          rmSync(from, { force: true });
+          res.shot = name;
+        }
+      } catch {}
+    }
     if (tc.teardown?.length) await hook(tc.teardown, 'teardown');
     if (tiers.length) res.engine = tiers[tiers.length - 1];
     if (tiers.length > 1) res.engines = tiers;
@@ -351,6 +404,38 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
     res.ms = Math.round(performance.now() - t0);
   }
   return res;
+}
+
+/** What one name stood for the first time a test of this run reached it: runtime -> name -> { text, by }. */
+const SAME = new WeakMap<RuntimeImpl, Map<string, { text: string; by: string }>>();
+
+/** expect(same='menu', of='css selector'): the visible text of the matching elements, compared with the first test that recorded that name. */
+async function sameAcross(rt: RuntimeImpl, sid: string, tc: TestCase, step: Step, signal: AbortSignal): Promise<{ failure?: string; tier?: string }> {
+  const name = String(step.opts.same);
+  const of = step.opts.of !== undefined ? String(step.opts.of) : undefined;
+  if (!of) return { failure: "expect(same='name', of='css selector') needs of=: which elements to compare" };
+  const code = `JSON.stringify([...document.querySelectorAll(${JSON.stringify(of)})].filter(e=>e.getClientRects().length).map(e=>(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()).filter(Boolean))`;
+  const r = await rt.run(sid, `js(${JSON.stringify(code)})`, { budget: 4000, signal });
+  if (!r.ok) return { failure: firstError(r.text, step.src), tier: r.stats.tier };
+  let items: string[] = [];
+  try {
+    const line = r.text.split('\n').find((l) => l.trim().startsWith('"[') || l.trim().startsWith('['))!;
+    const once = JSON.parse(line);
+    items = typeof once === 'string' ? JSON.parse(once) : once;
+  } catch {
+    return { failure: `could not read the elements matching ${of}`, tier: r.stats.tier };
+  }
+  if (!items.length) return { failure: `nothing visible matches ${of}`, tier: r.stats.tier };
+  const text = items.join('\n');
+  let store = SAME.get(rt);
+  if (!store) SAME.set(rt, (store = new Map()));
+  const first = store.get(name);
+  if (!first) {
+    store.set(name, { text, by: tc.name });
+    return { tier: r.stats.tier };
+  }
+  if (first.text === text) return { tier: r.stats.tier };
+  return { failure: `'${name}' differs from the test "${first.by}" (- there, + here)\n${lineDiff(first.text, text)}`, tier: r.stats.tier };
 }
 
 /** "✗ <src> — message" is the first line of a failed run. */

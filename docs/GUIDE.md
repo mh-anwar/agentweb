@@ -196,6 +196,26 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
   `AGENTWEB_TEST_NAME` and every variable as `AW_<NAME>`. A failing command fails the test with its last lines.
   They exist only in `agentweb test` (files you wrote); the agent tool has no way to run a command, and
   `--no-exec` refuses them.
+* **Tables of cases.** `# each: path in /home, /help, /settings` (top of the file, or under one `## ` test) runs the
+  test once per value; `${path}` stands for the value in the steps, the headers and the name (`## ${path} loads`).
+* **Soft assertions.** `# soft: on`, or `expect(…, soft=1)` for one assertion: a failing `expect` is kept and the test
+  goes on. The report gives the first failure and one `also line N: …` per other failure.
+* **Waits and limits.** `# expect-timeout: 5` is how long one assertion waits for late content; with it, `# timeout:`
+  is only the limit of the whole test. Without it `# timeout:` is the assertion wait, as before.
+* **A fresh sign-in per run.** A `# setup:` command that makes a session writes a Playwright storageState file and
+  prints `profile=/its/path.json`; `# profile: ${profile}` (or `profile(file='${profile}')`) loads it. Files are read
+  only in `agentweb test`; the agent tool loads sign-ins by name. When none of a sign-in's cookies are for the host
+  the test opens, the report says so once: `! profile 'x' has no cookies for localhost (it has 0.0.0.0)`.
+* **The file is the approval.** Steps in a test file are never asked about (a page called `/delete-account` opens,
+  a Delete button is pressed): the person who runs the file wrote it. `AGENTWEB_CONFIRM=consequential` restores asking.
+* **More assertions.** `expect(role='heading', level=1)` (a visible main heading; with text: `expect('Orders',
+  role='heading')`); `expect(axe=0, tags='wcag2a,wcag2aa,wcag22aa', impact='serious', disable='color-contrast',
+  exclude='nextjs-portal')` runs axe-core (found in the project, also under pnpm and through `@axe-core/*`; or set
+  `AGENTWEB_AXE`); `expect(requests=0, allow='favicon', allow_status='401')`; `expect(same='menu', of='nav a')`
+  holds the text of those elements equal across every test of the run that says so, with no saved file.
+* **While it runs.** `--verbose` prints each test's line as it ends; otherwise stderr gets `… 12/46 done` every 15
+  seconds (`--quiet` switches it off). `--report DIR` writes `DIR/index.html`: every test with its result and a
+  full-page screenshot of where it ended, for tests that ran in a real browser.
 * **Exit code** 0 all passed, 1 a failure, 2 bad usage.
 
 ### Layout, accessibility, console and screenshot checks

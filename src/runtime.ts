@@ -18,7 +18,8 @@ import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts'
 import { redactProgram, writeBug } from './usage.ts';
 import { helpText } from './help.ts';
 import { rank, renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange, terms } from './render.ts';
-import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
+import { readFileSync } from 'node:fs';
+import { describeProfile, loadProfile, parseProfile, saveProfile } from './profiles.ts';
 import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions } from './netcontrol.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
@@ -93,6 +94,8 @@ export interface RuntimeOptions {
   browser?: BrowserTier;
   /** browser pages of every session open in the user's own browser, where a person can see and use them */
   userBrowser?: boolean;
+  /** profile() may load a sign-in from a file path (the test runner: a setup command wrote it) */
+  profileFiles?: boolean;
   /** folders drop() may read files from, besides the working directory */
   fileRoots?: string[];
 }
@@ -887,6 +890,18 @@ const VERBS: Record<string, VerbHandler> = {
     const u = new URL(url);
     rc.outflow(u.pathname + u.search + u.hash, u.origin);
     await rc.navigate({ url });
+    const pc = rc.rec.profileCheck;
+    if (pc) {
+      rc.rec.profileCheck = undefined;
+      const host = (() => {
+        try {
+          return new URL(rc.page.url).hostname;
+        } catch {
+          return '';
+        }
+      })();
+      if (host && pc.domains.length && !pc.domains.some((d) => host === d || host.endsWith('.' + d))) rc.note(`profile '${pc.name}' has no cookies for ${host} (it has ${pc.domains.slice(0, 4).join(', ')}): pages here open signed out`);
+    }
     const eq = rc.wallSeen ? searchEngineQuery(u) : undefined;
     if (eq) {
       // a search engine is walling this address: answer with agentweb's own search instead, and say so
@@ -1081,14 +1096,19 @@ const VERBS: Record<string, VerbHandler> = {
     const checks = ['overflow', 'no_overflow', 'audit', 'axe', 'console', 'requests'].some((k) => o[k] !== undefined) ? rc.rt.verbHandler('expect_checks') : undefined;
     if (checks) {
       await checks(rc, step);
-      if (!own && not === undefined && url === undefined && title === undefined) return;
+      if (!own && not === undefined && url === undefined && title === undefined && o.role === undefined) return;
     }
-    if (!own && not === undefined && url === undefined && title === undefined) throw new AwError('bad_request', "expect needs text: expect('Order placed') or expect(not='Error'), expect(url='/cart')");
+    let heading: { level?: number } | undefined;
+    if (o.role !== undefined) {
+      if (lc(str(o.role)) !== 'heading') throw new AwError('bad_request', `expect(role='${o.role}') is not supported: role='heading' (with level=1) is`);
+      heading = { level: o.level !== undefined ? Number(o.level) : undefined };
+    }
+    if (!own && !heading && not === undefined && url === undefined && title === undefined) throw new AwError('bad_request', "expect needs text: expect('Order placed') or expect(not='Error'), expect(url='/cart')");
     const timeoutMs = o.timeout === undefined ? EXPECT_TIMEOUT_MS : Math.min(Number(o.timeout) < 100 ? Number(o.timeout) * 1000 : Number(o.timeout), 60000);
     // on a script engine the page may still be rendering: look again until it holds or the time is up
     for (const end = Date.now() + timeoutMs; ; ) {
       try {
-        return checkExpect(rc.page, { own, not, url, title, nWant });
+        return checkExpect(rc.page, { own, not, url, title, nWant, heading });
       } catch (e) {
         if (!(e instanceof AwError) || Date.now() >= end || rc.ctx.signal?.aborted) throw e;
         // a page fetched without scripts that has scripts may be about to say it: move it to a script engine
@@ -1577,14 +1597,29 @@ const VERBS: Record<string, VerbHandler> = {
   /** profile('name') loads a saved sign-in (Playwright storageState file); save=1 writes the current one */
   async profile(rc, step) {
     const name = str(step.args[0]).trim();
-    if (!name) throw new AwError('bad_request', "profile needs a name: profile('instructor')");
+    if (!name && step.opts.file === undefined) throw new AwError('bad_request', "profile needs a name: profile('instructor')");
     const save = step.opts.save !== undefined && step.opts.save !== false && step.opts.save !== 0 && step.opts.save !== 'no';
+    if (!name && step.opts.file !== undefined && !save) return VERBS.profile(rc, { ...step, args: [str(step.opts.file)] });
     if (save) {
       const p = { cookies: rc.jar.all(), storage: rc.rec.storage };
       saveProfile(name, p);
       return rc.note(`saved sign-in '${name}': ${describeProfile(p)}`);
     }
-    const p = loadProfile(name);
+    // a path (or file='…') is a sign-in a setup command just made: only where the runner allows files
+    const file = step.opts.file !== undefined ? str(step.opts.file) : rc.rt.opts.profileFiles && /[\\/]|\.json$/i.test(name) ? name : undefined;
+    let p: ReturnType<typeof loadProfile>;
+    if (file !== undefined) {
+      if (!rc.rt.opts.profileFiles) throw new AwError('policy', 'a sign-in is loaded by name here, not from a file path', `profile('name') reads the user's saved sign-ins; files are for agentweb test`);
+      let text: string;
+      try {
+        text = readFileSync(file, 'utf8');
+      } catch {
+        throw new AwError('bad_request', `no sign-in file at ${file}`, 'a "# setup:" command writes a Playwright storageState file and prints profile=/its/path');
+      }
+      p = parseProfile(text);
+    } else p = loadProfile(name);
+    // said once, on the next page: a sign-in saved for another host does nothing here
+    rc.rec.profileCheck = { name: file ?? name, domains: [...new Set(p.cookies.map((c) => c.domain.replace(/^\./, '')))] };
     rc.jar.merge(p.cookies);
     for (const [origin, items] of Object.entries(p.storage)) rc.rec.storage[origin] = { ...items };
     // a live page from before the sign-in still shows the signed-out state: load it again
@@ -1854,6 +1889,7 @@ export class RuntimeImpl implements Runtime {
       fileRoots: o.fileRoots,
       browser: (this.ladder[2] as BrowserTier) ?? 'chrome',
       userBrowser: !!o.userBrowser,
+      profileFiles: !!o.profileFiles,
     };
   }
 
@@ -2075,8 +2111,19 @@ export function hollowMain(page: Page): boolean {
 
 const EXPECT_TIMEOUT_MS = 5000;
 
-function checkExpect(p: Page, c: { own: string; not?: string; url?: string; title?: string; nWant?: Arg }): void {
-  const { own, not, url, title, nWant } = c;
+function checkExpect(p: Page, c: { own: string; not?: string; url?: string; title?: string; nWant?: Arg; heading?: { level?: number } }): void {
+  const { not, url, title, nWant } = c;
+  let own = c.own;
+  if (c.heading) {
+    // expect(role='heading', level=1) · expect('Orders', role='heading'): a heading of that level (with that text) is shown
+    const lv = c.heading.level;
+    const hs = p.blocks.filter((b) => b.k === 'h' && (lv === undefined || (b.lv ?? 0) === lv));
+    if (!hs.some((b) => !own || lc(blockText(b)).includes(lc(own)))) {
+      const have = p.blocks.filter((b) => b.k === 'h').slice(0, 5).map((b) => `h${b.lv ?? '?'} "${blockText(b).slice(0, 40)}"`);
+      throw new AwError('bad_request', `no ${lv ? `level ${lv} ` : ''}heading${own ? ` with '${own}'` : ''} on the page${have.length ? ` (headings: ${have.join(', ')})` : ' (it has no headings)'}`);
+    }
+    own = '';
+  }
   const occurrences = (needle: string) => {
     const n = lc(needle);
     let c = 0;

@@ -29,6 +29,8 @@ export interface AgentwebConfig extends RuntimeOptions {
   cache?: boolean;
   /** learn per-site facts and reuse them across sessions (default true) */
   atlas?: boolean;
+  /** profile() may load a sign-in from a file path (agentweb test sets it) */
+  profileFiles?: boolean;
   /** remote Chromium DevTools endpoint instead of launching one (ws://… or http://host:port) */
   cdp?: string;
   /**
@@ -189,6 +191,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       defaultEngine: socks ? 'chrome' : undefined,
       emulate: env.AGENTWEB_DEVICE ? findDevice(env.AGENTWEB_DEVICE)?.emu : undefined,
       sessionTtlSec: config.sessionTtlSec,
+      profileFiles: config.profileFiles,
       secretNames: policy.secrets.map((x) => x.name),
       secretOrigins: Object.fromEntries(policy.secrets.map((x) => [x.name.toLowerCase(), x.origins])),
       browser,

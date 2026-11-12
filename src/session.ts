@@ -46,6 +46,8 @@ export interface SessionRecord {
   net?: import('./types.ts').NetControl;
   /** engine('mine'): browser pages of this session open in the user's own browser through the extension */
   own?: boolean;
+  /** a sign-in was just loaded: the next page says so if none of its cookies are for that page's host */
+  profileCheck?: { name: string; domains: string[] };
   /** pages left by back(), most recent last, for forward() */
   forward?: string[];
   /** number of the tab the fields above describe (absent = 1) */

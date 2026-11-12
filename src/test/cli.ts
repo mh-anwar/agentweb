@@ -4,7 +4,7 @@ import { existsSync, globSync, mkdirSync, readdirSync, readFileSync, statSync, w
 import { basename, dirname, join, resolve } from 'node:path';
 import { createAgentweb } from '../index.ts';
 import { parseTestFile, type TestCase } from './parse.ts';
-import { formatReport, summarize } from './report.ts';
+import { formatReport, htmlReport, summarize, testLine } from './report.ts';
 import { recordCase, runAll, type RunOptions, type TestResult } from './runner.ts';
 import { watchResources } from './resources.ts';
 
@@ -18,7 +18,9 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
         --update                    accept new or changed snapshot('name') baselines
         --ci                        a missing snapshot baseline fails instead of being written
         --json                      machine-readable result (each test: engine, engines, emulation, ms, failure)
-        --verbose                   one line per test, with the engine that ran it
+        --verbose                   one line per test, with the engine that ran it, printed as each test ends
+        --report DIR                write DIR/index.html: every test's result with a full-page screenshot of where it ended
+        --quiet                     no "… 12/46 done" lines on stderr while a long run is going
         --engine NAME               load every page in chrome | ghost | wire | firefox | webkit (overrides "# engine:")
         --no-ghost  --no-chrome     switch an engine off     --browser chrome|firefox|webkit   the real browser to use
         --images                    load page images (on by itself when a test takes screenshots or checks layout, accessibility or requests)
@@ -30,12 +32,19 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
                                     with numbered targets replaced by their visible labels
 
   Test file:   # base: http://localhost:3000  (also # profile: parent, # timeout: 30, # engine: chrome)
+               # expect-timeout: 5                 how long one assertion waits (then "# timeout:" is only the whole test's limit)
+               # soft: on                          a failing expect does not end the test; all failures are reported together
+               # each: path in /home, /help        the test runs once per value, \${path} standing for it (also in its name)
+               # profile: \${profile}              a sign-in file that a setup command wrote and printed as profile=/path.json
                # setup: node scripts/seed.mjs      shell commands; name=value lines they print become \${name}
                # teardown: node scripts/clean.mjs  (top of file: once per file; under a ## test: for that test)
                ## sign in works
                open('/login'); fill('Email','a@b.co'); submit(); expect('Welcome'); expect(url='/dashboard')
   Commands:    exec('node scripts/otp.mjs', as='otp', retry=10); fill('Code', '\${otp}')
   Assertions:  expect('text')  expect('Item', n=3)  expect(not='Error')  expect(url='/cart')  expect(title='Cart')
+               expect(role='heading', level=1)  expect(axe=0, tags='wcag2a,wcag2aa', impact='serious', disable='…', exclude='…')
+               expect(overflow=0)  expect(audit=0)  expect(console=0)  expect(requests=0, allow='favicon', allow_status='401')
+               expect(same='menu', of='nav a')   the same text in every test of the run that says so    expect(…, soft=1)
                snapshot('name')   compare the page's text view with __aw_snapshots__/ (--update to accept)
   Exit code 0 when everything passes, 1 on a failure, 2 on bad usage.
 `;
@@ -46,8 +55,8 @@ interface TestFlags {
   bool: Set<string>;
 }
 
-const BOOL = new Set(['images', 'bail', 'update', 'ci', 'json', 'verbose', 'help', 'v', 'no-ghost', 'no-chrome', 'no-exec', 'record']);
-const VALUE = new Set(['base', 'workers', 'grep', 'timeout', 'excerpt', 'engine', 'browser', 'record', 'profile', 'name']);
+const BOOL = new Set(['quiet', 'images', 'bail', 'update', 'ci', 'json', 'verbose', 'help', 'v', 'no-ghost', 'no-chrome', 'no-exec', 'record']);
+const VALUE = new Set(['report', 'base', 'workers', 'grep', 'timeout', 'excerpt', 'engine', 'browser', 'record', 'profile', 'name']);
 
 export function parseTestArgs(argv: string[]): TestFlags {
   const f: TestFlags = { paths: [], str: {}, bool: new Set() };
@@ -114,6 +123,7 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     ci: f.bool.has('ci') || (!!env.CI && env.CI !== '0' && env.CI !== 'false'),
     timeoutMs: (Number(f.str.timeout) || 60) * 1000,
     excerptTokens: Math.max(200, Number(f.str.excerpt) || 200),
+    report: f.str.report ? resolve(process.cwd(), f.str.report) : undefined,
   };
 
   let wantImages = f.bool.has('images');
@@ -123,9 +133,11 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
       store: 'memory:',
       cache: false,
       atlas: false,
+      // a test file is the person's own program: a sign-in file its setup wrote may be loaded, and its steps are not asked about twice
+      profileFiles: true,
       // Images cost time and memory and most page checks do not look at them, so a run loads them only when it
       // asks for something that does: a screenshot, a layout or accessibility check, a request check (--images forces it)
-      env: { ...process.env, AGENTWEB_IMAGES: process.env.AGENTWEB_IMAGES ?? (wantImages ? '1' : '0') },
+      env: { ...process.env, AGENTWEB_IMAGES: process.env.AGENTWEB_IMAGES ?? (wantImages ? '1' : '0'), AGENTWEB_CONFIRM: process.env.AGENTWEB_CONFIRM ?? 'never' },
       budget: opts.excerptTokens,
       ...(f.bool.has('no-ghost') ? { ghost: false } : {}),
       ...(f.bool.has('no-chrome') ? { chrome: false } : {}),
@@ -205,9 +217,21 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
   }
   let results: TestResult[];
   let resources: ReturnType<typeof watch.stop>;
+  // A long run is not silent: with --verbose each test's line is printed as it ends; otherwise stderr gets a count
+  // every 15 s (stdout stays the report an agent reads).
+  const live = f.bool.has('verbose') && !f.bool.has('json');
+  let done = 0;
+  let failedSoFar = 0;
+  const beat = f.bool.has('quiet') || live ? undefined : setInterval(() => io.err(`… ${done}/${cases.length} done${failedSoFar ? `, ${failedSoFar} failed` : ''} (${Math.round((performance.now() - t0) / 1000)}s)`), 15_000);
+  beat?.unref();
   try {
-    results = await runAll(rt, cases, opts);
+    results = await runAll(rt, cases, opts, (r) => {
+      done++;
+      if (!r.ok) failedSoFar++;
+      if (live) io.out(testLine({ ...r, file: rel(r.file) }));
+    });
   } finally {
+    if (beat) clearInterval(beat);
     // measured before the browser is closed: after that its processes are gone from the tree
     resources = watch.stop();
     if (memory) {
@@ -222,6 +246,14 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
   const ms = Math.round(performance.now() - t0);
   const s = summarize(results, ms);
   if (resources) s.resources = resources;
-  io.out(f.bool.has('json') ? JSON.stringify(s, null, 2) : formatReport(s, { verbose: f.bool.has('verbose') }));
+  if (opts.report) {
+    try {
+      mkdirSync(opts.report, { recursive: true });
+      writeFileSync(join(opts.report, 'index.html'), htmlReport(s));
+    } catch (e) {
+      io.err(`could not write the report: ${(e as Error).message}`);
+    }
+  }
+  io.out(f.bool.has('json') ? JSON.stringify(s, null, 2) : formatReport(s, { verbose: f.bool.has('verbose'), streamed: live }) + (opts.report ? `\nreport: ${join(opts.report, 'index.html')}` : ''));
   return s.failed ? 1 : 0;
 }

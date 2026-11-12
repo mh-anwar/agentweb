@@ -97,6 +97,9 @@ engine('chrome') / engine('firefox') / engine('webkit') / engine('ghost') / engi
   open('/cart'); expect('Your cart is empty'); expect(url='/cart'); expect(not='Error')
 Run: agentweb test [files] [--engine chrome] [--verbose] [--json]. A pass is one line; a failure is the step, the error and a few lines of the page.
 snapshot('name') compares the page's text with a saved baseline (--update accepts). screenshot('name', widths='375,768') does the same with pictures. # console: clean fails any test whose pages logged errors. expect(overflow=0) and expect(audit=0): see help('checks'). exec('cmd', as='otp') runs a command and keeps its output as \${otp} (test files only).
+Many pages, one body: # each: path in /home, /help  then  ## \${path} loads / open('\${path}'). # soft: on (or expect(…, soft=1)) reports every failed expect of a test together. # expect-timeout: 5 is the wait of one assertion.
+More assertions: expect(role='heading', level=1) · expect(axe=0, tags='wcag2a,wcag2aa', impact='serious') · expect(requests=0, allow_status='401') · expect(same='menu', of='nav a') equal across the run's tests.
+A sign-in made by setup: the command prints profile=/path/state.json, the file says # profile: \${profile}. --report DIR writes an HTML page with a screenshot per test.
 agentweb test --record out.aw "program" saves a passing program as a test.`,
   },
   bug: {
