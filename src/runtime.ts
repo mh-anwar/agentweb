@@ -17,7 +17,7 @@ import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { redactProgram, writeBug } from './usage.ts';
 import { helpText } from './help.ts';
-import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
+import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange, terms } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
 import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions } from './netcontrol.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
@@ -108,6 +108,20 @@ export function hintKey(url: string): string {
   }
 }
 
+/** A link on the page is labelled with every word of the query: a results page that only repeats the query back has none. */
+function namesLink(page: Page, query: string): boolean {
+  const q = [...new Set(terms(query))];
+  if (!q.length) return false;
+  for (const b of page.blocks) {
+    for (const x of b.i) {
+      if (typeof x === 'string' || x.k !== 'link') continue;
+      const words = terms(x.l);
+      if (q.every((t) => words.some((w) => w === t || (t.length >= 4 && w.startsWith(t))))) return true;
+    }
+  }
+  return false;
+}
+
 export const isBrowser = (t: Tier | undefined): t is BrowserTier => t === 'chrome' || t === 'firefox' || t === 'webkit';
 const ENGINE_NAMES = 'auto, wire (HTTP only), ghost (JavaScript, no pixels), chrome, firefox, webkit (Safari\'s engine; alias safari), mine (the user\'s own browser, through the agentweb extension)';
 
@@ -150,6 +164,8 @@ export class RunCtx {
   budget: number;
   used = 0;
   out: string[] = [];
+  /** the step now running is the last of the program */
+  lastStep = false;
   images: { mime: string; data: string }[] = [];
   notes: string[] = [];
   fetches = 0;
@@ -854,7 +870,34 @@ const VERBS: Record<string, VerbHandler> = {
         return;
       }
     }
-    rc.emit(renderFind(p, rc.rec.view, rc.refs, q, rc.remaining).text);
+    const r = renderFind(p, rc.rec.view, rc.refs, q, rc.remaining);
+    // The words are not on this page and nothing follows in the program: when the site's own search has a line with
+    // all of them, that page is what the agent would ask for next, so it is shown now instead of costing a call.
+    if ((r.miss || r.partial) && rc.lastStep && p.method === 'GET' && /^https?:/.test(p.url)) {
+      const here = originOf(p.url);
+      const tpl = searchTemplate(p.forms, here) ?? (await rc.rt.deps.atlas?.site(here).catch(() => undefined))?.search;
+      const url = tpl?.replace('{q}', encodeURIComponent(q));
+      if (url && url !== p.url) {
+        try {
+          const probe = await rc.engine('wire').open(rc.ctx, { url });
+          rc.fetches++;
+          if (probe.doc && namesLink(compile(probe.doc, probe.url, { tier: 'wire' }), q)) {
+            await rc.navigate({ url });
+            const found = renderFind(rc.page, rc.rec.view, rc.refs, q, rc.remaining);
+            if (!found.miss && !found.partial && namesLink(rc.page, q)) {
+              rc.note(`'${q}' is not on ${p.url}; this is the site's own search for it (back() returns)`);
+              rc.emit(found.text);
+              rc.stale = false;
+              return;
+            }
+            await rc.navigate({ url: p.url });
+          }
+        } catch {
+          // the search page did not load: the answer about this page stands
+        }
+      }
+    }
+    rc.emit(r.text);
   },
 
   async links(rc, step) {
@@ -1665,6 +1708,7 @@ export class RuntimeImpl implements Runtime {
         break;
       }
       try {
+        rc.lastStep = step === steps[steps.length - 1];
         await this.execStep(rc, step);
         done++;
       } catch (e) {

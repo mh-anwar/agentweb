@@ -624,6 +624,8 @@ export function terms(s: string): string[] {
 export interface Hit {
   index: number;
   score: number;
+  /** the block has every word of the query */
+  all?: boolean;
 }
 
 /** BM25 over the page's blocks, plus a bonus for the query appearing verbatim. No model involved. */
@@ -662,13 +664,13 @@ export function rank(page: Page, query: string): Hit[] {
     if (phrase.length > 3 && blockText(b).toLowerCase().includes(phrase)) score *= 1.8;
     if (b.k === 'h') score *= 1.15;
     if (!isContent(b.r)) score *= 0.6;
-    hits.push({ index, score });
+    hits.push({ index, score, all: matched === q.length });
   });
   hits.sort((a, b) => b.score - a.score);
   return hits;
 }
 
-export function renderFind(page: Page, st: ViewState, refs: Refs, query: string, budget: number): Rendered {
+export function renderFind(page: Page, st: ViewState, refs: Refs, query: string, budget: number): Rendered & { partial?: boolean; miss?: boolean } {
   const hits = rank(page, query);
   const blocks = page.blocks;
   if (!hits.length) {
@@ -686,7 +688,7 @@ export function renderFind(page: Page, st: ViewState, refs: Refs, query: string,
       start.push(line);
     }
     if (start.length) text += '\nThe page starts:\n' + start.join('\n');
-    return { text, tokens: estimateTokens(text) };
+    return { text, tokens: estimateTokens(text), miss: true };
   }
   // take the best hits that fit, with the heading above each and the header row of its table
   let left = Math.max(100, budget) - 20;
@@ -728,7 +730,15 @@ export function renderFind(page: Page, st: ViewState, refs: Refs, query: string,
     if (taken >= 40) break;
   }
   const order = [...new Set([...chosen, ...context])].sort((a, b) => a - b);
-  const out: string[] = [`${hits.length} ${hits.length === 1 ? 'match' : 'matches'} for '${query}'` + (taken < hits.length ? `, best ${taken} shown` : '') + ':'];
+  // A short query that no line holds whole (a product name, say) is a miss, however close the closest lines look:
+  // "1 match" over a different product has sent agents after the wrong thing.
+  const nq = new Set(terms(query)).size;
+  const partial = nq >= 2 && nq <= 4 && !hits.some((h) => h.all);
+  const out: string[] = [
+    partial
+      ? `no line on this page has all of '${query}'; closest${taken < hits.length ? ` ${taken} of ${hits.length}` : ''}:`
+      : `${hits.length} ${hits.length === 1 ? 'match' : 'matches'} for '${query}'` + (taken < hits.length ? `, best ${taken} shown` : '') + ':',
+  ];
   let lastI = -2;
   for (const i of order) {
     const b = blocks[i];
@@ -738,7 +748,7 @@ export function renderFind(page: Page, st: ViewState, refs: Refs, query: string,
     lastI = i;
   }
   const text = out.join('\n');
-  return { text, tokens: estimateTokens(text) };
+  return { text, tokens: estimateTokens(text), partial };
 }
 
 /** Links whose label or URL matches, with their URLs: the only place URLs are spelled out. */
