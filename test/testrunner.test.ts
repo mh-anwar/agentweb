@@ -8,7 +8,10 @@ import { createJar, createWireEngine, encodeForm } from '../src/net/index.ts';
 import { createGuard, defaultPolicy } from '../src/guard/index.ts';
 import { MemoryStore } from '../src/store/index.ts';
 import { readBody, mineEmbedded } from '../src/readers/index.ts';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { startSite, type TestSite } from './core.site.ts';
+import { startFarm, type Farm } from '../bench/sites/farm.ts';
 import { parseTestFile } from '../src/test/parse.ts';
 import { testCommand } from '../src/test/cli.ts';
 import { stepToSource, resolveUrl } from '../src/test/runner.ts';
@@ -16,10 +19,25 @@ import { stepToSource, resolveUrl } from '../src/test/runner.ts';
 let site: TestSite;
 let rt: RuntimeImpl;
 let dir: string;
+let late: Server;
+let lateUrl = '';
+let farm: Farm;
 let n = 0;
 
 before(async () => {
   site = await startSite();
+  farm = await startFarm({ seed: 7 });
+  late = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html><title>Late</title><main><h1>Dashboard</h1><p id="s">Loading…</p><script>
+      setTimeout(function(){ document.getElementById('s').textContent = 'Report ready'; }, 500);
+      setTimeout(function(){ var e = document.createElement('p'); e.textContent = 'Flash error'; document.body.appendChild(e); }, 100);
+      setTimeout(function(){ document.querySelector('p.x') && 0; for (var e of document.querySelectorAll('p')) if (e.textContent==='Flash error') e.remove(); }, 600);
+      setTimeout(function(){ history.replaceState(null,'','/done'); }, 400);
+    </script></main>`);
+  });
+  await new Promise<void>((r) => late.listen(0, '127.0.0.1', r));
+  lateUrl = `http://127.0.0.1:${(late.address() as AddressInfo).port}`;
   dir = mkdtempSync(join(tmpdir(), 'awtest-'));
   const policy = defaultPolicy('local');
   rt = createRuntime({ store: new MemoryStore(), engines: { wire: createWireEngine({ polite: false }) }, createJar, createGuard: (s) => createGuard(policy, s), encodeForm, readBody, mineEmbedded });
@@ -27,6 +45,8 @@ before(async () => {
 after(async () => {
   await rt.close();
   await site.close();
+  await farm.close();
+  late.close();
   rmSync(dir, { recursive: true, force: true });
 });
 
@@ -250,4 +270,66 @@ test('no files, bad path, help', async () => {
   assert.match(out.join(), /no test files/);
   assert.equal(await testCommand([join(dir, 'nope')], { out: (s) => out.push(s), err: (s) => out.push(s) }), 2);
   assert.equal(await testCommand(['--help'], { out: (s) => out.push(s), err() {} }), 0);
+});
+
+// ── auto-wait ────────────────────────────────────────────────────────────────────────────────
+
+test('expect waits for text rendered by a script (and not= for text that goes away)', async () => {
+  const r = await run({ 'late.aw': `# base: ${lateUrl}\n## waits\nopen('/'); expect('Report ready'); expect(not='Flash error'); expect(url='/done')\n` });
+  assert.equal(r.code, 0, r.out);
+});
+
+test('expect gives up after its timeout, with a short message', async () => {
+  const t0 = Date.now();
+  const r = await run({ 'late2.aw': `# base: ${lateUrl}\n## never\nopen('/'); expect('Never shown', timeout=1)\n` });
+  const ms = Date.now() - t0;
+  assert.equal(r.code, 1);
+  assert.match(r.out, /error: 'Never shown' is not on the page/);
+  assert.ok(ms >= 900 && ms < 9000, `took ${ms}ms`);
+});
+
+test('# timeout: sets how long expect waits in that test', async () => {
+  const time = async (header: string) => {
+    const t0 = Date.now();
+    const r = await run({ 'late3.aw': `# base: ${lateUrl}\n${header}## never\nopen('/'); expect('Never shown')\n` });
+    assert.equal(r.code, 1);
+    return Date.now() - t0;
+  };
+  const short = await time('# timeout: 1\n');
+  const dflt = await time('');
+  assert.ok(dflt - short > 2500, `short ${short}ms, default ${dflt}ms`);
+});
+
+test('expect on a static page does not wait', async () => {
+  const t0 = Date.now();
+  const r = await run({ 'static.aw': `# base: $BASE\nopen('/'); expect('Nope')\n` });
+  assert.equal(r.code, 1);
+  assert.ok(Date.now() - t0 < 2500);
+});
+
+// ── targets by placeholder / aria-label / title ──────────────────────────────────────────────
+
+test('fill resolves by placeholder, aria-label and title as well as the label', async () => {
+  const s = 'x' + ++n;
+  await rt.run(s, `open('${farm.url}/shop')`);
+  const r = await rt.run(s, `fill('Search products', 'keyboard'); submit()`);
+  assert.equal(r.ok, true, r.text);
+  assert.match(r.text, /keyboard/i);
+  const h = createServer((q, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(`<!doctype html><title>t</title><main><form action="/x"><label for="a">Email</label><input id="a" name="a" placeholder="you@example.com">
+      <input name="b" aria-label="Nickname" title="Shown to others"><input name="c" title="Postcode here"><button type="submit">Go</button></form></main>`);
+  });
+  await new Promise<void>((ok) => h.listen(0, '127.0.0.1', ok));
+  const u = `http://127.0.0.1:${(h.address() as AddressInfo).port}/`;
+  try {
+    const s2 = 'x' + ++n;
+    await rt.run(s2, `open('${u}')`);
+    for (const t of ['Email', 'you@example.com', 'Nickname', 'Shown to others', 'Postcode here']) {
+      const f = await rt.run(s2, `fill('${t}', 'v')`);
+      assert.equal(f.ok, true, `${t}: ${f.text.split('\n')[0]}`);
+    }
+  } finally {
+    h.close();
+  }
 });

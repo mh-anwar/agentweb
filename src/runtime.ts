@@ -588,24 +588,29 @@ const VERBS: Record<string, VerbHandler> = {
     const title = o.title !== undefined ? String(o.title) : undefined;
     const nWant = o.n ?? o.count;
     if (!own && not === undefined && url === undefined && title === undefined) throw new AwError('bad_request', "expect needs text: expect('Order placed') or expect(not='Error'), expect(url='/cart')");
-    const p = rc.page;
-    const occurrences = (needle: string) => {
-      const n = lc(needle);
-      let c = 0;
-      for (const b of p.blocks) {
-        const t = lc(blockText(b));
-        for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + n.length)) c++;
+    const timeoutMs = o.timeout === undefined ? EXPECT_TIMEOUT_MS : Math.min(Number(o.timeout) < 100 ? Number(o.timeout) * 1000 : Number(o.timeout), 60000);
+    // on a script engine the page may still be rendering: look again until it holds or the time is up
+    for (const end = Date.now() + timeoutMs; ; ) {
+      try {
+        return checkExpect(rc.page, { own, not, url, title, nWant });
+      } catch (e) {
+        if (!(e instanceof AwError) || Date.now() >= end || rc.ctx.signal?.aborted) throw e;
+        // a page fetched without scripts that has scripts may be about to say it: move it to a script engine
+        const pg = rc.page;
+        if (!rc.isLive() && pg.stats.scripts && pg.method === 'GET' && /^https?:/.test(pg.url)) {
+          try {
+            await rc.escalate(`expect('${own || not || url || title}') may need the page's scripts`);
+          } catch {
+            throw e;
+          }
+        }
+        if (!rc.isLive()) throw e;
       }
-      return c;
-    };
-    if (url !== undefined && !urlMatches(p.url, url)) throw new AwError('bad_request', `the address is ${shortUrl(p.url)}, expected ${url}`);
-    if (title !== undefined && !lc(p.title).includes(lc(title))) throw new AwError('bad_request', `the title is '${p.title}', expected '${title}'`);
-    if (not !== undefined && (lc(p.title).includes(lc(not)) || occurrences(not) > 0)) throw new AwError('bad_request', `'${not}' is on the page but should not be`);
-    if (own) {
-      if (nWant !== undefined) {
-        const got = occurrences(own);
-        if (got !== Number(nWant)) throw new AwError('bad_request', `expected ${nWant} of '${own}', found ${got}`);
-      } else if (!(lc(p.title).includes(lc(own)) || lc(p.url).includes(lc(own)) || occurrences(own) > 0)) throw new AwError('bad_request', `'${own}' is not on the page`);
+      await sleep(250);
+      await rc.ensureLive();
+      const p = rc.page;
+      const eng = rc.engine(p.tier);
+      if (eng.snapshot) rc.setPage(await rc.toPage(await eng.snapshot(rc.ctx), p.tier), { push: false });
     }
   },
 
@@ -1123,6 +1128,30 @@ export function hollowMain(page: Page): boolean {
     }
   }
   return words < 15 && acts < 3;
+}
+
+const EXPECT_TIMEOUT_MS = 5000;
+
+function checkExpect(p: Page, c: { own: string; not?: string; url?: string; title?: string; nWant?: Arg }): void {
+  const { own, not, url, title, nWant } = c;
+  const occurrences = (needle: string) => {
+    const n = lc(needle);
+    let c = 0;
+    for (const b of p.blocks) {
+      const t = lc(blockText(b));
+      for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + n.length)) c++;
+    }
+    return c;
+  };
+  if (url !== undefined && !urlMatches(p.url, url)) throw new AwError('bad_request', `the address is ${shortUrl(p.url)}, expected ${url}`);
+  if (title !== undefined && !lc(p.title).includes(lc(title))) throw new AwError('bad_request', `the title is '${p.title}', expected '${title}'`);
+  if (not !== undefined && (lc(p.title).includes(lc(not)) || occurrences(not) > 0)) throw new AwError('bad_request', `'${not}' is on the page but should not be`);
+  if (own) {
+    if (nWant !== undefined) {
+      const got = occurrences(own);
+      if (got !== Number(nWant)) throw new AwError('bad_request', `expected ${nWant} of '${own}', found ${got}`);
+    } else if (!(lc(p.title).includes(lc(own)) || lc(p.url).includes(lc(own)) || occurrences(own) > 0)) throw new AwError('bad_request', `'${own}' is not on the page`);
+  }
 }
 
 function shortUrl(u: string): string {

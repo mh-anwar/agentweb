@@ -129,6 +129,10 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
   Pages are never served from the shared cache.
 * **Assertions.** `expect('text')`, `expect('Item', n=3)`, `expect(not='Error')`, `expect(url='/dashboard')`
   (`/path` matches the path, `*` is a glob, anything else a substring), `expect(title='Cart')`; combine freely.
+* **Auto-wait.** On a page that runs scripts, `expect` (every form) looks again every 250 ms until it holds or
+  5 s pass (`expect('x', timeout=10)`, or `# timeout: 10` for a whole test), moving the page to a script engine
+  first if it was fetched without one. Plain server-rendered pages are checked once, immediately.
+* **Targets.** `click`/`fill` match a control's label, placeholder, `aria-label` or `title`.
 * **Snapshots.** `snapshot('name')` compares the page's text view (ports and engine tags removed) with
   `__aw_snapshots__/<file>/<test>.<name>.txt`. A missing baseline is written (`--ci` fails instead); a change shows
   a few `-`/`+` lines; `--update` accepts it.

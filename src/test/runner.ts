@@ -111,7 +111,8 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Pro
   }
   const sid = `aw-test-${process.pid}-${++sessionCounter}`;
   const base = o.base ?? tc.base;
-  const deadline = AbortSignal.timeout(tc.timeoutMs ?? o.timeoutMs);
+  // `# timeout:` is how long assertions wait for a script-rendered page; the test as a whole gets at least the run limit
+  const deadline = AbortSignal.timeout(Math.max(o.timeoutMs, (tc.timeoutMs ?? 0) * 4));
   const origins = new Set<string>();
   if (base) try { origins.add(new URL(base).origin); } catch {}
 
@@ -133,6 +134,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Pro
         if (snap) step = { verb: 'view', args: [], opts: {}, src: st.src };
         else {
           step = parseProgram(st.src)[0];
+          if (step.verb === 'expect' && tc.timeoutMs && step.opts.timeout === undefined) step = { ...step, opts: { ...step.opts, timeout: tc.timeoutMs / 1000 } };
           if (step.verb === 'open' && typeof step.args[0] === 'string') step = { ...step, args: [withBase(step.args[0], base), ...step.args.slice(1)] };
         }
       } catch (e) {

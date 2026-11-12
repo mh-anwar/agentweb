@@ -78,6 +78,4 @@ Why the reports differ:
   downloads, and visual diffs. agentweb tests check what an agent (or a screen reader) can read and do; for
   server-rendered pages that is the whole page, for script-driven pages the runtime escalates to its script or
   chrome engine. Pixel-level and layout assertions are out of scope.
-* Playwright's `getByPlaceholder('Search products')` worked where agentweb's `fill('Search products', …)` did not:
-  the farm's field is labelled "Search" with a placeholder. agentweb's failure said `Closest: [Search]5`, so the
-  fix cost one line, but placeholder text is not yet a target.
+* Playwright's `getByPlaceholder('Search products')` initially worked where agentweb's `fill('Search products', …)` did not; placeholder, `aria-label` and `title` are now matched like a label.

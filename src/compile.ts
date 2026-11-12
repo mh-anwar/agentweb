@@ -514,6 +514,8 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
   const wire = (act: Act, n: LNode, a: Record<string, string>, fi: number) => {
     if (n.n !== undefined) act.n = n.n;
     if ('disabled' in a) act.dis = true;
+    const al = [a.placeholder, a['aria-label'], a.title].map((x) => clip(squash(x ?? ''), 80)).filter((x, i, xs) => x && x !== act.l && xs.indexOf(x) === i);
+    if (al.length) act.al = al;
     if (form >= 0 && fi >= 0 && !forms[form].js) {
       act.form = form;
       act.fi = fi;
