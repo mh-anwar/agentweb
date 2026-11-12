@@ -272,3 +272,6 @@ Also closed (see `docs/GUIDE.md`): gap 1, the browser extension and `engine('min
 Closed on 2026-11-12: gap 4, `login('name')` from a stored credential bound to its site (password + `_USER`, user-name-first
 forms; a password-manager command provider is still open); gap 14, role targets `click(role='button', name='Save')` (test ids
 and `audit()` were already in). `agentweb test` remembers per page which engine it needed.
+Also closed on 2026-11-12: gap 3, WebMCP: `tools()` and `call('name', param=…)` in the Chrome engine, and a note on open
+when the page publishes tools (a main-world shim keeps what the page registers; it also provides `navigator.modelContext`
+where the browser has none). Not yet in the script engine without a browser, Firefox or WebKit.

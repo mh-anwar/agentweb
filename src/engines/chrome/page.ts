@@ -10,7 +10,7 @@ import { hash } from '../../tree.ts';
 import { AwError, type CookieData, type Emulation, type ErrCode, type SessionCtx, type Verdict } from '../../types.ts';
 import { isContextLost, type Cdp, type CdpSession } from './cdp.ts';
 import { basicFor, buildHar, cdpPermissions, mayAnswer, matchRoute, mockResponse, rememberChallenge, THROTTLE, type HarRow } from '../../netcontrol.ts';
-import { installHelpers, listenerProbe, seedStorage } from './inpage.ts';
+import { installHelpers, listenerProbe, seedStorage, webmcpShim, WEBMCP_LIST } from './inpage.ts';
 
 export const WORLD = 'agentweb';
 
@@ -287,6 +287,7 @@ export class PageDriver {
     if (!this.opts.shared) tasks.push(this.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny', browserContextId: this.contextId, eventsEnabled: true }).catch(noop));
     if (this.opts.probe) {
       tasks.push(s.send('Page.addScriptToEvaluateOnNewDocument', { source: `(${listenerProbe.toString()})(self,${JSON.stringify(this.probeName)})` }));
+      tasks.push(s.send('Page.addScriptToEvaluateOnNewDocument', { source: `(${webmcpShim.toString()})(self)` }));
     }
     await Promise.all(tasks);
   }
@@ -922,6 +923,19 @@ export class PageDriver {
 
   setActing(on: boolean): void {
     this.acting = on;
+  }
+
+  /** Tools the page published for agents (WebMCP), one line: name(params) - description. */
+  async pageTools(): Promise<string> {
+    if (!this.opts.probe) return '';
+    try {
+      const raw = (await this.s.send<any>('Runtime.evaluate', { expression: WEBMCP_LIST, returnByValue: true }, 2000))?.result?.value as string | undefined;
+      if (!raw) return '';
+      const tools = JSON.parse(raw) as { name: string; description: string; params: { name: string; required: boolean }[] }[];
+      return tools.map((t) => `${t.name}(${t.params.map((p) => p.name + (p.required ? '' : '?')).join(', ')})${t.description ? ' - ' + t.description : ''}`).join(' · ');
+    } catch {
+      return '';
+    }
   }
 
   takeEvents(): string[] {

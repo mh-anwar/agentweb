@@ -717,6 +717,64 @@ export function installHelpers(win: any): void {
 }
 
 /**
+ * WebMCP: a page may publish tools for agents through navigator.modelContext (registerTool / provideContext).
+ * Runs in the page's MAIN world at document start and keeps what the page registers where agentweb can list and
+ * call it; where the browser has no navigator.modelContext yet, it provides one. Nothing here is trusted: the
+ * names, descriptions and results are page content.
+ */
+export function webmcpShim(win: any): void {
+  try {
+    const key = win.Symbol.for('agentweb.webmcp');
+    if (win[key]) return;
+    const reg = new win.Map();
+    win.Object.defineProperty(win, key, { value: reg });
+    const keep = (t: any) => {
+      try {
+        if (t && typeof t.name === 'string' && typeof t.execute === 'function') reg.set(t.name, t);
+      } catch {}
+    };
+    const drop = (n: any) => {
+      try {
+        reg.delete(typeof n === 'string' ? n : n && n.name);
+      } catch {}
+    };
+    const all = (c: any) => {
+      reg.clear();
+      try {
+        for (const t of (c && c.tools) || []) keep(t);
+      } catch {}
+    };
+    const seen: Record<string, (a: any) => void> = { registerTool: keep, unregisterTool: drop, provideContext: all, clearContext: () => reg.clear() };
+    const nav = win.navigator;
+    const mc = nav && nav.modelContext;
+    if (mc) {
+      for (const m of win.Object.keys(seen)) {
+        const orig = mc[m];
+        if (typeof orig !== 'function') continue;
+        mc[m] = function (this: any, ...a: any[]) {
+          seen[m](a[0]);
+          return orig.apply(this, a);
+        };
+      }
+    } else if (nav) {
+      const api = {
+        registerTool(t: any) {
+          keep(t);
+          return { unregister: () => drop(t) };
+        },
+        unregisterTool: drop,
+        provideContext: all,
+        clearContext: () => reg.clear(),
+      };
+      win.Object.defineProperty(nav, 'modelContext', { value: api, configurable: true });
+    }
+  } catch {}
+}
+
+/** Main-world expression: the page's registered tools as JSON ('' when there are none). */
+export const WEBMCP_LIST = `(()=>{try{const r=window[Symbol.for('agentweb.webmcp')];if(!r||!r.size)return '';return JSON.stringify([...r.values()].slice(0,40).map(t=>{const p=(t.inputSchema&&t.inputSchema.properties)||{};const q=(t.inputSchema&&t.inputSchema.required)||[];return {name:String(t.name).slice(0,80),description:String(t.description||'').replace(/\\s+/g,' ').slice(0,240),params:Object.keys(p).slice(0,20).map(k=>({name:k,type:String((p[k]&&p[k].type)||''),required:q.includes(k)}))}}))}catch(e){return ''}})()`;
+
+/**
  * Runs in the page's MAIN world at document start. Remembers which elements got a click-type
  * listener, and answers the extractor's probe event by cancelling it. The extractor, in the
  * isolated world, sees only that one bit per element. Nothing here is trusted: a page that tampers

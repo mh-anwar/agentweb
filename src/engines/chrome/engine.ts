@@ -176,6 +176,9 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     if (image) out.image = image;
     if (value !== undefined) out.value = value;
     const events = d.takeEvents();
+    // what the page offers agents to call directly (WebMCP), ahead of the other notes
+    const tools = out.doc ? await d.pageTools() : '';
+    if (tools) events.unshift(`this page offers tools: ${tools.length > 700 ? tools.slice(0, 700) + '… (tools() lists all)' : tools}. call('name', param='value') runs one`);
     if (events.length) out.events = events;
     out.bytes = Math.max(0, Math.round(d.bytes - bytes0));
     out.ms = Math.round(performance.now() - t0);

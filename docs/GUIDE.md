@@ -73,6 +73,7 @@ other case: the agent gave up on agentweb for a task and used another browser.
 | `tabs()` · `tab('new', url)` · `tab(2)` · `tab('close')` · `tab('close', 2)` | several pages open in one session; they share its cookies, each keeps its own page, history and live state (at most 8) |
 | `click(role='button', name='Save')` · `click(testid='save')` | a target by ARIA role (button, link, textbox, checkbox, radio, combobox, tab, menuitem) or by test id, when visible text names several controls |
 | `login('name')` · `login('name', url='https://site/login')` | sign in with a stored credential (see Configuration): finds the form, also one that asks for the user name first; types only on the site the credential is bound to |
+| `tools()` · `call('search_flights', from='YYZ', to='LIS')` | WebMCP: tools the page itself publishes for agents (`navigator.modelContext`). A page that has some says so when it opens in a real browser; `call` runs one and shows its result and what changed |
 | `engine('mine')` · `engine('auto')` | work in the user's own browser with their sign-ins (needs the browser extension, below); back to isolated browsing |
 | `bug('expected \| what happened')` | report a bug in agentweb itself (see Install) |
 
