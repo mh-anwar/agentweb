@@ -11,8 +11,8 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 |:--|:--|:--|
 | open URL, back, reload | all | HAS (`runtime.ts` open/back/reload) |
 | forward | PW, AB, CDT | FIXED (`forward()`, live: `engine.ts forward`, HTTP tier: `rec.forward`) |
-| wait for text / time / load | all | HAS (`wait`); wait for URL or element state: PARTIAL (text only; aliases map to it) |
-| ignore cache, beforeunload handling, init script on navigate | CDT | MISSING (low) |
+| wait for text / time / load | all | HAS (`wait`); URL, any-of texts, text gone, element state: FIXED (`wait(url=)`, `wait('a','b')`, `wait(gone=)`, `wait(n, state=)`; `netcontrol.ts`, `chrome.netcontrol.test.ts`) |
+| init script on navigate | CDT | FIXED (`init('js')`, `chrome/page.ts applyNet`; `chrome.netcontrol.test.ts`). Ignore cache, beforeunload: MISSING (low) |
 | search the web / site search | browser-use | HAS (`search`) |
 
 ### Tabs and sessions
@@ -27,7 +27,7 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 | click, fill, type, select, check, press, hover, scroll, fill_form, upload | all | HAS (`runtime.ts`, `chrome/engine.ts`) |
 | double click, right click | PW (`doubleClick`, `button`), AB | FIXED (`click(t, double=1)`, `button='right'`, `dblclick`/`rightclick` aliases; previously `dblclick` silently single-clicked) |
 | drag and drop (element to element, HTML5 DnD) | PW, CDT, AB | FIXED (`drag(a, b)`; draggable/ondrop elements are now numbered) |
-| drop files / data onto element (`browser_drop`) | PW | MISSING (low) |
+| drop files / data onto element (`browser_drop`) | PW | FIXED (`drop(target, path)`, `netcontrol.ts` + `inpage.ts drop`; `chrome.netcontrol.test.ts`) |
 | keyboard chords | all | HAS (`keys.ts`) |
 | mouse by coordinates (`--caps vision`) | PW | N/A: agentweb is text-first; targets are numbered elements. Low value |
 | key typing with delay | AB `type delayMs` | N/A |
@@ -58,15 +58,15 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 |:--|:--|:--|
 | console messages | PW, CDT, AB | FIXED: `console()` (`console('words', errors=1)`) since the page loaded; page errors already surfaced as notes |
 | list network requests, failures, response body | PW, CDT | FIXED: `network('words', failed=1, n=40)`, `network('api', body=1)` |
-| mock/route requests, offline, throttle | PW caps network, CDT emulate | PARTIAL: `emulate(offline=1)` fixed; routing/mocking MISSING (low); CPU/network throttling MISSING (low) |
-| extra HTTP headers | CDT emulate | MISSING (low) |
-| HAR/trace recording | PW devtools | MISSING (low) |
+| mock/route requests, offline, throttle | PW caps network, CDT emulate | FIXED: `route()`/`routes()` (`netcontrol.ts`, `chrome/page.ts onPaused`), `emulate(offline=1, throttle=, cpu=)`; `chrome.netcontrol.test.ts` |
+| extra HTTP headers, basic-auth credentials | CDT emulate, PW `httpCredentials`, AB `set headers/credentials` | FIXED: `headers()`, `auth()` on wire, ghost and chrome (`net/http.ts`, `ghost/net.ts`, `chrome/page.ts`; `netcontrol.wire.test.ts`, `chrome.netcontrol.test.ts`) |
+| HAR recording | PW devtools | FIXED: `network(har='name')` writes HAR 1.2 (`chrome/page.ts har`, `netcontrol.ts buildHar`; `chrome.netcontrol.test.ts`). Trace/video: MISSING (low) |
 
 ### JavaScript
 | Capability | Competitors | Status |
 |:--|:--|:--|
 | evaluate in page | PW evaluate/run_code, AB eval, CDT evaluate_script, browser-use | FIXED: `js('code')` (expression, statements, `return`, arrow function, await); refused in read-only mode; the result is redacted and counted against the budget |
-| init script on every page | PW `--init-script` | MISSING (low; `js()` after open covers most uses) |
+| init script on every page | PW `--init-script` | FIXED (`init('js')`; `chrome.netcontrol.test.ts`) |
 | set logpoints, heap snapshot, CSS styles, Lighthouse, performance trace | CDT | MISSING / out of scope: developer-debugging tools, rarely wanted by a browsing agent. `js('performance.getEntries()')` covers basic timing |
 
 ### Emulation
@@ -76,8 +76,8 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 | device presets | PW `--device`, `--mobile` | FIXED: `emulate('iPhone 15')`, env `AGENTWEB_DEVICE` (`devices.ts`, 13 presets; others via width/height/mobile=1) |
 | user agent | PW `--user-agent` | HAS (`AGENTWEB_USER_AGENT`) + FIXED per session `emulate(ua=)` |
 | geolocation, locale, timezone | PW config, CDT | FIXED: `emulate(geo='lat,lon', locale=, tz=)` (grants the geolocation permission) |
-| color scheme, reduced motion, forced colors, contrast | PW emulate_media, CDT | PARTIAL: dark mode FIXED (`dark=1`); the other media features MISSING (low) |
-| permissions grant | PW `--grant-permissions` | PARTIAL: only geolocation |
+| color scheme, reduced motion, forced colors, contrast | PW emulate_media, CDT | FIXED: `dark=1`, `motion='reduce'`, `contrast='more'`, `forced_colors=1` (`chrome/page.ts emulate`; `chrome.netcontrol.test.ts`) |
+| permissions grant | PW `--grant-permissions` | FIXED: `emulate(permissions='clipboard-read,notifications')` (skipped in shared-profile mode); `chrome.netcontrol.test.ts` |
 
 ### Screenshots and PDF
 | Capability | Competitors | Status |
@@ -121,5 +121,5 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 9. forward, double/right click, drag and drop - FIXED.
 10. Attach to the user's own running Chrome with its logins (default context) - REMAINING (needs the pool to adopt the default browser context and not dispose it; privacy implications: agent would see all the user's cookies, so it deserves an explicit opt-in design).
 11. Shared-cookie multiple tabs in one session - REMAINING (breaks the "one page per session, session = small JSON record" scaling design; sessions plus `profile()` cover most flows).
-12. Request mocking/routing, extra headers, throttling, init scripts, HAR/trace/video, Lighthouse, heap snapshots - REMAINING (low; developer tools, not browsing).
-13. Drop files/data onto an element, coordinate mouse, headed mode, CDP headers - REMAINING (low).
+12. Request mocking/routing, extra headers, throttling, init scripts, HAR - FIXED (`netcontrol.ts`). Trace/video, Lighthouse, heap snapshots - REMAINING (low; developer tools, not browsing).
+13. Drop files onto an element - FIXED (`drop`). Coordinate mouse, headed mode, CDP headers - REMAINING (low).

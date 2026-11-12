@@ -118,6 +118,54 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
   saves it with numbered targets replaced by their visible labels and URLs made relative to `--base`.
 * **Exit code** 0 all passed, 1 a failure, 2 bad usage.
 
+## Controlling the network (mock, headers, credentials, throttle)
+
+Everything here is kept in the session record, so it survives the browser page being evicted and re-created, and it is a
+short step in a program:
+
+```
+route('*/api/cart*', status=500, body='boom')      # the page's fetch sees a 500 "boom"
+route('*/api/user', json='{"name":"x"}')           # JSON, with the right content type
+route('*.png', abort=1)                            # the request fails (abort='timedout' | 'connectionrefused' | …)
+route('*/api/*', off=1)  ·  route(off=1)           # remove one  ·  remove all
+routes()                                           # newest first, with hit counts
+headers('X-Debug: 1', 'Accept-Language: fr')       # on every request, every tier;  headers(off=1)
+auth('alice', '{{secret:lab_pw}}')                 # answers HTTP basic 401 challenges;  auth(off=1)
+init('window.__TEST__ = true')                     # before every new document's own scripts;  init(off=1)
+emulate(throttle='slow3g', cpu=4, motion='reduce', contrast='more', forced_colors=1, permissions='clipboard-read,notifications')
+wait(url='/dashboard') · wait('Saved', 'Failed') · wait(gone='Loading') · wait(12, state='hidden') · wait('Go', state='enabled')
+drop('Upload area', 'report.csv')                  # dragenter, dragover, drop with the file
+network(har='trace')                               # the page's network log as a HAR 1.2 file under the downloads folder
+```
+
+* **Routes** are globs on the full URL: `*` and `**` match anything, `?` one character, `{png,jpg}` alternatives; `/api/*` and
+  `host/path` are completed to `*/api/*` and `*://host/path`. The newest matching route wins. Options: `status`, `body`,
+  `json`, `type` (content type), `method`, `delay` (ms). Mocks add CORS headers for cross-origin pages. Routes are
+  answered by the Chrome engine, so a session with routes loads its pages there (and says so in a note; removing the last
+  route or init script lifts a pin that route() set). A mock replaces the network only: the guard's URL policy still decides
+  first for navigations, redirects and sub-requests, so a denied host stays denied.
+* **Headers** apply to the HTTP tier, the script engine and Chrome. A request's own headers win over them. `Accept-Language`
+  overrides the browser's. Listing masks `Authorization`, `Cookie` and token-like names. Secret handles are not supported in
+  headers (use `auth()` or `fill()`).
+* **Credentials.** `auth(user, pass)` answers a `401` with `WWW-Authenticate: Basic` once, then sends the credentials at
+  once to that origin. By default only the page's own origin is answered (a page cannot make a third-party sub-request ask
+  for the password); `auth(user, pass, origin='https://x.example')` names the origin instead. The password may be a
+  `{{secret:name}}` handle, revealed only for an origin the secret is bound to; it is never printed. A password typed
+  literally is kept in the session record, so prefer a handle.
+* **Waiting.** `wait('text')` and `wait(2)` are unchanged. The variants hold until all their conditions do: the URL contains
+  the string (or matches it when it has a `*`), any one of several texts appears (the note says which), text is gone, a
+  numbered or named target is `visible`, `hidden` (absent counts) or `enabled`. `timeout=` (seconds) caps the wait. A timeout
+  names what was awaited and the start of what the page says instead.
+* **Emulation** adds `throttle` (`slow3g`, `fast4g`, `off`), `cpu` (slowdown factor 1 to 20), `motion='reduce'`,
+  `contrast='more'`, `forced_colors=1` and `permissions` (granted to the session's pages; skipped when attached to your own
+  profile with `AGENTWEB_CDP_SHARED`). They persist like the other `emulate()` options.
+* **Init scripts** run in the page's own world on every new document of the session, so a script added to a page that is
+  already open applies from the next load (`reload()`). They need the same permission as `js()` and are refused in
+  read-only mode.
+* **Dropping files** reads from the downloads folder, `AGENTWEB_FILES` (a path list) and the working directory, never
+  through hidden folders or files, at most 8 MB (`drop('zone', 'a.txt', text='inline')` needs no file).
+* Not covered by headers/auth/route: the Firefox and WebKit engines, and `engine('mine')` (the user's own browser).
+
 ## Verified collections and semantic changes
 
 ```
