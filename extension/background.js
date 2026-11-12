@@ -14,6 +14,8 @@ const tabs = new Map();
 /** tabIds the user offered from the popup, not yet taken */
 const offered = new Set();
 let groupId;
+/** what the agent asked the person to do, while it waits ('' = nothing) */
+let waiting = '';
 
 const settings = () => chrome.storage.local.get({ port: DEFAULT_PORT, enabled: true });
 
@@ -24,9 +26,9 @@ function send(obj) {
 function badge() {
   const on = !!ws && ws.readyState === 1;
   const n = tabs.size;
-  chrome.action.setBadgeText({ text: on ? (n ? String(n) : '') : '' });
-  chrome.action.setBadgeBackgroundColor({ color: '#2563eb' });
-  chrome.action.setTitle({ title: on ? (n ? `agentweb: an agent is using ${n} tab${n > 1 ? 's' : ''}` : 'agentweb: connected') : 'agentweb: not connected' });
+  chrome.action.setBadgeText({ text: on ? (waiting ? '!' : n ? String(n) : '') : '' });
+  chrome.action.setBadgeBackgroundColor({ color: waiting ? '#dc2626' : '#2563eb' });
+  chrome.action.setTitle({ title: on && waiting ? `agentweb is waiting for you: ${waiting}` : on ? (n ? `agentweb: an agent is using ${n} tab${n > 1 ? 's' : ''}` : 'agentweb: connected') : 'agentweb: not connected' });
 }
 
 async function connect() {
@@ -127,6 +129,23 @@ const handlers = {
     badge();
     return {};
   },
+  // the agent is stuck on something only a person can do (a sign-in, a captcha): bring the tab to the front and say so
+  async handoff({ tabId, message }) {
+    if (!tabs.has(tabId)) throw new Error('Session with given id not found');
+    const tab = await chrome.tabs.update(tabId, { active: true });
+    if (tab && tab.windowId !== undefined) await chrome.windows.update(tab.windowId, { focused: true, drawAttention: true }).catch(() => {});
+    waiting = String(message || 'The agent needs you in this tab').slice(0, 200);
+    badge();
+    try {
+      chrome.notifications.create('agentweb-handoff', { type: 'basic', iconUrl: 'icon128.png', title: 'agentweb needs you', message: waiting, priority: 2 });
+    } catch {}
+    return {};
+  },
+  async handoffDone() {
+    waiting = '';
+    badge();
+    return {};
+  },
   async listTabs() {
     const list = [];
     for (const tabId of offered) {
@@ -198,7 +217,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
         const tab = await chrome.tabs.get(tabId).catch(() => undefined);
         agentTabs.push({ tabId, owned: t.owned, title: tab ? tab.title || tab.url || '' : '' });
       }
-      return { connected: !!ws && ws.readyState === 1, port: s.port, enabled: s.enabled, tabs: agentTabs, offered: [...offered] };
+      return { connected: !!ws && ws.readyState === 1, port: s.port, enabled: s.enabled, tabs: agentTabs, offered: [...offered], waiting };
     }
     if (msg.type === 'share') {
       if (msg.on) offered.add(msg.tabId);

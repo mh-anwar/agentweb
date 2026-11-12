@@ -12,6 +12,8 @@ async function draw() {
   $('dot').className = 'dot' + (s.connected ? ' on' : '');
   $('state').textContent = !s.enabled ? 'Switched off' : s.connected ? 'Connected to agentweb' : 'Waiting for agentweb on this computer…';
   $('port').value = s.port;
+  $('waiting').hidden = !s.waiting;
+  $('waiting').textContent = s.waiting ? 'The agent is waiting for you: ' + s.waiting : '';
   $('stop').hidden = !s.enabled;
   $('start').hidden = s.enabled;
   const box = $('tabs');

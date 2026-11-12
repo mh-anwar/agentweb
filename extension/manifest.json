@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Lets your AI agent use this browser, with your sign-ins, through agentweb. It works only in tabs it opens or tabs you share, and you can stop it at any time.",
   "minimum_chrome_version": "125",
-  "permissions": ["debugger", "tabs", "tabGroups", "storage", "alarms"],
+  "permissions": ["debugger", "tabs", "tabGroups", "storage", "alarms", "notifications"],
   "background": { "service_worker": "background.js" },
   "action": { "default_title": "agentweb", "default_popup": "popup.html" },
   "icons": { "16": "icon16.png", "48": "icon48.png", "128": "icon128.png" }
