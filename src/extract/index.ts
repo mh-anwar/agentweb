@@ -15,7 +15,13 @@ import { AwError } from '../types.ts';
 import { estimateTokens } from '../tokens.ts';
 
 const CONTENT = new Set(['main', 'other', 'dialog']);
-const GENERIC_FIELDS = new Set(['price', 'prices', 'name', 'names', 'product', 'products', 'record', 'records', 'result', 'results', 'item', 'items']);
+// Words that name a kind of field or the list itself, not something written on an item ("price", "rating", "all"):
+// compared after terms() has stemmed them
+const GENERIC_FIELDS = new Set([
+  'price', 'prices', 'name', 'names', 'product', 'products', 'record', 'records', 'result', 'results', 'item', 'items',
+  'cost', 'rating', 'review', 'title', 'link', 'url', 'detail', 'description', 'availability', 'all', 'every', 'list', 'row', 'entry', 'entrie',
+  'article', 'story', 'storie', 'post', 'date', 'author', 'field',
+]);
 const NEXT = /^(?:next(?: page)?|older(?: posts| entries)?|more|load more|›|»|→|next ›|next »|next →)$/i;
 
 const str = (a: unknown) => (a === undefined || a === null ? '' : String(a));
@@ -74,6 +80,20 @@ export function nextLink(page: Page): Act | undefined {
   return best;
 }
 
+/** A "Next" that is a button rather than a link, and can be pressed. */
+function nextButton(page: Page): Act | undefined {
+  let best: Act | undefined;
+  for (const b of page.blocks) {
+    if (b.r === 'footer') continue;
+    for (const x of b.i) {
+      if (typeof x === 'string' || (x.k !== 'button' && x.k !== 'click') || x.dis) continue;
+      const l = x.l.trim();
+      if (NEXT.test(l) || /^next\b/i.test(l)) best = x;
+    }
+  }
+  return best;
+}
+
 async function records(rc: RunCtx, step: Step): Promise<void> {
   let q = [...new Set(terms(str(step.args[0])))];
   let dropped = '';
@@ -81,9 +101,10 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
     // Generic field requests like "price" mean show the data. Specific queries remain
     // filters across all pages, even when the first page has no match.
     const first = recordBlocks(rc.page, 1);
-    if (first.length && q.every(word => GENERIC_FIELDS.has(word)) && !first.some((b) => matches(b, q))) {
-      dropped = `no record mentions '${str(step.args[0])}', so all are shown. `;
-      q = [];
+    if (first.length && q.some((word) => GENERIC_FIELDS.has(word)) && !first.some((b) => matches(b, q))) {
+      const kept = q.filter((word) => !GENERIC_FIELDS.has(word));
+      dropped = kept.length ? `no record has the word${q.length - kept.length > 1 ? 's' : ''} ${q.filter((w) => GENERIC_FIELDS.has(w)).map((w) => `'${w}'`).join(', ')} (words filter what is written on an item), so only the rest is used. ` : `no record mentions '${str(step.args[0])}', so all are shown. `;
+      q = kept;
     }
   }
   const pages = Math.max(1, Math.min(10, num(step.opts.pages, 1)));
@@ -116,9 +137,20 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
       await rc.navigate({ url: next.href, referer: page.url });
       continue;
     }
-    // no pager: an infinite feed loads more as it scrolls
     if (!page.stats.scripts && !rc.isLive()) break;
     const before = new Set(recordBlocks(rc.page, 1).map((b) => b.hx));
+    // a pager made of buttons (a single-page app): press its Next
+    const button = nextButton(page);
+    if (button) {
+      try {
+        await rc.verb('click', [rc.refs.of(button)]);
+      } catch {
+        break;
+      }
+      if (!recordBlocks(rc.page, 1).some((b) => !before.has(b.hx))) break;
+      continue;
+    }
+    // no pager: an infinite feed loads more as it scrolls
     try {
       await rc.verb('scroll', ['bottom']);
     } catch {
