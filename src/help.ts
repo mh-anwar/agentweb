@@ -34,7 +34,9 @@ Routes and init scripts need the real browser; headers and auth work everywhere.
     about: 'several pages open at once; the user\'s own browser',
     text: `tabs() lists · tab('new', 'url') · tab(2) · tab('close') · tab('close', 2). Tabs of one session share its cookies; each keeps its page, history and live state.
 The \`session\` argument of the tool is different: a separate browser with its own cookies.
-engine('mine') - this session's pages open in the user's own browser with their sign-ins (they must have the agentweb extension); engine('auto') goes back. Act only on what was asked there.`,
+engine('mine') - this session's pages open in the user's own browser with their sign-ins (they must have the agentweb extension); engine('auto') goes back. Act only on what was asked there.
+tab('shared') - take over a tab the user shared from the extension (tab('shared', 'title words') picks one); tab('close') gives it back, still open.
+handoff('Please sign in') - only in the user's own browser: brings the tab to the front, notifies them, waits (wait=90 seconds) until the page changes, then shows it. For sign-ins, captchas and two-factor prompts.`,
   },
   signin: {
     about: 'saved sign-ins, cookies, stored credentials',

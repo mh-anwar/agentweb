@@ -379,6 +379,12 @@ no cookies, no storage.
    your browser, in a tab group named `agentweb`. Other sessions, and this one after `engine('auto')`,
    stay in agentweb's own isolated browser. `AGENTWEB_EXTENSION=1` sends every session to your browser.
 
+`tab('shared')` takes over a tab you shared from the toolbar button and gives it back, still open, with
+`tab('close')`. `handoff('Please sign in')` is for what only you can do (a sign-in, a captcha, a two-factor
+prompt): the tab comes to the front with a notification, the agent waits until the page changes, then
+carries on. In agentweb's own windowless browser `handoff` says nobody can see the page and points to
+`engine('mine')`.
+
 What the agent can touch: tabs it opened, and tabs you share with the toolbar button ("Share this tab
 with the agent"). The toolbar icon shows how many tabs an agent is using; "Stop the agent" takes them
 all back at once and keeps the extension off until you switch it on again. Chrome shows its

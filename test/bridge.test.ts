@@ -55,7 +55,7 @@ describe('browser extension bridge', { skip: exe ? false : 'no full Chromium fou
       const url = req.url ?? '/';
       if (url === '/set') {
         res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'owner=me; Path=/' }).end('<title>set</title>cookie set');
-      } else if (url === '/who') {
+      } else if (url.split('?')[0] === '/who') {
         res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>who</title><p>cookie:[${req.headers.cookie ?? ''}]</p><button onclick="document.getElementById('o').textContent='clicked'">Press me</button><p id="o">idle</p>`);
       } else res.writeHead(404).end('no');
     });
@@ -189,9 +189,22 @@ describe('browser extension bridge', { skip: exe ? false : 'no full Chromium fou
     // the user opens a page of their own and presses "Share this tab with the agent" in the extension's popup
     const { targetId: theirs } = await user.send<{ targetId: string }>('Target.createTarget', { url: base + '/who?mine=1' });
     await waitFor('their page', async () => (await targets()).some((t) => t.targetId === theirs && /mine=1/.test(t.url)));
-    const worker = (await targets()).find((t) => t.type === 'service_worker' && /^chrome-extension:/.test(t.url));
-    assert.ok(worker, 'the extension worker is running');
-    await evalIn(worker.targetId, `chrome.tabs.query({}).then(async (all) => { const t = all.find((x) => /mine=1/.test(x.url || '')); offered.add(t.id); await sendOffered(); return t.id; })`);
+    // press "Share this tab" the way the popup does: from one of the extension's own pages
+    // (Chromium ships extensions of its own: ours is the one whose manifest says so)
+    let extId: string | undefined;
+    for (const t of (await targets()).filter((x) => x.type === 'service_worker' && /^chrome-extension:\/\//.test(x.url))) {
+      if ((await evalIn(t.targetId, 'chrome.runtime.getManifest().name').catch(() => '')) === 'agentweb') extId = /^chrome-extension:\/\/([^/]+)/.exec(t.url)?.[1];
+    }
+    assert.ok(extId, 'the extension is loaded: ' + (await targets()).map((t) => t.type + ' ' + t.url).join(' | '));
+    const { targetId: popup } = await user.send<{ targetId: string }>('Target.createTarget', { url: `chrome-extension://${extId}/popup.html` });
+    let seen: unknown;
+    try {
+      await waitFor('the popup page', async () => (seen = await evalIn(popup, 'typeof chrome !== "undefined" && !!chrome.runtime && document.readyState').catch((e) => 'ERR ' + e.message)) === 'complete', 6000);
+    } catch (e) {
+      throw new Error(`popup not ready: ${JSON.stringify(seen)}; targets: ${(await targets()).map((t) => t.type + ' ' + t.url).join(' | ')}`);
+    }
+    await evalIn(popup, `chrome.tabs.query({}).then((all) => chrome.runtime.sendMessage({ type: 'share', tabId: all.find((x) => /mine=1/.test(x.url || '')).id, on: true }))`);
+    await user.send('Target.closeTarget', { targetId: popup });
     await waitFor('the hub to hear about the shared tab', () => hub.status().offered.length === 1);
 
     const saved = { home: process.env.AGENTWEB_HOME, port: process.env.AGENTWEB_EXTENSION_PORT };
@@ -208,7 +221,7 @@ describe('browser extension bridge', { skip: exe ? false : 'no full Chromium fou
       const listed = await rt.run('sh', "engine('mine'); tabs()");
       assert.match(listed.text, /shared by the user[\s\S]*who.*mine=1/);
       const took = await rt.run('sh', "tab('shared', 'mine=1'); click('Press me')");
-      assert.ok(took.ok, took.text);
+      assert.ok(took.ok, took.text + '\nVIEW: ' + (took.ok ? '' : (await rt.run('sh', 'view()')).text));
       assert.match(took.text, /clicked/);
       assert.match(took.text, /user's own tab/);
       assert.equal(hub.status().tabs.filter((t) => !t.owned).length, 1);
