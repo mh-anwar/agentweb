@@ -16,8 +16,10 @@ import { compile, TRUNCATED } from './compile.ts';
 import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { redactProgram, writeBug } from './usage.ts';
+import { helpText } from './help.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
+import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions } from './netcontrol.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
 import { TOOL, toolSpec } from './tooldoc.ts';
@@ -87,6 +89,10 @@ export interface RuntimeOptions {
   secretNames?: string[];
   /** the real browser automatic escalation ends at (default chrome) */
   browser?: BrowserTier;
+  /** browser pages of every session open in the user's own browser, where a person can see and use them */
+  userBrowser?: boolean;
+  /** folders drop() may read files from, besides the working directory */
+  fileRoots?: string[];
 }
 
 export type BrowserTier = 'chrome' | 'firefox' | 'webkit';
@@ -162,6 +168,7 @@ export class RunCtx {
       userAgent: rec.emulate?.ua ?? rt.opts.emulate?.ua ?? rt.opts.userAgent,
       emulate: rec.emulate ?? rt.opts.emulate,
       own: rec.own,
+      net: rec.net,
       guard: this.guard,
       timeoutMs: rt.opts.timeoutMs,
       signal,
@@ -574,6 +581,12 @@ function describeEmulation(e: Emulation): string {
   if (e.geo) bits.push(`at ${e.geo.lat},${e.geo.lon}`);
   if (e.dark) bits.push('dark');
   if (e.offline) bits.push('offline');
+  if (e.throttle) bits.push(e.throttle);
+  if (e.cpu) bits.push(`cpu ${e.cpu}x slower`);
+  if (e.motion) bits.push('reduced motion');
+  if (e.contrast) bits.push('more contrast');
+  if (e.forcedColors) bits.push('forced colors');
+  if (e.permissions) bits.push('allowed: ' + e.permissions.join(', '));
   if (e.ua && !e.label) bits.push('custom user agent');
   return bits.join(', ') || 'defaults';
 }
@@ -608,6 +621,10 @@ async function readLog(rc: RunCtx, step: Step, kind: 'console' | 'network'): Pro
     return;
   }
   await rc.ensureLive();
+  if (kind === 'network' && step.opts.har !== undefined) {
+    const res = await rc.live({ do: 'har', name: str(step.opts.har) });
+    return rc.note(res.value ?? 'HAR saved');
+  }
   const match = step.args.length ? str(step.args[0]) : undefined;
   const failed = truthy(step.opts.failed) || truthy(step.opts.errors);
   const res = await rc.live({ do: 'log', kind, match, failed, body: truthy(step.opts.body), n: typeof step.opts.n === 'number' ? step.opts.n : undefined });
@@ -665,14 +682,30 @@ async function liveClick(rc: RunCtx, step: Step): Promise<void> {
   if (!eligible) return rc.liveOn(step, click);
   const r = rc.resolve(step);
   const sig = pageSig(p0);
+  // what the agent typed so far, to put back if the page has to move to the real browser
+  const acts0 = allActs(p0).map((x) => x.act);
+  const typed = acts0.filter((a) => (a.k === 'input' || a.k === 'select') && a.val && a.type !== 'password' && a.type !== 'file' && a.type !== 'hidden');
+  const hasPassword = acts0.some((a) => a.k === 'input' && a.type === 'password' && a.val);
   await rc.liveOn(step, click);
   const p1 = rc.page;
-  if ('portable' in r || p1.tier !== 'ghost' || pageSig(p1) !== sig || rc.lastBytes > 0) return;
+  if ('portable' in r || p1.tier !== 'ghost') return;
+  // Two cases where the click certainly did not do its job and nothing was sent that a second click would repeat:
+  // nothing changed and no request left, or the request it wanted to make was refused before leaving (a CORS
+  // preflight this engine could not pass). A request that reached a server is never repeated.
+  const refused = p1.notes.some((n) => /blocked by CORS: .*\(preflight refused\)/.test(n));
+  const nothing = pageSig(p1) === sig && rc.lastBytes === 0;
+  if (!nothing && !refused) return;
   const up = await rc.nextTier('ghost');
   if (!up) return;
+  if (hasPassword) return void rc.note(`[${r.act.l}] did not work without a real browser; engine('${up}') and repeat the steps (a typed password is not carried over)`);
   rc.rt.count('escalations');
-  rc.note(`[${r.act.l}] did nothing without a real browser; page re-opened in ${up} and clicked again`);
+  rc.note(refused ? `a request [${r.act.l}] makes was refused before it was sent; page re-opened in ${up}, fields filled again, clicked again` : `[${r.act.l}] did nothing without a real browser; page re-opened in ${up} and clicked again`);
   await rc.navigate({ url: p1.url }, { tier: up, push: false });
+  for (const a of typed) {
+    const hit = actByFp(rc.page, a.f);
+    if (!hit || hit.act.n === undefined || hit.act.val === a.val) continue;
+    await rc.live(a.k === 'select' ? { do: 'select', n: hit.act.n, value: a.val! } : { do: 'fill', n: hit.act.n, value: a.val! }).catch(() => {});
+  }
   await rc.liveOn(retarget(step, r.act), click);
 }
 
@@ -1021,6 +1054,7 @@ const VERBS: Record<string, VerbHandler> = {
   },
 
   async wait(rc, step) {
+    if (isAdvancedWait(step)) return waitVerb(rc, step); // url=, gone=, state=, several texts (netcontrol.ts)
     const a = step.args[0];
     const ms = typeof a === 'number' ? Math.min(a < 100 ? a * 1000 : a, 30000) : undefined;
     const text = typeof a === 'string' ? a : undefined;
@@ -1148,6 +1182,18 @@ const VERBS: Record<string, VerbHandler> = {
     if (o.dark !== undefined) next.dark = truthy(o.dark);
     if (o.colorscheme !== undefined || o.scheme !== undefined) next.dark = /dark/i.test(str(o.colorscheme ?? o.scheme));
     if (o.offline !== undefined) next.offline = truthy(o.offline);
+    // network speed, CPU, media features, permissions (netcontrol.ts has the tables)
+    if (o.throttle !== undefined || o.network !== undefined) next.throttle = parseThrottle(o.throttle ?? o.network!);
+    if (o.cpu !== undefined) {
+      const c = /^(off|none|no|false|reset)$/i.test(str(o.cpu)) ? 1 : Number(o.cpu);
+      if (!Number.isFinite(c) || c < 1 || c > 20) throw new AwError('bad_request', 'cpu is a slowdown factor from 1 to 20: emulate(cpu=4)');
+      next.cpu = c > 1 ? c : undefined;
+    }
+    if (o.motion !== undefined) next.motion = /reduce/i.test(str(o.motion)) || (truthy(o.motion) && !/no-preference|none/i.test(str(o.motion)));
+    if (o.contrast !== undefined) next.contrast = /more|high/i.test(str(o.contrast)) || (truthy(o.contrast) && !/no-preference|none|normal/i.test(str(o.contrast)));
+    const fc = o.forced_colors ?? o.forcedcolors;
+    if (fc !== undefined) next.forcedColors = /active/i.test(str(fc)) || (truthy(fc) && !/none/i.test(str(fc)));
+    if (o.permissions !== undefined || o.permission !== undefined) next.permissions = parsePermissions(o.permissions ?? o.permission!);
     for (const k of Object.keys(next) as (keyof Emulation)[]) if (next[k] === undefined || next[k] === false && k !== 'mobile') delete next[k];
     if (next.width && !next.height) next.height = Math.round(next.width * 0.625);
     if (next.height && !next.width) next.width = Math.round(next.height * 1.6);
@@ -1242,6 +1288,12 @@ const VERBS: Record<string, VerbHandler> = {
   },
 };
 VERBS.uncheck = VERBS.check;
+Object.assign(VERBS, netVerbs); // route, routes, headers, auth, init, drop
+
+// help() / help('topic'): the steps the tool description does not spend tokens on
+VERBS.help = async (rc, step) => {
+  rc.emit(helpText(step.args.length ? str(step.args[0]) : undefined));
+};
 
 // bug('expected | got'): an agent tells the maintainers that agentweb itself got something wrong. Saved: the
 // program of this call (or, when bug() is alone, of the previous call), the engine, the status lines and the
@@ -1278,11 +1330,52 @@ VERBS.bug = async (rc, step) => {
 // Tabs: several pages kept open in one session, sharing its cookies and storage. tabs() lists them,
 // tab('new', url) opens one, tab(2) goes to one, tab('close') closes the current one.
 const tabLine = (n: number, page: Page | undefined, cur: boolean) => `${cur ? '*' : ' '} tab ${n}: ${page ? `${page.title || '(untitled)'} - ${page.url}` : '(empty)'}`;
+/** Tabs of the user's own browser that this session may take over (they shared them from the extension). */
+async function sharedTabs(rc: RunCtx): Promise<{ id: string; title: string; url: string }[]> {
+  const eng = rc.rt.deps.engines.chrome;
+  if (!eng?.targets) return [];
+  try {
+    return await eng.targets(rc.ctx);
+  } catch {
+    return [];
+  }
+}
+
 VERBS.tabs = async (rc) => {
   const rec = rc.rec;
   const cur = rec.tab ?? 1;
   const all = [{ n: cur, page: rec.page }, ...(rec.tabs ?? [])].sort((a, b) => a.n - b.n);
-  rc.emit(all.map((t) => tabLine(t.n, t.page, t.n === cur)).join('\n') + "\n(tab(N) goes to one, tab('new', 'url') opens one, tab('close') closes this one)");
+  const lines = all.map((t) => tabLine(t.n, t.page, t.n === cur));
+  const shared = await sharedTabs(rc);
+  if (shared.length) lines.push("shared by the user from their browser (tab('shared') takes the first, tab('shared', 'words') picks one):", ...shared.slice(0, 8).map((t) => `  ${t.title || '(untitled)'} - ${t.url}`));
+  rc.emit(lines.join('\n') + "\n(tab(N) goes to one, tab('new', 'url') opens one, tab('close') closes this one)");
+};
+
+// handoff('Please sign in'): something only the person can do (a sign-in, a captcha, a 2-factor prompt). In their
+// own browser the tab comes to the front with a notification; the step waits until the page changes, then shows it.
+VERBS.handoff = async (rc, step) => {
+  const message = step.args.length ? str(step.args[0]) : 'The agent needs you in this tab';
+  const p = rc.page;
+  const inTheirs = !!rc.rec.own || !!rc.rt.opts.userBrowser;
+  if (!inTheirs || !isBrowser(p.tier) || !rc.isLive()) {
+    throw new AwError(
+      'unsupported',
+      'nobody can see this page: it is in a browser without a window',
+      "engine('mine') opens it in the user's own browser (they need the agentweb extension); then handoff('what to do') asks them. Without it, tell the user what is needed and stop",
+    );
+  }
+  await rc.ensureLive();
+  const total = Math.min(600, Math.max(5, Number(step.opts.wait ?? step.opts.timeout) || 90)) * 1000;
+  const end = Date.now() + total;
+  let state = 'unchanged';
+  // one engine call may not outlast the call timeout: wait in slices
+  while (Date.now() < end && !rc.ctx.signal?.aborted) {
+    const slice = Math.min(end - Date.now(), Math.max(3000, (rc.ctx.timeoutMs || 30_000) - 6000));
+    const loaded = await rc.live({ do: 'handoff', message, waitMs: slice });
+    state = loaded.value ?? 'unchanged';
+    if (state === 'changed') break;
+  }
+  rc.note(state === 'changed' ? `the user was asked: "${message}"; the page changed, here it is now` : `the user was asked: "${message}"; nothing changed in ${Math.round(total / 1000)} s. Call handoff again to keep waiting, or tell the user`);
 };
 VERBS.tab = async (rc, step) => {
   const rec = rc.rec;
@@ -1297,6 +1390,34 @@ VERBS.tab = async (rc, step) => {
     const url = step.args.length > 1 ? str(step.args[1]) : '';
     rc.note(`tab ${n} (new); tab(${cur}) goes back`);
     if (url) await rc.verb('open', [url]);
+    return;
+  }
+  if (word === 'shared' || word === 'adopt' || word === 'theirs') {
+    const eng = rc.rt.deps.engines.chrome;
+    if (!eng?.adopt || !(rc.rec.own || rc.rt.opts.userBrowser)) throw new AwError('unsupported', "taking over a tab the user shared needs their own browser", "engine('mine') first; the user shares a tab from the agentweb extension's toolbar button");
+    const shared = await sharedTabs(rc);
+    const want = step.args.length > 1 ? lc(str(step.args[1])) : '';
+    const pick = want ? shared.find((t) => want.split(/\s+/).every((w) => (t.title + ' ' + t.url).toLowerCase().includes(w))) : shared[0];
+    if (!pick) throw new AwError('bad_request', shared.length ? `no shared tab matches '${want}'` : 'the user has not shared a tab', shared.length ? 'shared: ' + shared.map((t) => t.title || t.url).join(' · ') : "ask them to press 'Share this tab with the agent' in the agentweb extension, then try again");
+    if (known.length >= MAX_TABS) throw new AwError('bad_request', `a session keeps at most ${MAX_TABS} tabs`, "close one with tab('close', N)");
+    const v = await rc.guard.checkStep({ verb: 'open', origin: rec.page ? originOf(rec.page.url) : undefined, dest: pick.url, method: 'GET' });
+    if (!v.ok) throw new AwError('policy', v.reason);
+    const n = Math.max(...known) + 1;
+    const hadPage = !!rec.page;
+    if (hadPage) rc.switchTab(n);
+    try {
+      const loaded = await eng.adopt(rc.ctx, pick.id);
+      rc.fetches++;
+      rc.setPage(await rc.toPage(loaded, 'chrome'), { push: false });
+    } catch (e) {
+      if (hadPage) {
+        rc.switchTab(cur);
+        rec.tabs = (rec.tabs ?? []).filter((t) => t.n !== n);
+        if (!rec.tabs.length) rec.tabs = undefined;
+      }
+      throw e;
+    }
+    rc.note(`tab ${rec.tab ?? 1}: the user's own tab; tab('close') gives it back without closing it`);
     return;
   }
   if (word === 'close') {
@@ -1363,7 +1484,7 @@ function setChecked(rc: RunCtx, act: Act, block: Block, on: boolean) {
 
 export class RuntimeImpl implements Runtime {
   deps: RuntimeDeps;
-  opts: Required<Omit<RuntimeOptions, 'defaultEngine' | 'emulate'>> & Pick<RuntimeOptions, 'defaultEngine' | 'emulate'>;
+  opts: Required<Omit<RuntimeOptions, 'defaultEngine' | 'emulate' | 'fileRoots'>> & Pick<RuntimeOptions, 'defaultEngine' | 'emulate' | 'fileRoots'>;
   private verbs: Record<string, VerbHandler> = { ...VERBS };
   private locks = new Map<string, Promise<unknown>>();
   private subs = new Set<(e: RunEvent) => void>();
@@ -1385,7 +1506,9 @@ export class RuntimeImpl implements Runtime {
       secretNames: o.secretNames ?? [],
       defaultEngine: o.defaultEngine,
       emulate: o.emulate,
+      fileRoots: o.fileRoots,
       browser: (this.ladder[2] as BrowserTier) ?? 'chrome',
+      userBrowser: !!o.userBrowser,
     };
   }
 
@@ -1456,6 +1579,33 @@ export class RuntimeImpl implements Runtime {
     return this.lock(session, () => this.runLocked(session, program, opts ?? {}));
   }
 
+  /** One step of a program, with the run loop's rules (confirm tokens, one escalation retry). Stored programs use it too. */
+  async execStep(rc: RunCtx, step: Step): Promise<void> {
+    const handler = this.verbs[step.verb];
+    if (!handler) throw new AwError('unsupported', `${step.verb}() is not available in this build`);
+    // submit(confirm='token') is how agents naturally write it: approve, then run the step
+    if (step.verb !== 'confirm') {
+      let tok = step.opts.confirm;
+      // submit('confirm 1a2b3c4d') too: the refusal text read as an argument
+      const i = step.args.findIndex((a) => typeof a === 'string' && /^confirm\s+[0-9a-f]{6,}$/i.test(a.trim()));
+      if (tok === undefined && i >= 0) [tok] = step.args.splice(i, 1);
+      if (tok !== undefined) {
+        await VERBS.confirm(rc, { verb: 'confirm', args: [tok], opts: {}, src: step.src });
+        delete step.opts.confirm;
+      }
+    }
+    try {
+      await handler(rc, step);
+    } catch (e) {
+      // a control the plain-HTTP view does not have (rendered by script, in a shadow root):
+      // move the page to a script engine and try the step once more
+      const p = rc.rec.page;
+      if (!(e instanceof AwError) || e.code !== 'bad_request' || !MISSING_TARGET.test(e.message) || !p || p.tier !== 'wire' || !p.stats.scripts || p.method !== 'GET' || !(await rc.nextTier('wire'))) throw e;
+      await rc.escalate(`${step.src} was not found without the page's scripts`);
+      await handler(rc, step);
+    }
+  }
+
   private async runLocked(session: string, program: string, opts: RunOptions): Promise<RunResult> {
     const t0 = performance.now();
     const budget = Math.min(Math.max(opts.budget ?? this.opts.budget, 200), 30000);
@@ -1484,30 +1634,8 @@ export class RuntimeImpl implements Runtime {
         failed = { step, err: new AwError('timeout', 'the run was cancelled or timed out') };
         break;
       }
-      const handler = this.verbs[step.verb];
       try {
-        if (!handler) throw new AwError('unsupported', `${step.verb}() is not available in this build`);
-        // submit(confirm='token') is how agents naturally write it: approve, then run the step
-        if (step.verb !== 'confirm') {
-          let tok = step.opts.confirm;
-          // submit('confirm 1a2b3c4d') too: the refusal text read as an argument
-          const i = step.args.findIndex((a) => typeof a === 'string' && /^confirm\s+[0-9a-f]{6,}$/i.test(a.trim()));
-          if (tok === undefined && i >= 0) [tok] = step.args.splice(i, 1);
-          if (tok !== undefined) {
-            await VERBS.confirm(rc, { verb: 'confirm', args: [tok], opts: {}, src: step.src });
-            delete step.opts.confirm;
-          }
-        }
-        try {
-          await handler(rc, step);
-        } catch (e) {
-          // a control the plain-HTTP view does not have (rendered by script, in a shadow root):
-          // move the page to a script engine and try the step once more
-          const p = rc.rec.page;
-          if (!(e instanceof AwError) || e.code !== 'bad_request' || !MISSING_TARGET.test(e.message) || !p || p.tier !== 'wire' || !p.stats.scripts || p.method !== 'GET' || !(await rc.nextTier('wire'))) throw e;
-          await rc.escalate(`${step.src} was not found without the page's scripts`);
-          await handler(rc, step);
-        }
+        await this.execStep(rc, step);
         done++;
       } catch (e) {
         const err = e instanceof AwError ? e : new AwError('internal', shortError(e));

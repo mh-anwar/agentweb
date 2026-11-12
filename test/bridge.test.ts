@@ -55,7 +55,7 @@ describe('browser extension bridge', { skip: exe ? false : 'no full Chromium fou
       const url = req.url ?? '/';
       if (url === '/set') {
         res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'owner=me; Path=/' }).end('<title>set</title>cookie set');
-      } else if (url === '/who') {
+      } else if (url.split('?')[0] === '/who') {
         res.writeHead(200, { 'content-type': 'text/html' }).end(`<title>who</title><p>cookie:[${req.headers.cookie ?? ''}]</p><button onclick="document.getElementById('o').textContent='clicked'">Press me</button><p id="o">idle</p>`);
       } else res.writeHead(404).end('no');
     });
@@ -174,5 +174,80 @@ describe('browser extension bridge', { skip: exe ? false : 'no full Chromium fou
         else process.env[k] = v;
       }
     }
+  });
+
+  it('takes over a tab the user shared, hands a step to the person, and never closes their tab', async () => {
+    await waitFor('the extension to connect', () => hub.status().extension);
+    const user = await connect(`http://127.0.0.1:${debugPort}`);
+    const evalIn = async (targetId: string, expression: string) => {
+      const { sessionId } = await user.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
+      const r = await user.send<any>('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, { sessionId });
+      await user.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+      return r.result?.value;
+    };
+    const targets = async () => (await user.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>('Target.getTargets')).targetInfos;
+    // the user opens a page of their own and presses "Share this tab with the agent" in the extension's popup
+    const { targetId: theirs } = await user.send<{ targetId: string }>('Target.createTarget', { url: base + '/who?mine=1' });
+    await waitFor('their page', async () => (await targets()).some((t) => t.targetId === theirs && /mine=1/.test(t.url)));
+    // press "Share this tab" the way the popup does: from one of the extension's own pages
+    // (Chromium ships extensions of its own: ours is the one whose manifest says so)
+    let extId: string | undefined;
+    for (const t of (await targets()).filter((x) => x.type === 'service_worker' && /^chrome-extension:\/\//.test(x.url))) {
+      if ((await evalIn(t.targetId, 'chrome.runtime.getManifest().name').catch(() => '')) === 'agentweb') extId = /^chrome-extension:\/\/([^/]+)/.exec(t.url)?.[1];
+    }
+    assert.ok(extId, 'the extension is loaded: ' + (await targets()).map((t) => t.type + ' ' + t.url).join(' | '));
+    const { targetId: popup } = await user.send<{ targetId: string }>('Target.createTarget', { url: `chrome-extension://${extId}/popup.html` });
+    let seen: unknown;
+    try {
+      await waitFor('the popup page', async () => (seen = await evalIn(popup, 'typeof chrome !== "undefined" && !!chrome.runtime && document.readyState').catch((e) => 'ERR ' + e.message)) === 'complete', 6000);
+    } catch (e) {
+      throw new Error(`popup not ready: ${JSON.stringify(seen)}; targets: ${(await targets()).map((t) => t.type + ' ' + t.url).join(' | ')}`);
+    }
+    await evalIn(popup, `chrome.tabs.query({}).then((all) => chrome.runtime.sendMessage({ type: 'share', tabId: all.find((x) => /mine=1/.test(x.url || '')).id, on: true }))`);
+    await user.send('Target.closeTarget', { targetId: popup });
+    await waitFor('the hub to hear about the shared tab', () => hub.status().offered.length === 1);
+
+    const saved = { home: process.env.AGENTWEB_HOME, port: process.env.AGENTWEB_EXTENSION_PORT };
+    process.env.AGENTWEB_HOME = join(dir, 'home');
+    process.env.AGENTWEB_EXTENSION_PORT = String(hub.port);
+    const write = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as any;
+    const rt = await createAgentweb({ store: 'memory:', ghost: false, env: { AGENTWEB_ALLOW_PRIVATE: '1', AGENTWEB_NO_SANDBOX: '1', AGENTWEB_USAGE_LOG: '', AGENTWEB_ATLAS: '0' } });
+    try {
+      const refused = await rt.run('iso', "tab('shared')");
+      assert.ok(!refused.ok);
+      assert.match(refused.text, /engine\('mine'\) first/);
+
+      const listed = await rt.run('sh', "engine('mine'); tabs()");
+      assert.match(listed.text, /shared by the user[\s\S]*who.*mine=1/);
+      const took = await rt.run('sh', "tab('shared', 'mine=1'); click('Press me')");
+      assert.ok(took.ok, took.text + '\nVIEW: ' + (took.ok ? '' : (await rt.run('sh', 'view()')).text));
+      assert.match(took.text, /clicked/);
+      assert.match(took.text, /user's own tab/);
+      assert.equal(hub.status().tabs.filter((t) => !t.owned).length, 1);
+
+      // hand a step to the person: they press the button themselves while the agent waits
+      const reset = await rt.run('sh', `open('${base}/who?mine=2')`);
+      assert.match(reset.text, /idle/);
+      setTimeout(() => void evalIn(theirs, `document.querySelector('button').click()`).catch(() => {}), 1200);
+      const handed = await rt.run('sh', "handoff('Please press the button', wait=15)");
+      assert.ok(handed.ok, handed.text);
+      assert.match(handed.text, /the user was asked: "Please press the button"; the page changed/);
+      assert.match(handed.text, /clicked/);
+
+      const blind = await rt.run('iso2', `engine('chrome'); open('${base}/who'); handoff('Sign in')`);
+      assert.ok(!blind.ok);
+      assert.match(blind.text, /nobody can see this page/);
+    } finally {
+      process.stderr.write = write;
+      await rt.close();
+      for (const [k, v] of [['AGENTWEB_HOME', saved.home], ['AGENTWEB_EXTENSION_PORT', saved.port]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+    await waitFor('the agent to let go', () => hub.status().tabs.length === 0);
+    assert.ok((await targets()).some((t) => t.targetId === theirs), "the user's tab is still open");
+    user.close('done');
   });
 });

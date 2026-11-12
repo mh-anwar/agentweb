@@ -11,10 +11,25 @@ const HIDDEN_CLASS = /(?:^|\s)(?:d-none|hidden|is-hidden|u-hidden|hide|invisible
 const SHOWN_AT_BREAKPOINT = /(?:^|\s)(?:(?:sm|md|lg|xl|2xl|max-\w+):(?:block|flex|grid|inline|inline-block|inline-flex|table|contents|visible)|d-(?:sm|md|lg|xl|xxl)-(?:block|flex|inline|inline-block|grid|table))(?:\s|$)/;
 const SR_CLASS = /(?:^|\s)(?:sr-only|visually-hidden|visuallyhidden|screen-reader-text|screen-reader-only|a11y-hidden|assistive-text|u-visually-hidden|show-for-sr|offscreen)(?:\s|$)/i;
 
+const OPACITY_ZERO = /(?:^|;)\s*opacity\s*:\s*0(?:\.0+)?\s*(?:;|$|!)/i;
+const REALLY_HIDDEN = /(?:^|;)\s*(?:display\s*:\s*none|visibility\s*:\s*(?:hidden|collapse)|pointer-events\s*:\s*none|position\s*:\s*(?:absolute|fixed)|(?:max-)?(?:height|width)\s*:\s*0(?:px)?\s*(?:;|$))/i;
+
+/**
+ * `opacity:0` in server-rendered HTML is, far more often than a way to hide something, the first frame
+ * of an entrance animation (framer-motion's initial state, usually with a transform) that the page's
+ * script plays as soon as it runs. Without scripts that frame is all we get, and the content under it is
+ * the page. Content that is also out of the flow, unclickable or collapsed stays hidden (honeypot fields).
+ */
+function fadeInStart(style: string): boolean {
+  if (!OPACITY_ZERO.test(style) || REALLY_HIDDEN.test(style)) return false;
+  // nothing else in the style hides it: only the opacity does
+  return !HIDDEN_STYLE.test(style.replace(/opacity\s*:\s*0(?:\.0+)?\s*(?:!important)?\s*;?/gi, ''));
+}
+
 function staticallyHidden(a: Record<string, string>): boolean {
   if ('hidden' in a && a.hidden !== 'until-found') return true;
   if (a['aria-hidden'] === 'true') return true;
-  if (a.style && HIDDEN_STYLE.test(a.style)) return true;
+  if (a.style && HIDDEN_STYLE.test(a.style) && !fadeInStart(a.style)) return true;
   const c = a.class;
   if (c && HIDDEN_CLASS.test(c) && !SHOWN_AT_BREAKPOINT.test(c)) return true;
   return false;

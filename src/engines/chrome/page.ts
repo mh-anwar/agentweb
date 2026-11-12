@@ -9,6 +9,7 @@ import { extractPage, nodeById, type Extracted } from '../../inpage/extract.ts';
 import { hash } from '../../tree.ts';
 import { AwError, type CookieData, type Emulation, type ErrCode, type SessionCtx, type Verdict } from '../../types.ts';
 import { isContextLost, type Cdp, type CdpSession } from './cdp.ts';
+import { basicFor, buildHar, cdpPermissions, mayAnswer, matchRoute, mockResponse, rememberChallenge, THROTTLE, type HarRow } from '../../netcontrol.ts';
 import { installHelpers, listenerProbe, seedStorage } from './inpage.ts';
 
 export const WORLD = 'agentweb';
@@ -49,6 +50,25 @@ interface NavOverride {
   body?: string | Uint8Array;
   contentType?: string;
   headers?: Record<string, string>;
+}
+
+/** a request seen by the Network domain: what network() prints and network(har=) saves */
+interface NetRow {
+  method: string;
+  url: string;
+  type: string;
+  status: number;
+  failed: string;
+  wall?: number;
+  ts?: number;
+  ms?: number;
+  reqHeaders?: Record<string, string>;
+  resHeaders?: Record<string, string>;
+  mime?: string;
+  statusText?: string;
+  protocol?: string;
+  size?: number;
+  post?: string;
 }
 
 interface DocInfo {
@@ -198,7 +218,10 @@ export class PageDriver {
   private consoleLog: { type: string; text: string }[] = [];
   /** errors and warnings of every document this page showed (the console log above starts over with each) */
   problems: Problem[] = [];
-  private netLog = new Map<string, { method: string; url: string; type: string; status: number; failed: string }>();
+  private netLog = new Map<string, NetRow>();
+  private authTried = new Set<string>();
+  /** origin of the last main-frame request: a credentials prompt from it is the page's own */
+  private navOrigin = '';
   /** how JS dialogs are answered (the agent changes it with dialog()) */
   dialogAnswer: { accept: boolean; text: string } = { accept: true, text: '' };
   private downloads = new Map<string, { name: string; url: string; state: 'running' | 'done' | 'failed'; path: string; bytes: number }>();
@@ -206,6 +229,7 @@ export class PageDriver {
   private offDownloads: (() => void) | undefined;
   private downloadPath = '';
   private emuSig = '{}';
+  private granted = false;
   private langSig = '';
   /** the viewport in effect (the default, or what emulate() set) */
   viewport: { width: number; height: number };
@@ -253,7 +277,7 @@ export class PageDriver {
       s.send('Runtime.enable'),
       // keep the response buffers small: bodies are only read for non-HTML documents
       s.send('Network.enable', { maxTotalBufferSize: 6_000_000, maxResourceBufferSize: 3_000_000 }),
-      s.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }),
+      s.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }], handleAuthRequests: true }),
       s.send('Emulation.setDeviceMetricsOverride', { width: v.width, height: v.height, deviceScaleFactor: 1, mobile: false }),
       s.send('Emulation.setFocusEmulationEnabled', { enabled: true }),
       s.send('Page.setInterceptFileChooserDialog', { enabled: true }).catch(noop),
@@ -419,7 +443,19 @@ export class PageDriver {
       this.counters.requests++;
       const type = String(p.type ?? 'Other');
       this.inflight.set(p.requestId, { t: now, type, loader: String(p.loaderId ?? '') });
-      if (this.netLog.size < 400 && !p.redirectResponse) this.netLog.set(p.requestId, { method: String(p.request?.method ?? 'GET'), url: String(p.request?.url ?? ''), type, status: 0, failed: '' });
+      if (this.netLog.size < 400 && !p.redirectResponse) {
+        this.netLog.set(p.requestId, {
+          method: String(p.request?.method ?? 'GET'),
+          url: String(p.request?.url ?? ''),
+          type,
+          status: 0,
+          failed: '',
+          wall: Number(p.wallTime) * 1000 || Date.now(),
+          ts: Number(p.timestamp) || undefined,
+          reqHeaders: p.request?.headers,
+          post: typeof p.request?.postData === 'string' ? clip(p.request.postData, 4000) : undefined,
+        });
+      }
       if (type === 'Document' && p.frameId === this.mainFrame && p.requestId === p.loaderId) {
         this.docMethods.set(p.requestId, p.request?.method === 'POST' ? 'POST' : 'GET');
         if (p.redirectResponse) this.forcedPost.delete(p.requestId); // a redirect after our POST is followed with whatever the browser chose
@@ -428,7 +464,13 @@ export class PageDriver {
     s.on('Network.responseReceived', (p) => {
       const type = String(p.type ?? '');
       const rec = this.netLog.get(p.requestId);
-      if (rec) rec.status = Number(p.response?.status) || 0;
+      if (rec) {
+        rec.status = Number(p.response?.status) || 0;
+        rec.statusText = String(p.response?.statusText ?? '');
+        rec.resHeaders = p.response?.headers;
+        rec.mime = String(p.response?.mimeType ?? '');
+        rec.protocol = String(p.response?.protocol ?? '');
+      }
       if (Number(p.response?.status) >= 400) this.problem('request', 'error', `${rec?.method ?? 'GET'} ${p.response.status} ${p.response.url ?? rec?.url ?? ''}`, type === 'Document' && p.frameId === this.mainFrame);
       if (type === 'EventSource') this.inflight.delete(p.requestId);
       if (type === 'Document' && p.frameId === this.mainFrame && p.requestId === p.loaderId) {
@@ -439,6 +481,11 @@ export class PageDriver {
       }
     });
     s.on('Network.loadingFinished', (p) => {
+      const row = this.netLog.get(p.requestId);
+      if (row) {
+        row.size = Number(p.encodedDataLength) || 0;
+        if (row.ts && p.timestamp) row.ms = (Number(p.timestamp) - row.ts) * 1000;
+      }
       this.inflight.delete(p.requestId);
       this.lastNet = Date.now();
       this.bytes += Number(p.encodedDataLength) || 0;
@@ -446,6 +493,7 @@ export class PageDriver {
     s.on('Network.loadingFailed', (p) => {
       const rec = this.netLog.get(p.requestId);
       if (rec && !p.canceled) rec.failed = String(p.blockedReason ? 'blocked' : p.errorText ?? 'failed').replace(/^net::/, '');
+      if (rec && rec.ts && p.timestamp) rec.ms = (Number(p.timestamp) - rec.ts) * 1000;
       if (!p.canceled && !OUR_BLOCK.test(String(p.errorText ?? ''))) this.problem('request', 'error', `${rec?.method ?? 'GET'} FAILED ${String(p.errorText ?? 'failed').replace(/^net::/, '')} ${rec?.url ?? ''}`, p.type === 'Document');
       this.inflight.delete(p.requestId);
       this.lastNet = Date.now();
@@ -453,6 +501,7 @@ export class PageDriver {
     });
 
     s.on('Fetch.requestPaused', (p) => void this.onPaused(p));
+    s.on('Fetch.authRequired', (p) => void this.onAuth(p));
   }
 
   note(text: string): void {
@@ -475,7 +524,10 @@ export class PageDriver {
         await s.send('Fetch.continueRequest', { requestId: id }).catch(noop);
         return;
       }
-      if (!mainDoc) {
+      // a request the agent routed is answered (or failed) on purpose: the speed-ups below must not pre-empt it,
+      // but the guard still decides whether the request may happen at all
+      const routed = this.routeFor(p);
+      if (!mainDoc && !routed) {
         if (BLOCKED_TYPES.has(type) || (type === 'Image' && !this.opts.images)) {
           this.counters.blocked++;
           await fail();
@@ -493,6 +545,8 @@ export class PageDriver {
       }
       const guard = this.ctx?.guard;
       if (mainDoc) {
+        const o0 = originOf(url);
+        if (o0) this.navOrigin = o0;
         const redirect = !!p.redirectedRequestId;
         const why = redirect ? 'redirect' : p.request?.method === 'POST' ? 'submit' : 'open';
         let v: Verdict = { ok: true };
@@ -508,6 +562,11 @@ export class PageDriver {
         if (v.warn) this.note(clip(v.warn, 200));
         const origin = originOf(url);
         if (origin) this.subVerdicts.set(origin, Promise.resolve({ ok: true }));
+        if (routed) {
+          this.navOverride = undefined; // a mocked answer needs no reshaped request
+          await this.serveRoute(p, routed);
+          return;
+        }
         const o = this.navOverride;
         if (o && !redirect) {
           this.navOverride = undefined;
@@ -546,11 +605,67 @@ export class PageDriver {
         await fail();
         return;
       }
+      if (routed) {
+        await this.serveRoute(p, routed);
+        return;
+      }
       await s.send('Fetch.continueRequest', { requestId: id }).catch(noop);
     } catch (e) {
       // A guard that throws has not said yes.
       if (p.resourceType === 'Document' && p.frameId === this.mainFrame) this.policy = { url, reason: `policy check failed: ${(e as Error).message}` };
       await fail();
+    }
+  }
+
+  /** the session's route for this paused request (a CORS preflight is matched by the method it asks about) */
+  private routeFor(p: any): import('../../types.ts').NetRoute | undefined {
+    const routes = this.ctx?.net?.routes;
+    if (!routes || !routes.length) return undefined;
+    let method = String(p.request?.method ?? 'GET');
+    if (method === 'OPTIONS') method = String(headerOf(p.request?.headers, 'Access-Control-Request-Method') || method);
+    return matchRoute(routes, String(p.request?.url ?? ''), method);
+  }
+
+  private async serveRoute(p: any, route: import('../../types.ts').NetRoute): Promise<void> {
+    const s = this.s;
+    const reqHeaders: Record<string, string> = p.request?.headers ?? {};
+    const preflight = p.request?.method === 'OPTIONS' && !!headerOf(reqHeaders, 'Access-Control-Request-Method');
+    if (!preflight) route.hits++;
+    if (route.delay) await sleep(route.delay);
+    if (route.abort && !preflight) {
+      await s.send('Fetch.failRequest', { requestId: p.requestId, errorReason: route.abort }).catch(noop);
+      return;
+    }
+    const m = mockResponse(route, reqHeaders, String(p.request?.method ?? 'GET'));
+    await s.send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: m.code, responseHeaders: m.headers, ...(m.body ? { body: m.body } : {}) }).catch(noop);
+  }
+
+  /** A basic-auth prompt: answered with the session's credentials for the page's own origin (or the origins auth() named). */
+  private async onAuth(p: any): Promise<void> {
+    const s = this.s;
+    const id = String(p.requestId);
+    const ch = p.authChallenge ?? {};
+    const answer = (response: string, extra: Record<string, unknown> = {}) => s.send('Fetch.continueWithAuth', { requestId: id, authChallengeResponse: { response, ...extra } }).catch(noop);
+    const ctx = this.ctx;
+    const net = ctx?.net;
+    const origin = String(ch.origin ?? '');
+    if (!ctx || !net?.auth || ch.source === 'Proxy' || !/basic/i.test(String(ch.scheme ?? '')) || !mayAnswer(net, origin, originOf(this.url)) && !mayAnswer(net, origin, this.navOrigin)) return void (await answer('Default'));
+    if (this.authTried.has(id)) {
+      // the server said no to what we sent: stop instead of asking again
+      this.note(`${origin} rejected the credentials from auth()`);
+      return void (await answer('CancelAuth'));
+    }
+    try {
+      const header = basicFor(ctx, origin);
+      const [user, pass] = splitBasic(header);
+      if (this.authTried.size > 200) this.authTried.clear();
+      this.authTried.add(id);
+      rememberChallenge(net, origin);
+      await answer('ProvideCredentials', { username: user, password: pass });
+    } catch (e) {
+      // a secret handle that may not go to this origin, for instance
+      this.note(`auth: ${clip((e as Error).message, 160)}`);
+      await answer('CancelAuth');
     }
   }
 
@@ -564,7 +679,9 @@ export class PageDriver {
     this.navError = '';
     this.popupUrl = '';
     this.pageErrors = 0;
-    const lang = ctx.emulate?.locale ? `${ctx.emulate.locale},${ctx.emulate.locale.split('-')[0]};q=0.9` : 'en-US,en;q=0.9';
+    // headers('Accept-Language: …') of the session wins: the user-agent override below would otherwise overrule the header
+    const asked = Object.entries(ctx.net?.headers ?? {}).find(([k]) => k.toLowerCase() === 'accept-language')?.[1];
+    const lang = asked ?? (ctx.emulate?.locale ? `${ctx.emulate.locale},${ctx.emulate.locale.split('-')[0]};q=0.9` : 'en-US,en;q=0.9');
     const ua = consistentUa(ctx.userAgent, this.opts.defaultUserAgent);
     if (ua && (ua !== this.userAgent || lang !== this.langSig)) {
       this.userAgent = ua;
@@ -572,7 +689,39 @@ export class PageDriver {
       await this.s.send('Emulation.setUserAgentOverride', { userAgent: ua, acceptLanguage: lang, userAgentMetadata: uaMetadata(ua, this.opts.browserVersion) });
     }
     await this.emulate(ctx.emulate ?? {});
+    await this.applyNet(ctx);
     await this.allowDownloads(ctx.id);
+  }
+
+  private headerSig = '{}';
+  private initSig = '[]';
+  private initIds: string[] = [];
+
+  /** The session's extra request headers and init scripts, put on this page when they differ from what it has. */
+  private async applyNet(ctx: SessionCtx): Promise<void> {
+    const headers = ctx.net?.headers ?? {};
+    const hsig = JSON.stringify(headers);
+    if (hsig !== this.headerSig) {
+      await this.s.send('Network.setExtraHTTPHeaders', { headers });
+      this.headerSig = hsig;
+    }
+    const init = ctx.net?.init ?? [];
+    const isig = JSON.stringify(init);
+    if (isig !== this.initSig) {
+      for (const id of this.initIds.splice(0)) await this.s.send('Page.removeScriptToEvaluateOnNewDocument', { identifier: id }).catch(noop);
+      // main world, every frame, before the page's own scripts
+      for (const source of init) this.initIds.push((await this.s.send<{ identifier: string }>('Page.addScriptToEvaluateOnNewDocument', { source })).identifier);
+      this.initSig = isig;
+    }
+  }
+
+  /** The network log as a HAR 1.2 document (the requests since this page loaded). */
+  har(): { text: string; count: number } {
+    const rows: HarRow[] = [...this.netLog.values()].map((r) => ({
+      method: r.method, url: r.url, type: r.type, status: r.status, failed: r.failed, wall: r.wall, ms: r.ms,
+      reqHeaders: r.reqHeaders, resHeaders: r.resHeaders, mime: r.mime, statusText: r.statusText, protocol: r.protocol, size: r.size, post: r.post,
+    }));
+    return { text: buildHar(this.url, '', rows), count: rows.length };
   }
 
   /** Put the session's emulation (viewport, device, locale, timezone, location, dark mode, offline) on this page. */
@@ -586,19 +735,31 @@ export class PageDriver {
       if (err instanceof AwError && /invalid|unknown|not supported|Invalid/i.test(err.message)) throw new AwError('bad_request', `unknown ${what} '${v}'`);
       throw err;
     };
+    const features = [
+      { name: 'prefers-color-scheme', value: e.dark ? 'dark' : '' },
+      { name: 'prefers-reduced-motion', value: e.motion ? 'reduce' : '' },
+      { name: 'prefers-contrast', value: e.contrast ? 'more' : '' },
+      { name: 'forced-colors', value: e.forcedColors ? 'active' : '' },
+    ];
+    const net = e.throttle ? THROTTLE[e.throttle] : undefined;
+    const perms = cdpPermissions(e.permissions, !!e.geo);
     await Promise.all([
       s.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: e.dpr ?? 1, mobile: !!e.mobile }),
       s.send('Emulation.setTouchEmulationEnabled', { enabled: !!e.mobile }),
       s.send('Emulation.setLocaleOverride', e.locale ? { locale: e.locale } : {}).catch(e.locale ? bad('locale', e.locale) : noop),
       s.send('Emulation.setTimezoneOverride', { timezoneId: e.tz ?? '' }).catch(bad('timezone', e.tz ?? '')),
-      s.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: e.dark ? 'dark' : '' }] }).catch(noop),
-      s.send('Network.emulateNetworkConditions', { offline: !!e.offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }).catch(noop),
-      e.geo
-        ? Promise.all([
-            s.send('Emulation.setGeolocationOverride', { latitude: e.geo.lat, longitude: e.geo.lon, accuracy: 50 }),
-            this.opts.shared ? undefined : this.cdp.send('Browser.grantPermissions', { permissions: ['geolocation'], browserContextId: this.contextId }).catch(noop),
-          ])
-        : s.send('Emulation.setGeolocationOverride', {}).catch(noop),
+      s.send('Emulation.setEmulatedMedia', { features }).catch(noop),
+      s.send('Network.emulateNetworkConditions', { offline: !!e.offline, latency: net?.latency ?? 0, downloadThroughput: net?.down ?? -1, uploadThroughput: net?.up ?? -1 }).catch(noop),
+      s.send('Emulation.setCPUThrottlingRate', { rate: e.cpu && e.cpu > 1 ? e.cpu : 1 }).catch(noop),
+      // permissions are a browser-context setting: in the user's own profile they are not ours to change
+      this.opts.shared
+        ? undefined
+        : perms.length
+          ? this.cdp.send('Browser.grantPermissions', { permissions: perms, browserContextId: this.contextId }).then(() => void (this.granted = true)).catch(noop)
+          : this.granted
+            ? this.cdp.send('Browser.resetPermissions', { browserContextId: this.contextId }).then(() => void (this.granted = false)).catch(noop)
+            : undefined,
+      e.geo ? s.send('Emulation.setGeolocationOverride', { latitude: e.geo.lat, longitude: e.geo.lon, accuracy: 50 }) : s.send('Emulation.setGeolocationOverride', {}).catch(noop),
     ]);
     this.viewport = { width: w, height: h };
     this.emuSig = sig;
@@ -1201,3 +1362,16 @@ export function uaMetadata(ua: string, fullVersion?: string): Record<string, unk
 }
 
 const release = (): string => osRelease().split('-')[0];
+
+function headerOf(h: Record<string, string> | undefined, name: string): string | undefined {
+  if (!h) return undefined;
+  const want = name.toLowerCase();
+  for (const k in h) if (k.toLowerCase() === want) return h[k];
+  return undefined;
+}
+
+function splitBasic(header: string | undefined): [string, string] {
+  const raw = Buffer.from(String(header ?? '').replace(/^Basic\s+/i, ''), 'base64').toString('utf8');
+  const i = raw.indexOf(':');
+  return [raw.slice(0, i), raw.slice(i + 1)];
+}

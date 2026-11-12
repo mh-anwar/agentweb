@@ -21,6 +21,7 @@ import { detectBotWall } from './botwall.ts';
 import { createPageCache, type CacheOptions, type PageCache, type RawHop } from './cache.ts';
 import { decodeBody, isHtml, isTextual, parseContentType, sniff } from './decode.ts';
 import { createLimiter, type Limiter, type LimiterOptions } from './polite.ts';
+import { basicChallenge, basicFor, mayAnswer, preemptiveBasic, rememberChallenge, sessionHeaders } from '../netcontrol.ts';
 
 export type Resolver = (host: string) => Promise<{ address: string; family: 4 | 6 }[]>;
 
@@ -263,7 +264,8 @@ export function createWireEngine(opts: WireOptions = {}): WireEngine {
     let body = method === 'POST' ? req.body : undefined;
     let contentType = method === 'POST' ? req.contentType : undefined;
     let referer = req.referer;
-    const extra: Record<string, string> = {};
+    // headers() of the session first: a request's own headers win over them
+    const extra: Record<string, string> = sessionHeaders(ctx.net);
     for (const [k, v] of Object.entries(req.headers ?? {})) {
       const key = k.toLowerCase();
       if (!DROP_REQ.has(key) && typeof v === 'string') extra[key] = v;
@@ -272,6 +274,7 @@ export function createWireEngine(opts: WireOptions = {}): WireEngine {
     const seen = new Set<string>();
     let cached = false;
     let auth: string | undefined;
+    let answered = false;
 
     try {
       for (let hopNo = 0; ; hopNo++) {
@@ -283,6 +286,8 @@ export function createWireEngine(opts: WireOptions = {}): WireEngine {
         const v = await ctx.guard.checkUrl(url.href, hopNo === 0 ? 'open' : 'redirect');
         if (!v.ok) throw new AwError('policy', v.reason);
         if (v.warn) events.push(v.warn);
+        // an origin that has asked for credentials before gets them at once, as a browser would send them
+        if (!auth) auth = preemptiveBasic(ctx, url.origin);
         if (signal.aborted) throw signal.reason;
         st.hops++;
 
@@ -315,6 +320,18 @@ export function createWireEngine(opts: WireOptions = {}): WireEngine {
           cached = false;
         }
         if (hop.setCookie.length) ctx.jar.setFromHeaders(url.href, hop.setCookie);
+
+        // auth(): answer a basic-auth challenge once, for the page's own origin
+        if (hop.status === 401 && ctx.net?.auth) {
+          if (!auth && !answered && basicChallenge(hop.headers['www-authenticate']) && mayAnswer(ctx.net, url.origin, url.origin)) {
+            auth = basicFor(ctx, url.origin);
+            rememberChallenge(ctx.net, url.origin);
+            answered = true;
+            hopNo--; // the same request again, with credentials
+            continue;
+          }
+          if (answered) events.push(`${url.host} rejected the credentials from auth()`);
+        }
 
         const loc = hop.headers.location;
         if (REDIRECTS.has(hop.status) && loc) {

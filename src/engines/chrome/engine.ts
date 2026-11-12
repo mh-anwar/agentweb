@@ -7,6 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { Action, Engine, Loaded, NavRequest, SessionCtx } from '../../types.ts';
 import { AwError } from '../../types.ts';
+import { fileStem, urlMatcher } from '../../netcontrol.ts';
 import { hostMatcher, TRACKER_HOSTS } from './blocklist.ts';
 import { connect } from './cdp.ts';
 import { labelsOff, labelsOn, relayout, runCheck } from './checks.ts';
@@ -87,7 +88,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
   const budget = (ctx: SessionCtx) => Math.max(1000, ctx.timeoutMs > 0 ? ctx.timeoutMs : 30_000);
 
   /** Run a call body, turning an abort signal into an error and a dead page into a disposed slot. */
-  async function serve<R>(ctx: SessionCtx, body: (slot: Slot<PageDriver>, fresh: boolean, deadline: number) => Promise<R>): Promise<R> {
+  async function serve<R>(ctx: SessionCtx, body: (slot: Slot<PageDriver>, fresh: boolean, deadline: number) => Promise<R>, adopt?: string): Promise<R> {
     if (ctx.signal?.aborted) throw new AwError('timeout', 'the call was cancelled');
     const total = budget(ctx);
     return pool.use(ctx.id, total, async (slot, fresh) => {
@@ -110,7 +111,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         d.setActing(false);
         if (onAbort) ctx.signal!.removeEventListener('abort', onAbort);
       }
-    });
+    }, adopt);
   }
 
   /** Bring a new context up to the session: cookies in, localStorage queued for its origins. */
@@ -330,9 +331,48 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     else if (after) d.note(`more content loaded (page height ${Math.round(before.h)} → ${Math.round(after.h)} px)`);
   }
 
-  async function wait(d: PageDriver, a: { ms?: number; text?: string }, deadline: number): Promise<void> {
+  /** The start of the page, for a timeout message: what is there instead of what was awaited. */
+  async function glance(d: PageDriver): Promise<string> {
+    const text = await d.run<string>('__awh.glance()', { timeoutMs: 2000 }).catch(() => '');
+    return `The page shows ${d.url}: ${text ? `"${text}"` : '(no text)'}`;
+  }
+
+  async function wait(d: PageDriver, a: Extract<Action, { do: 'wait' }>, deadline: number, out: Out): Promise<void> {
     const started = Date.now();
     const end = Math.min(settleBy(deadline), a.ms !== undefined ? started + Math.max(0, a.ms) : Infinity);
+    const seconds = () => Math.max(1, Math.round((Date.now() - started) / 1000));
+    if (a.any || a.gone || a.url || a.state) {
+      // several conditions at once: look every 100 ms until all hold
+      const urlOk = a.url ? urlMatcher(a.url) : () => true;
+      const wantsPage = !!(a.any || a.gone || a.state);
+      let st = '';
+      for (;;) {
+        let ok = urlOk(d.url);
+        if (ok && wantsPage) {
+          try {
+            const r = await d.run<{ ok: boolean; hit?: string; st?: string }>(`__awh.probe(${JSON.stringify({ any: a.any, gone: a.gone, n: a.n, state: a.state })})`, { timeoutMs: 3000 });
+            ok = !!r.ok;
+            if (ok && r.hit !== undefined) out.value = r.hit;
+            if (r.st) st = r.st;
+          } catch (e) {
+            if (e instanceof AwError && e.code === 'gone') throw e;
+            ok = false; // the page navigated or was busy: look again
+          }
+        }
+        if (ok) return;
+        if (d.crashed) throw new AwError('gone', d.crashed);
+        const left = end - Date.now();
+        if (left <= 0) break;
+        await sleep(Math.min(100, left));
+      }
+      const asked = [
+        a.any ? (a.any.length === 1 ? `"${clip(a.any[0], 60)}" to appear` : `any of ${a.any.map((t) => `"${clip(t, 30)}"`).join(', ')} to appear`) : '',
+        a.gone ? `"${clip(a.gone, 60)}" to go away` : '',
+        a.url ? `the URL to match ${clip(a.url, 60)}` : '',
+        a.state ? `[${a.n}] to be ${a.state}${st ? ` (it is ${st})` : ''}` : '',
+      ].filter(Boolean).join(' and ');
+      throw new AwError('timeout', `waited ${seconds()} s for ${asked}. ${await glance(d)}`, 'read() shows the page; wait(timeout=30) waits longer');
+    }
     if (!a.text) {
       if (a.ms) await sleep(Math.max(0, end - Date.now()));
       return;
@@ -347,7 +387,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         await sleep(50); // the page navigated or was busy; keep looking until time is up
       }
     }
-    throw new AwError('timeout', `"${clip(a.text, 60)}" did not appear within ${Math.max(1, Math.round((Date.now() - started) / 1000))} s`, 'read the page to see what is there instead');
+    throw new AwError('timeout', `"${clip(a.text, 60)}" did not appear within ${seconds()} s. ${await glance(d)}`, 'read the page to see what is there instead');
   }
 
   async function back(d: PageDriver): Promise<void> {
@@ -400,6 +440,13 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     d.chooser = undefined;
     if (!ch || !ch.backendNodeId) throw new AwError('bad_request', 'that element is not a file input and did not open a file chooser', 'target the file input, or the button that opens it');
     await d.s.send('DOM.setFileInputFiles', { files: ch.mode === 'selectMultiple' ? paths : paths.slice(0, 1), backendNodeId: ch.backendNodeId });
+  }
+
+  /** Drop files on an element with the drag events a person's drop would send. */
+  async function drop(d: PageDriver, id: number, files: { name: string; mime: string; data: string }[]): Promise<void> {
+    if (!Array.isArray(files) || !files.length) throw new AwError('bad_request', 'drop needs at least one file');
+    const r = await d.call<any>('drop', id, files);
+    if (r && r.ok && !r.accepted) d.note(`the ${r.tag} did not cancel dragover, so it may not accept dropped files; the events were sent anyway`);
   }
 
   /** Write a file the agent asked to keep next to the session's downloads and say where it is. */
@@ -475,6 +522,30 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
       case 'dialog':
         d.dialogAnswer = { accept: action.accept, text: action.text ?? '' };
         return;
+      case 'handoff': {
+        // Only the extension can bring the tab forward and notify; on a plain debugging port the person is told by the caller.
+        await slot.browser.cdp.send('Agentweb.handoff', { targetId: slot.targetId, message: action.message }, { timeoutMs: 8000 }).catch(() => {});
+        const sig = () => d.run<string>('location.href+"|"+document.title+"|"+(document.body?document.body.innerText.length:0)', { timeoutMs: 3000 }).catch(() => '');
+        const before = await sig();
+        const end = Math.min(deadline - 2500, Date.now() + action.waitMs);
+        let changed = false;
+        let last = before;
+        let stableAt = 0;
+        while (Date.now() < end) {
+          await sleep(400);
+          const now = await sig();
+          if (now && now !== before) changed = true;
+          if (changed) {
+            // wait for the page to stop moving: the person may still be mid-way (a redirect chain after signing in)
+            if (now !== last) stableAt = Date.now();
+            else if (Date.now() - stableAt > 1500) break;
+          }
+          last = now;
+        }
+        if (changed) await slot.browser.cdp.send('Agentweb.handoffDone', { targetId: slot.targetId }, { timeoutMs: 3000 }).catch(() => {});
+        out.value = changed ? 'changed' : 'unchanged';
+        return;
+      }
       case 'forward':
         slot.committed = true;
         await forward(d);
@@ -505,8 +576,17 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         await scroll(d, action.to, deadline);
         return;
       case 'wait':
-        await wait(d, action, deadline);
+        await wait(d, action, deadline, out);
         return;
+      case 'drop':
+        slot.committed = true;
+        await drop(d, action.n, action.files);
+        return;
+      case 'har': {
+        const h = d.har();
+        out.value = `saved HAR (${h.count} request${h.count === 1 ? '' : 's'}): ` + keep(d, Buffer.from(h.text, 'utf8'), fileStem(action.name), 'har');
+        return;
+      }
       case 'back':
         slot.committed = true;
         await back(d);
@@ -634,6 +714,39 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
 
     live(sessionId: string): boolean {
       return pool.live(sessionId);
+    },
+
+    async targets(): Promise<{ id: string; title: string; url: string }[]> {
+      if (!driverOpts.shared) return [];
+      const b = await pool.browserNow();
+      const r = await b.cdp.send<{ targetInfos: { targetId: string; type: string; title: string; url: string }[] }>('Target.getTargets', undefined, { timeoutMs: 10_000 });
+      const mine = new Set(pool.targetIds());
+      return (r.targetInfos ?? []).filter((t) => t.type === 'page' && !mine.has(t.targetId) && /^https?:/i.test(t.url)).map((t) => ({ id: t.targetId, title: t.title, url: t.url }));
+    },
+
+    async adopt(ctx: SessionCtx, targetId: string): Promise<Loaded> {
+      const t0 = performance.now();
+      if (!driverOpts.shared) throw new AwError('unsupported', "taking over a tab needs the user's own browser", "engine('mine') first");
+      return serve(
+        ctx,
+        async (slot, fresh, deadline) => {
+          const d = slot.data;
+          if (!fresh) throw new AwError('bad_request', 'this tab already has a page');
+          await hydrate(d, ctx);
+          const url = String(await d.run<string>('location.href', { timeoutMs: 5000 }).catch(() => ''));
+          // the same rule as opening it: a page the guard would not open is not taken over either
+          const v = await ctx.guard.checkUrl(url, 'open');
+          if (!v.ok) {
+            pool.kill(slot, 'policy');
+            throw new AwError('policy', v.reason);
+          }
+          d.url = url;
+          d.note("this is a tab the user shared: it is theirs, and it stays open when you are done");
+          await d.settle({ deadline: settleBy(deadline) });
+          return finish(d, ctx, t0, d.bytes, deadline);
+        },
+        targetId,
+      );
     },
 
     async release(sessionId: string): Promise<void> {

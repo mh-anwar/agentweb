@@ -4,6 +4,7 @@
 
 import { AwError } from '../../types.ts';
 import type { CookieData, CookieJar, NavRequest, SessionCtx } from '../../types.ts';
+import { basicChallenge, basicFor, mayAnswer, preemptiveBasic, rememberChallenge, sessionHeaders } from '../../netcontrol.ts';
 
 export type FetchKind = 'document' | 'script' | 'xhr' | 'style';
 
@@ -204,6 +205,8 @@ export function defaultFetch(o: DefaultFetchOptions = {}): GhostFetch {
     const signals = [AbortSignal.timeout(Math.max(1000, Math.min(o.timeoutMs ?? 30000, ctx.timeoutMs || 30000)))];
     if (ctx.signal) signals.push(ctx.signal);
     const signal = AbortSignal.any(signals);
+    let authz: string | undefined;
+    let answered = false;
     for (let hop = 0; ; hop++) {
       let target: URL;
       try {
@@ -214,13 +217,19 @@ export function defaultFetch(o: DefaultFetchOptions = {}): GhostFetch {
       if (!/^https?:$/.test(target.protocol)) throw new AwError('bad_request', `cannot fetch ${target.protocol} URLs`);
       const v = await ctx.guard.checkUrl(url, hop === 0 ? first : 'redirect');
       if (!v.ok) throw new AwError('policy', v.reason);
+      // headers() of the session sit under what the page itself set on a request
       const h: Record<string, string> = {
         accept: ACCEPT[req.kind] || '*/*',
         'accept-language': 'en-US,en;q=0.9',
-        ...cleanHeaders(req.headers),
         'user-agent': ctx.userAgent,
+        ...sessionHeaders(ctx.net),
+        ...cleanHeaders(req.headers),
       };
-      if (req.headers) for (const [k, val] of Object.entries(req.headers)) if (k.toLowerCase() === 'origin') h.origin = String(val);
+      if (!authz) authz = preemptiveBasic(ctx, target.origin);
+      if (authz && !h.authorization) h.authorization = authz;
+      // headers only the engine itself may set (a page cannot): the origin, and the two lines of a CORS preflight.
+      // Dropping the preflight's header list makes servers that echo it back (Supabase, many gateways) refuse.
+      if (req.headers) for (const [k, val] of Object.entries(req.headers)) if (/^(origin|access-control-request-(method|headers))$/i.test(k)) h[k.toLowerCase()] = String(val);
       if (req.referer) h.referer = req.referer;
       if (body !== undefined && body !== null && ctype) h['content-type'] = ctype;
       if (creds) {
@@ -240,11 +249,24 @@ export function defaultFetch(o: DefaultFetchOptions = {}): GhostFetch {
         const sc = res.headers.getSetCookie();
         if (sc.length) ctx.jar.setFromHeaders(url, sc);
       }
+      // auth(): answer a basic-auth challenge once. A page's own sub-requests are not asked for the password unless the origin has challenged before.
+      if (res.status === 401 && ctx.net?.auth) {
+        if (!authz && !answered && basicChallenge(res.headers.get('www-authenticate') ?? undefined) && (req.kind === 'document' ? mayAnswer(ctx.net, target.origin, target.origin) : !!ctx.net.auth.origins?.length && mayAnswer(ctx.net, target.origin, ''))) {
+          await res.body?.cancel().catch(() => {});
+          authz = basicFor(ctx, target.origin);
+          rememberChallenge(ctx.net, target.origin);
+          answered = true;
+          hop--; // the same request again, with credentials
+          continue;
+        }
+      }
       const loc = res.headers.get('location');
       if (req.follow !== false && loc && [301, 302, 303, 307, 308].includes(res.status)) {
         await res.body?.cancel().catch(() => {});
         if (hop >= maxRedirects) throw new AwError('net', `too many redirects from ${req.url}`);
-        url = new URL(loc, url).href;
+        const nextUrl = new URL(loc, url);
+        if (nextUrl.origin !== target.origin) authz = undefined;
+        url = nextUrl.href;
         if (res.status === 303 || ((res.status === 301 || res.status === 302) && method === 'POST')) {
           if (method !== 'HEAD') method = 'GET';
           body = undefined;
