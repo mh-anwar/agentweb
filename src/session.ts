@@ -205,8 +205,9 @@ export function resolveTarget(page: Page, refs: SessionRefs, target: Arg, o: Res
   let best = 0;
   const scored: { r: Resolved; s: number }[] = [];
   for (const r of pool) {
-    const l = norm(r.act.l);
-    let s = l === want ? 100 : l.startsWith(want) ? 70 : l.includes(want) ? 50 : want.split(' ').every((w) => l.includes(w)) ? 35 : 0;
+    const score = (l: string) => (l === want ? 100 : l.startsWith(want) ? 70 : l.includes(want) ? 50 : want.split(' ').every((w) => l.includes(w)) ? 35 : 0);
+    let s = score(norm(r.act.l));
+    for (const alt of r.act.al ?? []) s = Math.max(s, score(norm(alt)));
     const fname = norm(fieldName(page, r.act));
     if (fname && fname === want) s = Math.max(s, 90);
     if (r.act.href && want.length > 5 && r.act.href.toLowerCase().includes(String(target).toLowerCase().trim())) s = Math.max(s, 60);

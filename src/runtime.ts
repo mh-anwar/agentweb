@@ -641,14 +641,43 @@ const VERBS: Record<string, VerbHandler> = {
     rc.emit(renderOutline(rc.page).text);
   },
 
+  // expect('text')                 the text is on the page (title, url or body)
+  // expect('Item', n=3)            exactly 3 occurrences (also count=3)
+  // expect(not='Error')            the text is absent (combine: expect('Welcome', not='Error'))
+  // expect(url='/dashboard')       the address: '/path' matches the path, 'a*b' is a glob, else a substring
+  // expect(title='Cart')           the page title contains it
   async expect(rc, step) {
-    const want = str(step.args[step.args.length - 1]);
-    if (!want) throw new AwError('bad_request', "expect needs text: expect('Order placed')");
-    const needle = lc(want);
-    const p = rc.page;
-    if (lc(p.title).includes(needle) || lc(p.url).includes(needle)) return;
-    for (const b of p.blocks) if (lc(blockText(b)).includes(needle)) return;
-    throw new AwError('bad_request', `'${want}' is not on the page`);
+    const o = step.opts;
+    const own = step.args.length ? str(step.args[step.args.length - 1]) : '';
+    const not = o.not !== undefined ? String(o.not) : undefined;
+    const url = o.url !== undefined ? String(o.url) : undefined;
+    const title = o.title !== undefined ? String(o.title) : undefined;
+    const nWant = o.n ?? o.count;
+    if (!own && not === undefined && url === undefined && title === undefined) throw new AwError('bad_request', "expect needs text: expect('Order placed') or expect(not='Error'), expect(url='/cart')");
+    const timeoutMs = o.timeout === undefined ? EXPECT_TIMEOUT_MS : Math.min(Number(o.timeout) < 100 ? Number(o.timeout) * 1000 : Number(o.timeout), 60000);
+    // on a script engine the page may still be rendering: look again until it holds or the time is up
+    for (const end = Date.now() + timeoutMs; ; ) {
+      try {
+        return checkExpect(rc.page, { own, not, url, title, nWant });
+      } catch (e) {
+        if (!(e instanceof AwError) || Date.now() >= end || rc.ctx.signal?.aborted) throw e;
+        // a page fetched without scripts that has scripts may be about to say it: move it to a script engine
+        const pg = rc.page;
+        if (!rc.isLive() && pg.stats.scripts && pg.method === 'GET' && /^https?:/.test(pg.url)) {
+          try {
+            await rc.escalate(`expect('${own || not || url || title}') may need the page's scripts`);
+          } catch {
+            throw e;
+          }
+        }
+        if (!rc.isLive()) throw e;
+      }
+      await sleep(250);
+      await rc.ensureLive();
+      const p = rc.page;
+      const eng = rc.engine(p.tier);
+      if (eng.snapshot) rc.setPage(await rc.toPage(await eng.snapshot(rc.ctx), p.tier), { push: false });
+    }
   },
 
   async click(rc, step) {
@@ -1290,6 +1319,56 @@ export function hollowMain(page: Page): boolean {
     }
   }
   return words < 15 && acts < 3;
+}
+
+const EXPECT_TIMEOUT_MS = 5000;
+
+function checkExpect(p: Page, c: { own: string; not?: string; url?: string; title?: string; nWant?: Arg }): void {
+  const { own, not, url, title, nWant } = c;
+  const occurrences = (needle: string) => {
+    const n = lc(needle);
+    let c = 0;
+    for (const b of p.blocks) {
+      const t = lc(blockText(b));
+      for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + n.length)) c++;
+    }
+    return c;
+  };
+  if (url !== undefined && !urlMatches(p.url, url)) throw new AwError('bad_request', `the address is ${shortUrl(p.url)}, expected ${url}`);
+  if (title !== undefined && !lc(p.title).includes(lc(title))) throw new AwError('bad_request', `the title is '${p.title}', expected '${title}'`);
+  if (not !== undefined && (lc(p.title).includes(lc(not)) || occurrences(not) > 0)) throw new AwError('bad_request', `'${not}' is on the page but should not be`);
+  if (own) {
+    if (nWant !== undefined) {
+      const got = occurrences(own);
+      if (got !== Number(nWant)) throw new AwError('bad_request', `expected ${nWant} of '${own}', found ${got}`);
+    } else if (!(lc(p.title).includes(lc(own)) || lc(p.url).includes(lc(own)) || occurrences(own) > 0)) throw new AwError('bad_request', `'${own}' is not on the page`);
+  }
+}
+
+function shortUrl(u: string): string {
+  try {
+    const x = new URL(u);
+    return x.pathname + x.search;
+  } catch {
+    return u;
+  }
+}
+
+/** '/path' compares the path (and query when given), 'a*b' is a glob over the whole address, anything else is a substring. */
+export function urlMatches(actual: string, pat: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(actual);
+  } catch {
+    return actual.includes(pat);
+  }
+  const trim = (x: string) => (x.length > 1 ? x.replace(/\/+$/, '') : x);
+  if (pat.includes('*')) {
+    const re = new RegExp('^' + pat.split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
+    return re.test(actual) || re.test(u.pathname + u.search) || re.test(u.pathname);
+  }
+  if (pat.startsWith('/')) return pat.includes('?') ? trim(u.pathname + u.search) === trim(pat) : trim(u.pathname) === trim(pat);
+  return lc(actual).includes(lc(pat));
 }
 
 function shortError(e: unknown): string {
