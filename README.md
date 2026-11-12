@@ -71,6 +71,17 @@ benchmark browser agents cite. Frozen 50-task sample across 14 sites, blind LLM 
 | Passed | 18/18 | 18/18 | 16/18 |
 | Total input tokens | **633k** | 2.51M | 3.35M |
 
+**The same real-browser smoke tests in both runners** (a Next.js app's own suite: 5 signed-in page
+checks incl. opening a dialog, 2 workers, same saved sign-ins and viewport, CPU and memory sampled the
+same way for both, medians of 3 rounds, measured by that project, twice):
+
+| | agentweb test (Chrome) | Playwright |
+|:--|--:|--:|
+| Wall time | **4.1 s** | 4.4 s |
+| CPU, whole process tree | **7.0 s** | 9.1 s |
+| Peak memory | **817 MiB** | 1,616 MiB |
+| Output the agent reads | **14 tokens** | 162 tokens |
+
 **A failing end-to-end test, as the agent reads it:** agentweb 81 tokens, Playwright 279 tokens plus
 a 9k-token error file it points the agent to ([details](docs/research/TESTING.md)).
 
