@@ -119,7 +119,8 @@ export function extractPage(win: any, opts?: ExtractOptions): Extracted {
     // closed <details>, content-visibility:hidden and friends: no box at all although display is not none.
     // display:contents has no box either, yet its children are laid out: it is a wrapper, not a hidden thing.
     try {
-      if (cs.display !== 'contents' && typeof el.checkVisibility === 'function' && !el.checkVisibility()) return 1;
+      // The options of a closed drop-down have no box either: they are the select's choices, not hidden text.
+      if (cs.display !== 'contents' && tag !== 'option' && tag !== 'optgroup' && typeof el.checkVisibility === 'function' && !el.checkVisibility()) return 1;
     } catch {}
     const indent = parseFloat(cs.textIndent);
     if (indent <= -999) return 2; // image-replacement text

@@ -210,7 +210,8 @@ class P {
       return undefined;
     }
     if (t.t === 'p' && t.v === '[') {
-      // a list: keep its first scalar
+      // a list: its first scalar is the value; as a positional argument the others follow it
+      // (select(t, ['Chess', 'Hiking']) is select(t, 'Chess', 'Hiking'))
       this.i++;
       let first: Arg | undefined;
       while (this.peek() && !this.isP(']')) {
@@ -220,6 +221,7 @@ class P {
         }
         const v = this.value(opts);
         if (first === undefined && v !== undefined) first = v;
+        else if (v !== undefined) this.rest.push(v);
         if (v === undefined && !this.isP(']') && !this.isP(',')) this.i++;
       }
       this.i++;
@@ -255,6 +257,9 @@ class P {
     this.i++;
   }
 
+  /** the items after the first of a list being read as a positional argument */
+  private rest: Arg[] = [];
+
   args(end: string | null): { args: Arg[]; opts: Record<string, Arg> } {
     const args: Arg[] = [];
     const opts: Record<string, Arg> = {};
@@ -272,8 +277,11 @@ class P {
         continue;
       }
       const before = this.i;
+      const outer = this.rest;
+      this.rest = [];
       const v = this.value(opts);
-      if (v !== undefined) args.push(v);
+      if (v !== undefined) args.push(v, ...this.rest);
+      this.rest = outer;
       if (this.i === before) this.i++; // never stall
     }
     if (end) this.i++;

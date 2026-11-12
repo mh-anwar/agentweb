@@ -406,7 +406,8 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     };
     gather(n);
     const multiple = 'multiple' in a;
-    if (n.v !== undefined) for (const op of options) op.s = op.v === n.v ? true : undefined;
+    // a live select reports one value; a list that takes several is read from its options, each of which says if it is chosen
+    if (n.v !== undefined && !multiple) for (const op of options) op.s = op.v === n.v ? true : undefined;
     if (!multiple && options.length && !options.some((x) => x.s)) options[0].s = true;
     const sel = options.find((x) => x.s);
     const f: Field = { name: a.name ?? '', type: 'select', value: sel ? sel.v : '', options };

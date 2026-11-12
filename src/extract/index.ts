@@ -51,6 +51,27 @@ export function recordBlocks(page: Page, min = 3): Block[] {
   return page.blocks.filter((b) => keep.has(b));
 }
 
+/**
+ * A ranked list whose items take two rows ("1. Title (site)" then "92 points by x | 32 comments", as on Hacker News):
+ * each numbered row and the row or two under it are one item. Other lists: one row, one item.
+ */
+export function rankedItems(recs: Block[]): Block[][] {
+  const ranked = (b: Block) => /^\s*\d{1,4}\.(?:\s|$)/.test(blockText(b));
+  const n = recs.filter(ranked).length;
+  if (n < 5 || n === recs.length) return recs.map((b) => [b]);
+  const out: Block[][] = [];
+  let open: Block[] | undefined;
+  for (const b of recs) {
+    if (ranked(b)) out.push((open = [b]));
+    else if (open && open.length < 3) open.push(b);
+    else {
+      out.push([b]);
+      open = undefined;
+    }
+  }
+  return out;
+}
+
 function matches(b: Block, q: string[]): boolean {
   if (!q.length) return true;
   const t = new Set(terms(blockText(b)));
@@ -118,11 +139,12 @@ async function records(rc: RunCtx, step: Step): Promise<void> {
     const page = rc.page;
     visited++;
     const recs = recordBlocks(page, 1).filter(b => !b.hd);
-    for (const b of recs) {
-      if (seen.has(b.hx) || !matches(b, q)) continue;
+    for (const item of rankedItems(recs)) {
+      const b = item[0];
+      if (seen.has(b.hx) || !(item.length === 1 ? matches(b, q) : matches({ i: item.flatMap((x) => [...x.i, ' ']) } as Block, q))) continue;
       seen.add(b.hx);
       total++;
-      const line = renderLine(b, rc.refs, { maxWords: 60 });
+      const line = item.map((x) => renderLine(x, rc.refs, { maxWords: 60 })).join(' — ');
       const est = estimateTokens(line) + 1;
       if (est > left) {
         more++;

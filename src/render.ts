@@ -57,8 +57,10 @@ export function renderAct(a: Act, refs: Refs | null): string {
     case 'select': {
       const opts = a.opts ?? [];
       let cur = false;
+      // a list that takes several: its value is "A, B", and each chosen option gets its star
+      const several = a.val !== undefined && !opts.includes(a.val) && a.val.includes(', ') && a.val.split(', ').every((v) => opts.includes(v)) ? new Set(a.val.split(', ')) : undefined;
       const parts = opts.map((o) => {
-        if (!cur && a.val !== undefined && o === a.val) {
+        if (several ? several.has(o) : !cur && a.val !== undefined && o === a.val) {
           cur = true;
           return '*' + o;
         }
@@ -670,6 +672,8 @@ export function rank(page: Page, query: string): Hit[] {
   return hits;
 }
 
+const RANKED = /^\s*\d{1,4}\.(?:\s|$)/;
+
 export function renderFind(page: Page, st: ViewState, refs: Refs, query: string, budget: number): Rendered & { partial?: boolean; miss?: boolean } {
   let hits = rank(page, query);
   const blocks = page.blocks;
@@ -718,6 +722,8 @@ export function renderFind(page: Page, st: ViewState, refs: Refs, query: string,
         break;
       }
     }
+    // the detail row of a ranked item ("92 points by x | 32 comments") is read with its numbered title row
+    if (b.g !== undefined && h.index > 0 && blocks[h.index - 1].g === b.g && !RANKED.test(blockText(b)) && RANKED.test(blockText(blocks[h.index - 1])) && !chosen.has(h.index - 1) && !context.has(h.index - 1)) ctx.push(h.index - 1);
     if (b.g !== undefined && !b.hd) {
       for (let j = h.index - 1; j >= 0 && blocks[j].g === b.g; j--) {
         if (blocks[j].hd) {

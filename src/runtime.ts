@@ -1079,6 +1079,11 @@ const VERBS: Record<string, VerbHandler> = {
 
   async select(rc, step) {
     if (step.args.length < 2) throw new AwError('bad_request', "select needs a target and an option: select('Sort', 'Price')");
+    // several options of a list that takes several: select(t, 'Chess', 'Hiking'), one after the other
+    if (step.args.length > 2) {
+      for (const v of step.args.slice(1)) await VERBS.select(rc, { ...step, args: [step.args[0], v] });
+      return;
+    }
     const want = str(step.args[1]);
     if (rc.isLive()) return rc.liveOn(step, (n) => ({ do: 'select', n, value: want }));
     const r = rc.resolve(step);
