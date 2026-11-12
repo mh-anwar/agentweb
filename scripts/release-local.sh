@@ -46,7 +46,8 @@ release() {
     (cd "$work" && npm ci --no-audit --no-fund >>"$LOG" 2>&1) || { log "npm ci failed: $sha"; fail "$sha" "$work"; return 1; }
   fi
 
-  (cd "$work" && nice -n 10 npm run build >>"$LOG" 2>&1) || { log "build failed: $sha"; fail "$sha" "$work"; return 1; }
+  # the copy has no .git: the build is told its commit, so `agentweb --version` can say which build is installed
+  (cd "$work" && AGENTWEB_COMMIT="${sha:0:7}" nice -n 10 npm run build >>"$LOG" 2>&1) || { log "build failed: $sha"; fail "$sha" "$work"; return 1; }
   if ! (cd "$work" && nice -n 10 npm test >"$work/test.log" 2>&1); then
     # timing tests can lose to a busy machine: re-run only the files that failed, once
     mapfile -t again < <(sed -n '/^✖ failing tests:/,$p' "$work/test.log" | grep -oE '[^ ]+/test/[^ ]+\.test\.ts' | sort -u)

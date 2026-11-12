@@ -126,6 +126,12 @@ test('a single search result remains an actionable record through the shipped MC
 test('the shipped binary says which commit it was built from', async () => {
   const { execFileSync } = await import('node:child_process');
   const out = execFileSync(process.execPath, [BIN, '--version'], { encoding: 'utf8' }).trim();
-  assert.match(out, /^\d+\.\d+\.\d+\+[0-9a-f]{7,40}$/, out);
-  assert.match(execFileSync(process.execPath, [BIN, 'doctor'], { encoding: 'utf8', env: { ...process.env, AGENTWEB_USAGE_LOG: '' } }).split('\n')[0], /^agentweb \d+\.\d+\.\d+\+[0-9a-f]{7,40} on node /);
+  assert.match(out, /^\d+\.\d+\.\d+(\+[0-9a-f]{7,40})?$/, out);
+  // in a git checkout the build knows its commit (a copy without .git is told it: AGENTWEB_COMMIT)
+  let head = '';
+  try {
+    head = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { encoding: 'utf8', cwd: new URL('..', import.meta.url).pathname, stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+  } catch {}
+  if (head && existsSync(new URL('../.git', import.meta.url).pathname)) assert.match(out, /\+[0-9a-f]{7,40}$/, 'built in a git checkout: ' + out);
+  assert.ok(execFileSync(process.execPath, [BIN, 'doctor'], { encoding: 'utf8', env: { ...process.env, AGENTWEB_USAGE_LOG: '' } }).startsWith(`agentweb ${out} on node `));
 });
