@@ -137,3 +137,11 @@ describe('chrome open', () => {
     assert.ok(s.rssBytes > 0);
   });
 });
+
+it('the session user agent keeps its words but takes the real browser version', async () => {
+  const { consistentUa } = await import('../src/engines/chrome/page.ts');
+  const real = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.8127.18 Safari/537.36';
+  assert.equal(consistentUa('Mozilla/5.0 Chrome/141.0.0.0 Safari/537.36 agentweb/0.1', real), 'Mozilla/5.0 Chrome/158.0.8127.18 Safari/537.36 agentweb/0.1');
+  assert.equal(consistentUa(undefined, real), real);
+  assert.equal(consistentUa('curl/8', real), 'curl/8');
+});

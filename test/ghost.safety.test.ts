@@ -40,6 +40,8 @@ before(async () => {
     '/oom': html(`<script>const keep = []; for (;;) keep.push(new Array(1 << 20).fill(Math.random()));</script>`),
     '/throws': html(`<div id="app"></div><script>window.__start = 1; throw new TypeError('cannot read the config');</script>`),
     '/throws-ok': html(`<h1>Article</h1><p>${'Plenty of server-rendered words here. '.repeat(10)}</p><script>undefinedFunction()</script>`),
+    '/socket': html(`<h1>Results</h1><div id="r">Computing…</div><script>try { new WebSocket('ws://' + location.host + '/live'); } catch {}</script>`),
+    '/socket3p': html(`<h1>Article</h1><p>${'Plenty of server-rendered words here. '.repeat(10)}</p><script>try { new WebSocket('wss://chat.widget-vendor.example/ws'); } catch {}</script>`),
     '/empty': html(`<div id="root"></div><script>/* renders nothing */</script>`),
     '/badmodule': html(`<div id="root"></div><script type="module">import { x } from './missing.js'; document.getElementById('root').textContent = x;</script>`),
     '/bare': html(`<div id="root"></div><script type="module">import React from 'react';</script>`),
@@ -211,4 +213,11 @@ test('close() leaves no page process behind', async () => {
   assert.ok(pids.length >= 2, 'pids ' + pids);
   await e2.close();
   for (const pid of pids) assert.throws(() => process.kill(pid, 0), 'process ' + pid + ' still exists');
+});
+
+test("a page that opens a socket to its own site escalates; a third-party widget's socket does not", { timeout: 15_000 }, async () => {
+  const l = await eng.open(makeCtx(), { url: srv.url + '/socket' });
+  assert.match(l.escalate || '', /over a WebSocket/);
+  const l2 = await eng.open(makeCtx(), { url: srv.url + '/socket3p' });
+  assert.equal(l2.escalate, undefined, String(l2.escalate));
 });

@@ -155,6 +155,12 @@ class Page {
   }
 
   note(kind: string, msg: string): void {
+    if (kind === 'ws') {
+      try {
+        const site = (h: string) => h.split('.').slice(-2).join('.');
+        if (site(new URL(msg).hostname) === site(String(this.win.location.hostname))) this.ownSocket = true;
+      } catch {}
+    }
     if (kind === 'ws') msg = 'the page tried to open a WebSocket (' + msg + '); live updates are not available in this engine';
     else if (kind === 'popup') msg = msg.startsWith('link') || msg.startsWith('form') ? msg : 'blocked a popup: ' + msg;
     this.event(msg);
@@ -543,12 +549,17 @@ class Page {
   }
 
   /** the page plainly did not work without pixels */
+  /** the page opened a WebSocket to its own site */
+  ownSocket = false;
+
   escalation(words: number, acts: boolean): string | undefined {
     const s = this.hooks.stats;
     if (this.failedModule) return 'a JavaScript module could not be loaded: ' + this.failedModule;
     if (this.cpuKills) return `a script ran longer than ${this.cpuMs} ms and was stopped`;
     if (s.webgl) return 'the page draws with WebGL';
     if (s.syncXhr) return 'the page uses synchronous XMLHttpRequest';
+    // the site's own socket: its content (results, prices, chat) arrives over it, which this engine cannot do
+    if (this.ownSocket) return 'the page loads its content over a WebSocket';
     const thin = words < 25;
     if (thin && this.errors.length) return 'script error while booting: ' + this.errors[0];
     if (words === 0 && !acts) return 'the page body is empty after running its scripts';

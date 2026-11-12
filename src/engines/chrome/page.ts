@@ -127,6 +127,8 @@ export class PageDriver {
   // network
   private inflight = new Map<string, { t: number; type: string; loader: string }>();
   private lastNet = 0;
+  /** last WebSocket activity (created, frame in or out) */
+  private wsLast = 0;
   bytes = 0;
   private responses = new Map<string, { status: number; mime: string; headers: Record<string, string> }>();
   private docMethods = new Map<string, 'GET' | 'POST'>();
@@ -321,6 +323,14 @@ export class PageDriver {
       this.note('the page crashed');
     });
 
+    // Sites that answer over a socket (computations, live search) are silent on HTTP while the
+    // answer streams in over a WebSocket; socket traffic shortly after load counts as loading.
+    const sock = () => {
+      this.wsLast = Date.now();
+    };
+    s.on('Network.webSocketCreated', sock);
+    s.on('Network.webSocketFrameSent', sock);
+    s.on('Network.webSocketFrameReceived', sock);
     s.on('Network.requestWillBeSent', (p) => {
       const now = Date.now();
       this.lastNet = now;
@@ -465,10 +475,10 @@ export class PageDriver {
     this.navError = '';
     this.popupUrl = '';
     this.pageErrors = 0;
-    const ua = ctx.userAgent || this.opts.defaultUserAgent;
+    const ua = consistentUa(ctx.userAgent, this.opts.defaultUserAgent);
     if (ua && ua !== this.userAgent) {
       this.userAgent = ua;
-      await this.s.send('Emulation.setUserAgentOverride', { userAgent: ua });
+      await this.s.send('Emulation.setUserAgentOverride', { userAgent: ua, acceptLanguage: 'en-US,en;q=0.9' });
     }
   }
 
@@ -531,6 +541,7 @@ export class PageDriver {
   }
 
   private netIdle(now: number, since: number): number {
+    if (this.wsLast && now - this.wsLast < 1200) return 0;
     for (const [id, r] of this.inflight) {
       if (STREAMING.has(r.type)) continue;
       const age = now - r.t;
@@ -571,7 +582,8 @@ export class PageDriver {
         loadedAt = now;
         if (this.noisyDoc === this.docSeq) cap = Math.min(cap, 600);
       }
-      const end = Math.min(o.deadline, loadedAt + cap);
+      // answers streamed over a socket can take several seconds; allow them, within the deadline
+      const end = Math.min(o.deadline, loadedAt + (this.wsLast > loadedAt ? Math.max(cap, 9000) : cap));
       if (now >= end) {
         if (now >= o.deadline) continue; // report it as a hard timeout above
         if (this.noisyDoc !== this.docSeq) {
@@ -867,4 +879,14 @@ function setHeader(headers: Record<string, string>, name: string, value: string)
   const lower = name.toLowerCase();
   for (const k of Object.keys(headers)) if (k.toLowerCase() === lower) delete headers[k];
   headers[name] = value;
+}
+
+/**
+ * The user agent the session asked for, with its Chrome version replaced by the real browser's:
+ * a header that disagrees with the browser's client hints and behaviour is what bot filters look for.
+ */
+export function consistentUa(wanted: string | undefined, real: string): string {
+  if (!wanted) return real;
+  const v = /(?:Headless)?Chrome\/([\d.]+)/.exec(real)?.[1];
+  return v ? wanted.replace(/Chrome\/[\d.]+/, 'Chrome/' + v) : wanted;
 }

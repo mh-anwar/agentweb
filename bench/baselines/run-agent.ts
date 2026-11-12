@@ -430,7 +430,7 @@ export async function runAgentTask(input: AgentTaskInput): Promise<AgentTaskResu
   const transcriptPath = join(outDir, `${label}.jsonl`);
   const stderrPath = join(outDir, `${label}.stderr.txt`);
 
-  let prep: Prepared;
+  let prep: Prepared | undefined;
   try {
     prep = await prepare(input, cwd, root);
     await prep.ready;
