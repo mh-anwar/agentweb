@@ -159,3 +159,25 @@ test("Akamai's bare refusal page is recognised as a bot wall; an ordinary 403 is
   assert.equal(detectBotWall({ status: 403, headers: { 'content-type': 'text/html', 'set-cookie': 'bm_s=YAAQabc; Domain=.shop.example; Path=/' }, text: page, mime: 'text/html' } as any), 'akamai');
   assert.equal(detectBotWall({ status: 403, headers: { 'content-type': 'text/html' }, text: '<html><title>Forbidden</title><body><h1>Members only</h1><p>Sign in to see this page.</p></body></html>', mime: 'text/html' } as any), undefined);
 });
+
+test('a control answers to its role: click(role=, name=), and role alone when the page has one', async () => {
+  const html = '<html><head><title>T</title></head><body><main><h1>Docs</h1><p><a href="/a">Save</a></p><form action="/saved"><input name="email" aria-label="Email"><input type="checkbox" name="ok" aria-label="Agree"><button>Save</button></form></main></body></html>';
+  const server = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(req.url === '/a' ? '<title>A</title><h1>Link page</h1>' : req.url!.startsWith('/saved') ? '<title>S</title><h1>Saved ' + req.url + '</h1>' : html));
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const rt = await createAgentweb({ store: 'memory:', ghost: false, chrome: false, atlas: false, env: { AGENTWEB_ALLOW_PRIVATE: '1' } });
+  try {
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const amb = await rt.run('r', `open('${base}'); click('Save')`);
+    assert.match(amb.text, /'Save' matches 2 things/);
+    const link = await rt.run('r', "click(role='link', name='Save')");
+    assert.match(link.text, /Link page/);
+    const form = await rt.run('r', `open('${base}'); fill(role='textbox', name='Email', 'a@b.co'); check(role='checkbox'); click(role='button', name='Save')`);
+    assert.ok(form.ok, form.text);
+    assert.match(form.text, /Saved \/saved\?email=a%40b\.co&ok=on/);
+    const bad = await rt.run('r', `open('${base}'); click(role='slider', name='x')`);
+    assert.match(bad.text, /role='slider' is not one agentweb knows/);
+  } finally {
+    await rt.close();
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});

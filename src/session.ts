@@ -242,14 +242,37 @@ export interface ResolveOpts {
   nth?: number;
   /** only the control with exactly this test id */
   testid?: string;
+  /** only controls of this ARIA role: click(role='button', name='Save') */
+  role?: string;
 }
+
+/** ARIA role -> the kinds of control agentweb gives that role. */
+const ROLE_KINDS: Record<string, ActKind[]> = {
+  button: ['button', 'click'],
+  link: ['link'],
+  textbox: ['input', 'textarea'],
+  searchbox: ['input'],
+  checkbox: ['check'],
+  switch: ['check'],
+  radio: ['radio'],
+  combobox: ['select', 'input'],
+  listbox: ['select'],
+  tab: ['click', 'button', 'link'],
+  menuitem: ['click', 'button', 'link'],
+  option: ['click'],
+};
 
 /**
  * Turn what the agent wrote (a number, or visible text) into one actionable on the current page.
  * Never guesses between distinct candidates: ambiguity is an error that lists them.
  */
 export function resolveTarget(page: Page, refs: SessionRefs, target: Arg, o: ResolveOpts): Resolved | { portable: RefEntry; n: number } {
-  const kinds = kindsFor(o.verb);
+  let kinds = kindsFor(o.verb);
+  if (o.role) {
+    const of = ROLE_KINDS[o.role.toLowerCase()];
+    if (!of) throw new AwError('bad_request', `role='${o.role}' is not one agentweb knows: ${Object.keys(ROLE_KINDS).join(', ')}`);
+    kinds = new Set(of);
+  }
   if (typeof target === 'number') {
     const e = refs.get(target);
     if (!e) throw new AwError('bad_request', `there is no ${target}: numbers come from the page view`, 'view() shows the current page');
@@ -260,7 +283,14 @@ export function resolveTarget(page: Page, refs: SessionRefs, target: Arg, o: Res
   }
   const want = norm(String(target));
   if (!want) throw new AwError('bad_request', `${o.verb} needs a target: a number from the page or the visible text`);
-  const pool = allActs(page).filter((r) => !kinds || kinds.has(r.act.k) || (o.verb === 'fill' && FILLABLE.has(r.act.k)));
+  const pool = allActs(page).filter((r) => !kinds || kinds.has(r.act.k) || (!o.role && o.verb === 'fill' && FILLABLE.has(r.act.k)));
+  if (o.role && want === '*') {
+    // role alone: fine when the page has one such control (or nth= picks one)
+    const distinct = [...new Map(pool.map((r) => [r.act.f, r])).values()];
+    if (distinct.length === 1) return distinct[0];
+    if (o.nth && o.nth >= 1 && o.nth <= distinct.length) return distinct[o.nth - 1];
+    throw new AwError('bad_request', distinct.length ? `${distinct.length} controls have role='${o.role}'; add name='its text' or nth=N` : `nothing on this page has role='${o.role}'`, distinct.length ? listCandidates(distinct, refs) : 'view() shows the page');
+  }
   let best = 0;
   const scored: { r: Resolved; s: number }[] = [];
   for (const r of pool) {

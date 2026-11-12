@@ -6,6 +6,7 @@ export const HELP_TOPICS: Record<string, { about: string; text: string }> = {
   input: {
     about: 'double and right click, drag, hover, keys, dialogs, uploads, file drop',
     text: `A target is a number, visible text, or a test id: click('save-button') and click(testid='save-button') find data-testid="save-button" (also data-test, data-cy, data-qa).
+By role, when a text names several kinds of control: click(role='button', name='Save') · fill(role='textbox', name='Email', 'a@b.co') · click(role='link', name='Docs', nth=2) · click(role='checkbox') when the page has one. Roles: button, link, textbox, checkbox, radio, combobox, tab, menuitem.
 click(t, double=1) · click(t, button='right') · hover(t) · drag(a, b) · press('Control+A') · press('Enter', 12)
 upload(t, 'path/to/file') · drop(t, 'path/to/file') (drop a file onto an element)
 dialog('accept') / dialog('dismiss') / dialog('accept', 'text for a prompt') - set BEFORE the step that opens the alert/confirm
