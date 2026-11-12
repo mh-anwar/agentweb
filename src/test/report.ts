@@ -1,9 +1,12 @@
 // The report is the product: a passing run is one line, a failing test is four short facts.
 
+import { BUILD } from '../version.ts';
 import type { TestResult } from './runner.ts';
 
 export interface Summary {
   ok: boolean;
+  /** the agentweb build that ran the tests (0.1.0+commit) */
+  agentweb?: string;
   /** tests by the engine their last page was on */
   engines?: Record<string, number>;
   /** CPU and memory of the whole process tree (runner, browser, renderers), sampled; Linux only */
@@ -20,7 +23,7 @@ export function summarize(tests: TestResult[], ms: number): Summary {
   const skipped = tests.filter((t) => t.skipped).length;
   const engines: Record<string, number> = {};
   for (const t of tests) if (t.engine && !t.skipped) engines[t.engine] = (engines[t.engine] ?? 0) + 1;
-  return { ok: failed === 0, engines, passed: tests.length - failed - skipped, failed, skipped, ms, tests };
+  return { ok: failed === 0, agentweb: BUILD, engines, passed: tests.length - failed - skipped, failed, skipped, ms, tests };
 }
 
 const secs = (ms: number) => (ms < 950 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`);
@@ -55,6 +58,7 @@ export function formatReport(s: Summary, o: { verbose?: boolean; streamed?: bool
     out.push(`  error: ${f.message.split('\n').join('\n         ')}`);
     if (f.excerpt.trim()) out.push('  page:', clip(f.excerpt));
   }
+  if (o.verbose && s.agentweb) out.push(`agentweb ${s.agentweb}`);
   if (o.verbose && s.resources) out.push(`resources: ${(s.resources.cpuMs / 1000).toFixed(1)} s CPU, ${s.resources.peakRssMb} MiB peak memory, up to ${s.resources.processes} processes (whole process tree, sampled)`);
   const wrote = s.tests.flatMap((t) => t.wrote ?? []);
   const parts = [`${s.passed} passed`];
@@ -87,6 +91,7 @@ figure{margin:8px 0}figcaption{font-size:13px;color:#57606a}img{max-width:100%;m
 @media(prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}section{border-color:#30363d}pre{background:#161b22}.meta{color:#8b949e}img{border-color:#30363d}}</style></head><body>
 <h1>${s.failed ? '✗' : '✓'} ${s.failed ? s.failed + ' failed, ' : ''}${s.passed} passed${s.skipped ? ', ' + s.skipped + ' skipped' : ''} (${secs(s.ms)})</h1>
 ${rows.join('\n')}
+<p class="meta">agentweb ${esc(s.agentweb ?? '')}</p>
 </body></html>
 `;
 }

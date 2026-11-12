@@ -14,7 +14,7 @@ import { createAgentweb, type AgentwebConfig } from './index.ts';
 import { TOOL } from './tooldoc.ts';
 import { attachUsageLog, summary, usagePath, writeReport } from './usage.ts';
 
-import { VERSION } from './version.ts';
+import { BUILD, VERSION } from './version.ts';
 
 interface Flags {
   _: string[];
@@ -116,7 +116,7 @@ async function main() {
     return;
   }
 
-  if (f.version || cmd === 'version') return void console.log(VERSION);
+  if (f.version || cmd === 'version') return void console.log(BUILD);
   if (f.help || cmd === 'help') return void console.log(HELP);
 
   if (cmd === 'setup' || cmd === 'install' || cmd === 'uninstall') {
@@ -273,7 +273,7 @@ async function main() {
 
   if (cmd === 'doctor') {
     const rt = await createAgentweb(config(f));
-    const lines: string[] = [`agentweb ${VERSION} on node ${process.version}`];
+    const lines: string[] = [`agentweb ${BUILD} on node ${process.version}`];
     for (const t of ['wire', 'ghost', 'chrome', 'firefox', 'webkit'] as const) lines.push(`${t.padEnd(7)} ${(await rt.available(t)) ? 'available' : 'not available'}${t === rt.ladder[2] ? ' (browser tier)' : ''}`);
     const r = await rt.run('doctor', "open('https://example.com')").catch((e) => ({ ok: false, text: String(e) }));
     lines.push(`network ${r.ok ? 'ok' : 'failed: ' + r.text.split('\n')[0]}`);

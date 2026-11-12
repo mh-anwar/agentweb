@@ -63,7 +63,7 @@ test('# each: one body, one test per value, the value in the name and the steps'
   const r = await run({ 'each.aw': "# base: $BASE\n# each: path in /a, /b, /delete-account\n## ${path} is a page\nopen('${path}'); expect(not='Not found'); expect(role='heading', level=1)\n" }, ['--verbose']);
   assert.equal(r.code, 0, r.out);
   // each test's line as it ends, then the summary; a page called "delete" is opened without asking for approval
-  assert.match(r.out, /✓ \/a is a page .*\n✓ \/b is a page .*\n✓ \/delete-account is a page .*\n(resources.*\n)?✓ 3 passed/);
+  assert.match(r.out, /✓ \/a is a page .*\n✓ \/b is a page .*\n✓ \/delete-account is a page .*\n(agentweb .*\n)?(resources.*\n)?✓ 3 passed/);
 });
 
 test("expect(role='heading', level=1) says which headings there are when there is none", async () => {
@@ -153,6 +153,7 @@ test('--grep-test selects by the title as written; # each: feeds numbers into st
   assert.doesNotMatch(r.out, /instructor/);
   const w = await run({ 'g.aw': body }, ['--grep-test', 'widths', '--json']);
   const tests = JSON.parse(w.out).tests;
+  assert.match(JSON.parse(w.out).agentweb, /^\d+\.\d+\.\d+/, 'the result says which build ran it');
   assert.deepEqual(tests.map((t: { name: string }) => t.name), ['widths [390]', 'widths [768]']);
   assert.match(tests[0].emulation, /390/);
 });

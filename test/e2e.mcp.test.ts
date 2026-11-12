@@ -122,3 +122,10 @@ test('a single search result remains an actionable record through the shipped MC
   assert.ok(r.text.includes(product.name), r.text);
   assert.match(r.text, /Add to cart/);
 });
+
+test('the shipped binary says which commit it was built from', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const out = execFileSync(process.execPath, [BIN, '--version'], { encoding: 'utf8' }).trim();
+  assert.match(out, /^\d+\.\d+\.\d+\+[0-9a-f]{7,40}$/, out);
+  assert.match(execFileSync(process.execPath, [BIN, 'doctor'], { encoding: 'utf8', env: { ...process.env, AGENTWEB_USAGE_LOG: '' } }).split('\n')[0], /^agentweb \d+\.\d+\.\d+\+[0-9a-f]{7,40} on node /);
+});

@@ -11,7 +11,7 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { VERSION } from './version.ts';
+import { BUILD as VERSION } from './version.ts';
 import { parseProgram } from './dsl.ts';
 import type { RunEvent } from './types.ts';
 

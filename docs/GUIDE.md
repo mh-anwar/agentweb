@@ -25,7 +25,8 @@ opencode and GitHub Copilot CLI. It prints what it changed and what each agent n
   found), `--dry-run` shows what would change, `agentweb uninstall` removes the entries.
 
 From a checkout: `git clone … && cd agentweb && npm install && node dist/agentweb.mjs setup`
-(`npm install` builds `dist/`). `agentweb doctor` says which engines work on the machine.
+(`npm install` builds `dist/`). `agentweb doctor` says which engines work on the machine. `agentweb --version` prints the version and the commit it
+was built from (`0.1.0+c399234`); `agentweb test --json` carries the same as `agentweb`, and `--verbose` and `--report` print it.
 
 **Any other MCP client** (`mcpServers` in the client's config):
 
