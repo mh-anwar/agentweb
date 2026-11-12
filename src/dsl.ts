@@ -51,7 +51,7 @@ const ALIAS: Record<string, string> = {
   dragto: 'drag', draganddrop: 'drag', dragndrop: 'drag',
   dblclick: 'click', doubleclick: 'click', rightclick: 'click', contextclick: 'click', contextmenu: 'click',
   pdf: 'shot', savepdf: 'shot', screencast: 'shot',
-  reportbug: 'bug', bugreport: 'bug',
+  reportbug: 'bug', bugreport: 'bug', man: 'help', docs: 'help', usage: 'help', verbs: 'help', commands: 'help',
   listtabs: 'tabs', tablist: 'tabs', pages: 'tabs', listpages: 'tabs', switchtab: 'tab', selecttab: 'tab', selectpage: 'tab', switchto: 'tab', newpage: 'newtab', opentab: 'newtab', createtab: 'newtab',
   mock: 'route', mockroute: 'route', unroute: 'route', intercept: 'route', mockrequest: 'route', blockrequest: 'route', listroutes: 'routes',
   setextrahttpheaders: 'headers', sethttpheaders: 'headers', extraheaders: 'headers', setheaders: 'headers', requestheaders: 'headers',
@@ -66,7 +66,7 @@ export const VERBS = new Set([
   'view', 'read', 'find', 'links', 'outline', 'shot',
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
   'expect', 'engine', 'confirm', 'js', 'console', 'network', 'dialog', 'emulate', 'forward', 'drag',
-  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab', 'bug',
+  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab', 'bug', 'help',
   'route', 'routes', 'headers', 'auth', 'init', 'drop',
 ]);
 
@@ -468,7 +468,7 @@ function shape(verb: string, args: Arg[], opts: Record<string, Arg>, src: string
 }
 
 function hintFor(verb?: string): string {
-  let h = "verbs: open(url) find('words') read() click(n|'text') fill(n|'label','value') select(n,'option') check(n) submit() press('Enter') back() expect('text') search('query') records('words') each('link words', find='words') view() links() shot()";
+  let h = "verbs: open(url) find('words') read() click(n|'text') fill(n|'label','value') select(n,'option') check(n) submit() press('Enter') back() expect('text') search('query') records('words') each('link words', find='words') view() links() shot() · help() lists the rest";
   if (verb) {
     const v = verb.toLowerCase();
     let best = '';

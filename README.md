@@ -52,7 +52,7 @@ given only its own tools. Raw transcripts and methods are in [bench/](bench/).
 | | agentweb | agent-browser | Chrome DevTools MCP | Playwright MCP |
 |:--|--:|--:|--:|--:|
 | Tokens per page | **1.3k** | 6.3k | 8.2k | 10.6k |
-| Tool definitions, paid on every turn | **0.75k** (1 tool) | 18k (29 tools) | 6.2k (32 tools) | 3.9k (25 tools) |
+| Tool definitions, paid on every turn | **0.9k** (1 tool) | 18k (29 tools) | 6.2k (32 tools) | 3.9k (25 tools) |
 
 **Whole tasks on live sites:** [WebVoyager](https://github.com/MinorJerry/WebVoyager), the public
 benchmark browser agents cite. Frozen 50-task sample across 14 sites, blind LLM judge. Run in progress
@@ -82,13 +82,23 @@ a 9k-token error file it points the agent to ([details](docs/research/TESTING.md
 - **Get fast where it can.** Most pages load over plain HTTP in under a second. A JavaScript engine
   without pixels comes next, then real Chrome, switching on its own when a page needs it.
 - **Act.** Click, fill, select, upload, drag, press keys, answer dialogs, download files, run
-  JavaScript, read the console and network log, emulate a phone, take screenshots and PDFs.
+  JavaScript, read the console and network log, emulate a phone, take screenshots and PDFs. Keep
+  several tabs open, mock or block requests, set headers and HTTP auth.
+- **Use your own browser.** With the agentweb extension loaded in Chrome, an agent that says
+  `engine('mine')` works in your real, signed-in browser: in its own tab group, on tabs you share,
+  with a "Stop the agent" button. Nothing is copied out of the browser.
 - **Sign in once.** `profile('instructor')` loads a saved sign-in (a Playwright `storageState` file),
   so the agent skips login flows. `profile('x', save=1)` saves the current one.
 - **Collect data.** `records('price', pages=3)` and `collect(...)` return structured rows across
   pages, with coverage receipts so a partial answer is never passed off as complete.
 - **Test your app.** `agentweb test` runs `*.aw` test files with no model in the loop. Assertions
-  wait for late content, and failures are reported in a few lines.
+  wait for late content, failures are reported in a few lines, setup and teardown commands seed
+  data, and every result says which engine checked it.
+- **Repeat and schedule.** Save a program under a name and run it with parameters; schedule it from
+  the command line and let the agent read what the last runs found. Map a whole site and collect
+  from every page with a coverage receipt.
+- **Report bugs in one step.** `bug('expected | what happened')` saves the program and engine,
+  never the page, for whoever maintains agentweb on the machine.
 - **Any browser.** Chrome by default; `engine('firefox')` or `engine('safari')` (WebKit) when you need it.
 - **Guarded.** Secrets the model never sees, SSRF protection, cross-site data-flow checks,
   confirmation before purchases and transfers, and prompt-injection lines flagged with ⚠.

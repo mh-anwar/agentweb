@@ -109,3 +109,24 @@ test('server-rendered fade-in content (opacity:0 with a transform) is shown; a h
     await new Promise<void>((r) => server.close(() => r()));
   }
 });
+
+test('help() lists topics and help(topic) shows syntax; the tool description stays small', async () => {
+  const { helpText } = await import('../src/help.ts');
+  const { TOOL, estimateTokens } = await import('../src/index.ts');
+  assert.match(helpText(), /network - mock or block requests/);
+  assert.match(helpText('route'), /route\('\*\/api\/cart\*', status=500/);
+  assert.match(helpText('testing'), /agentweb test/);
+  assert.match(helpText('nonsense-zzz'), /no help topic/);
+  const rt = await createAgentweb({ store: 'memory:', ghost: false, chrome: false, atlas: false });
+  try {
+    const r = await rt.run('h', "help('tabs')");
+    assert.ok(r.ok, r.text);
+    assert.match(r.text, /tab\('new', 'url'\)/);
+  } finally {
+    await rt.close();
+  }
+  // every step the description no longer spells out must be reachable through help()
+  const { HELP_TOPICS } = await import('../src/help.ts');
+  for (const verb of ['route', 'headers', 'auth', 'init', 'emulate', 'drag', 'dialog', 'program', 'schedule', 'map', 'collect', 'profile', 'engine']) assert.ok(Object.values(HELP_TOPICS).some((t) => t.text.includes(verb + '(')), verb);
+  assert.ok(estimateTokens(TOOL.description) < 900, `tool description is ${estimateTokens(TOOL.description)} tokens`);
+});

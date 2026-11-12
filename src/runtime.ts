@@ -16,6 +16,7 @@ import { compile, TRUNCATED } from './compile.ts';
 import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { redactProgram, writeBug } from './usage.ts';
+import { helpText } from './help.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
 import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions } from './netcontrol.ts';
@@ -1261,6 +1262,11 @@ const VERBS: Record<string, VerbHandler> = {
 };
 VERBS.uncheck = VERBS.check;
 Object.assign(VERBS, netVerbs); // route, routes, headers, auth, init, drop
+
+// help() / help('topic'): the steps the tool description does not spend tokens on
+VERBS.help = async (rc, step) => {
+  rc.emit(helpText(step.args.length ? str(step.args[0]) : undefined));
+};
 
 // bug('expected | got'): an agent tells the maintainers that agentweb itself got something wrong. Saved: the
 // program of this call (or, when bug() is alone, of the previous call), the engine, the status lines and the
