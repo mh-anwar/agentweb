@@ -80,3 +80,13 @@ test('agentweb bug on the command line: site | program | expected | got, and a p
   assert.match(execFileSync(process.execPath, [cli, 'bugs'], { env, encoding: 'utf8' }), /1 bug report\(s\)[\s\S]*the dialog opens/);
   assert.throws(() => execFileSync(process.execPath, [cli, 'bug', 'only | two'], { env, encoding: 'utf8', stdio: 'pipe' }));
 });
+
+test("find('$') finds prices, and a bare amount finds the priced line", async () => {
+  const { parseHtml, compile, renderFind } = await import('../src/index.ts');
+  const page = compile(parseHtml('<html><body><main><h1>Drives</h1><p>Samsung 990 Pro 2TB</p><p>Now $359.99 each</p><p>Ships free</p></main></body></html>'), 'https://x.test/', { tier: 'wire', status: 200, method: 'GET', bytes: 0, ms: 0 });
+  const refs = { ref: () => 0 } as any;
+  for (const q of ['$', '359.99']) {
+    const r = renderFind(page, { seq: 1, seen: {} }, refs, q, 500);
+    assert.match(r.text, /\$359\.99/, q + ' -> ' + r.text);
+  }
+});
