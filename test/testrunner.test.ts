@@ -139,14 +139,14 @@ test('all green: one summary line, exit 0', async () => {
     'a.aw': `# base: $BASE\n## home\nopen('/'); expect('Welcome'); expect(url='/')\n## login\nopen('/login'); fill('Username','bob'); fill('Password','hunter2'); submit()\nexpect('Welcome back, bob'); expect(url='/account')\n`,
   });
   assert.equal(r.code, 0);
-  assert.match(r.out, /^✓ 2 passed \(\d+(ms|\.\ds)\)$/);
+  assert.match(r.out, /^✓ 2 passed \(\d+(ms|\.\ds); wire 2\)$/);
 });
 
 test('failure: name, file:line, step, error, short excerpt, exit 1', async () => {
   const r = await run({ 'f.aw': `# base: $BASE\n## checkout\nopen('/products')\n\nexpect('Order placed')\nexpect('never reached')\n` });
   assert.equal(r.code, 1);
   const lines = r.out.split('\n');
-  assert.match(lines[0], /^✗ checkout {2}.*f\.aw:5$/);
+  assert.match(lines[0], /^✗ checkout {2}.*f\.aw:5 \[wire\]$/);
   assert.equal(lines[1], "  step:  expect('Order placed')");
   assert.equal(lines[2], "  error: 'Order placed' is not on the page");
   assert.equal(lines[3], '  page:');

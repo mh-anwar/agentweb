@@ -490,7 +490,9 @@ async function attempt(executable: string, opts: LaunchOptions, noSandbox: boole
     cdp.close('launch failed');
     killTree(child);
     // give the dying process a moment to flush stderr: the sandbox message is what decides the retry
-    await Promise.race([exited, new Promise((r) => setTimeout(r, 1500))]);
+    let flush: NodeJS.Timeout | undefined;
+    await Promise.race([exited, new Promise((r) => (flush = setTimeout(r, 1500)))]);
+    clearTimeout(flush);
     owned.delete(entry);
     removeDir(dir);
     if (e instanceof LaunchFailure) throw new LaunchFailure(e.message, err);
@@ -500,6 +502,27 @@ async function attempt(executable: string, opts: LaunchOptions, noSandbox: boole
 
 function lastLines(text: string, n: number): string {
   return text.split('\n').map((l) => l.trim()).filter(Boolean).slice(-n).join(' | ').slice(0, 600);
+}
+
+let refused: boolean | undefined;
+
+/**
+ * Does this kernel refuse the unprivileged user namespaces Chromium's sandbox needs (Ubuntu 23.10+
+ * with AppArmor, hardened kernels)? Knowing it up front saves a failed launch on every start.
+ */
+export function sandboxRefused(): boolean {
+  if (refused !== undefined) return refused;
+  refused = false;
+  if (process.platform !== 'linux') return refused;
+  const read = (f: string) => {
+    try {
+      return readFileSync(f, 'latin1').trim();
+    } catch {
+      return '';
+    }
+  };
+  if (read('/proc/sys/kernel/apparmor_restrict_unprivileged_userns') === '1' || read('/proc/sys/kernel/unprivileged_userns_clone') === '0' || read('/proc/sys/user/max_user_namespaces') === '0') refused = true;
+  return refused;
 }
 
 /** Start a browser (or connect to `opts.endpoint`). */
@@ -514,7 +537,8 @@ export async function launch(opts: LaunchOptions = {}): Promise<Browser> {
   }
   if (!existsSync(executable)) throw new AwError('unsupported', `browser binary not found: ${executable}`);
 
-  let noSandbox = opts.noSandbox ?? (env.AGENTWEB_NO_SANDBOX === '1' || needsNoSandbox.has(executable));
+  let noSandbox = opts.noSandbox ?? (env.AGENTWEB_NO_SANDBOX === '1' || needsNoSandbox.has(executable) || (sandboxRefused() && !/^\/(opt|usr|snap|bin)\//.test(executable)));
+  // (a browser installed system-wide usually comes with an AppArmor profile that lets its sandbox work: try it first)
   let a: Attempt;
   try {
     a = await attempt(executable, opts, noSandbox);
@@ -581,15 +605,14 @@ export async function launch(opts: LaunchOptions = {}): Promise<Browser> {
       else exitFns.push(fn);
     },
     async close() {
-      if (!dead) {
-        try {
-          await cdp.send('Browser.close', undefined, { timeoutMs: 2000 });
-        } catch {}
-        await Promise.race([a.exited, new Promise((r) => setTimeout(r, 2000))]);
-      }
+      // The profile is a throw-away directory: nothing in it is worth a graceful shutdown, which costs
+      // up to two seconds. Kill the whole process group and wait for the browser process to be reaped.
       killTree(child);
       die('closed');
-      await Promise.race([a.exited, new Promise((r) => setTimeout(r, 2000))]);
+      // the timer must not outlive the race: left running, it keeps the whole process alive for two more seconds
+      let timer: NodeJS.Timeout | undefined;
+      await Promise.race([a.exited, new Promise((r) => (timer = setTimeout(r, 2000)))]);
+      clearTimeout(timer);
       removeDir(dir);
     },
     kill() {

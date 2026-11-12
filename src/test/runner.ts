@@ -2,10 +2,11 @@
 // session (empty cookie jar, no history), steps run one at a time so a failure names its line,
 // and a failure carries a small excerpt of the page instead of a trace.
 
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { parseProgram, type Arg, type Step } from '../dsl.ts';
-import { SESSION_NS, type SessionRecord } from '../session.ts';
+import { liveId, SESSION_NS, type SessionRecord } from '../session.ts';
 import type { RuntimeImpl } from '../runtime.ts';
 import { baseName, parseTestFile, type TestCase, type TestStep } from './parse.ts';
 
@@ -22,6 +23,10 @@ export interface RunOptions {
   timeoutMs: number;
   /** token budget of the page excerpt shown with a failure */
   excerptTokens: number;
+  /** load every page in this engine (overrides `# engine:`) */
+  engine?: string;
+  /** false: `# setup:`, `# teardown:` and exec() are refused (--no-exec) */
+  exec?: boolean;
 }
 
 export interface Failure {
@@ -44,7 +49,76 @@ export interface TestResult {
   failure?: Failure;
   /** snapshot names written or updated in this test */
   wrote?: string[];
+  /** the engine the test's last page was on: wire (HTTP, no scripts), ghost (scripts, no real browser), chrome, firefox, webkit */
+  engine?: string;
+  /** every engine a page of this test was on, in order, when there was more than one */
+  engines?: string[];
+  /** device, viewport, locale, timezone the test ran with (these force a real browser) */
+  emulation?: string;
 }
+
+// ───────────────────────────── hooks ─────────────────────────────
+//
+// Test setup the page language cannot express (seeding a database, reading a one-time code from a
+// local mailbox) is a shell command: `# setup:` / `# teardown:` headers, and the exec() step. They
+// exist only in `agentweb test`, which runs files the user wrote; the agent tool has no such verb.
+
+export interface ExecResult {
+  ok: boolean;
+  out: string;
+  err: string;
+}
+
+export function runShell(cmd: string, env: Record<string, string | undefined>, timeoutMs: number, signal?: AbortSignal): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    let out = '';
+    let err = '';
+    let child;
+    try {
+      child = spawn(cmd, { shell: true, env: env as NodeJS.ProcessEnv, stdio: ['ignore', 'pipe', 'pipe'], signal, timeout: timeoutMs });
+    } catch (e) {
+      return resolve({ ok: false, out: '', err: (e as Error).message });
+    }
+    child.stdout!.on('data', (d: Buffer) => (out = (out + d.toString('utf8')).slice(-65_536)));
+    child.stderr!.on('data', (d: Buffer) => (err = (err + d.toString('utf8')).slice(-8192)));
+    child.once('error', (e) => resolve({ ok: false, out, err: err || e.message }));
+    child.once('close', (code, sig) => resolve({ ok: code === 0, out, err: code === 0 ? err : err || (sig ? `killed (${sig}) after ${Math.round(timeoutMs / 1000)} s` : `exit code ${code}`) }));
+  });
+}
+
+const tail = (s: string, n = 3) => s.trim().split('\n').slice(-n).join(' / ').slice(0, 300);
+
+/** `name=value` lines a hook prints become ${name} in the tests; a JSON object does too. */
+export function varsFrom(out: string): Record<string, string> {
+  const vars: Record<string, string> = {};
+  const t = out.trim();
+  if (t.startsWith('{')) {
+    try {
+      for (const [k, v] of Object.entries(JSON.parse(t) as Record<string, unknown>)) if (v !== null && typeof v !== 'object') vars[k] = String(v);
+      return vars;
+    } catch {}
+  }
+  for (const line of t.split('\n')) {
+    const m = /^([A-Za-z_][\w]*)=(.*)$/.exec(line.trim());
+    if (m) vars[m[1]] = m[2];
+  }
+  return vars;
+}
+
+function substitute(src: string, vars: Record<string, string>): string {
+  return src.replace(/\$\{([A-Za-z_]\w*)\}/g, (_m, name: string) => {
+    if (!(name in vars)) throw new Error(`\${${name}} is not set: a "# setup:" command prints ${name}=value, or exec('command', as='${name}') sets it`);
+    return vars[name];
+  });
+}
+
+const hookEnv = (tc: TestCase, base: string | undefined, vars: Record<string, string>) => ({
+  ...process.env,
+  AGENTWEB_BASE: base ?? '',
+  AGENTWEB_TEST_FILE: tc.file,
+  AGENTWEB_TEST_NAME: tc.name,
+  ...Object.fromEntries(Object.entries(vars).map(([k, v]) => ['AW_' + k.toUpperCase(), v])),
+});
 
 let sessionCounter = 0;
 
@@ -102,7 +176,7 @@ function lineDiff(want: string, got: string, max = 6): string {
   return shown.join('\n');
 }
 
-export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Promise<TestResult> {
+export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shared: Record<string, string> = {}): Promise<TestResult> {
   const t0 = performance.now();
   const res: TestResult = { file: tc.file, name: tc.name, line: tc.line, ok: true, ms: 0, steps: 0 };
   if (tc.skip) {
@@ -116,7 +190,11 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Pro
   const origins = new Set<string>();
   if (base) try { origins.add(new URL(base).origin); } catch {}
 
+  const vars: Record<string, string> = { ...shared };
+  const tiers: string[] = [];
+  const engine = o.engine ?? tc.engine;
   const steps: TestStep[] = [];
+  if (engine && engine !== 'auto') steps.push({ line: tc.line, src: `engine(${JSON.stringify(engine)})` });
   if (tc.profile) steps.push({ line: tc.line, src: `profile(${JSON.stringify(tc.profile)})` });
   if (tc.viewport && rt.verbHandler('viewport')) steps.push({ line: tc.line, src: `viewport(${JSON.stringify(tc.viewport)})` });
   steps.push(...tc.steps);
@@ -126,11 +204,52 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Pro
     res.failure = { line: st.line, step: st.src, message: message.replace(/\s+/g, ' ').trim(), excerpt: excerpt ?? (await pageExcerpt(rt, sid, o.excerptTokens)) };
   };
 
+  const hook = async (cmds: string[] | undefined, what: string): Promise<boolean> => {
+    for (const cmd of cmds ?? []) {
+      if (o.exec === false) {
+        await fail({ line: tc.line, src: `# ${what}: ${cmd}` }, `${what} commands are switched off (--no-exec)`, '');
+        return false;
+      }
+      const r = await runShell(cmd, hookEnv(tc, base, vars), 120_000, deadline);
+      if (!r.ok) {
+        if (res.ok) await fail({ line: tc.line, src: `# ${what}: ${cmd}` }, `${what} failed: ${tail(r.err || r.out) || 'no output'}`, '');
+        return false;
+      }
+      Object.assign(vars, varsFrom(r.out));
+    }
+    return true;
+  };
+
   try {
-    for (const st of steps) {
+    if (!(await hook(tc.setup, 'setup'))) return res;
+    for (const st0 of steps) {
+      let st = st0;
       let step: Step;
       const snap = SNAPSHOT.exec(st.src.trim());
       try {
+        if (st.src.includes('${')) st = { ...st, src: substitute(st.src, vars) };
+        if (/^\s*(?:await\s+)?exec\s*\(/.test(st.src)) {
+          // exec('command', as='name', retry=10): run it, keep what it prints; retry= waits for something to arrive (a mail)
+          if (o.exec === false) throw new Error('exec() is switched off (--no-exec)');
+          const ex = parseProgram(st.src.replace(/^\s*(?:await\s+)?exec\s*\(/, 'find('))[0];
+          const cmd = String(ex.args[0] ?? '');
+          if (!cmd) throw new Error("exec needs a command: exec('node scripts/otp.mjs', as='otp')");
+          const until = Date.now() + Math.min(120, Math.max(0, Number(ex.opts.retry) || 0)) * 1000;
+          let r: ExecResult;
+          for (;;) {
+            r = await runShell(cmd, hookEnv(tc, base, vars), Math.max(1000, (Number(ex.opts.timeout) || 60) * 1000), deadline);
+            if (r.ok || Date.now() >= until || deadline.aborted) break;
+            await new Promise((done) => setTimeout(done, 500));
+          }
+          res.steps++;
+          if (!r.ok) {
+            await fail(st0, `the command failed: ${tail(r.err || r.out) || 'no output'}`, '');
+            break;
+          }
+          if (typeof ex.opts.as === 'string') vars[ex.opts.as] = r.out.trim();
+          else Object.assign(vars, varsFrom(r.out));
+          continue;
+        }
         if (snap) step = { verb: 'view', args: [], opts: {}, src: st.src };
         else {
           step = parseProgram(st.src)[0];
@@ -138,7 +257,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Pro
           if (step.verb === 'open' && typeof step.args[0] === 'string') step = { ...step, args: [withBase(step.args[0], base), ...step.args.slice(1)] };
         }
       } catch (e) {
-        await fail(st, (e as Error).message, '');
+        await fail(st0, (e as Error).message, '');
         break;
       }
       if (step.verb === 'open' && typeof step.args[0] === 'string') {
@@ -146,6 +265,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Pro
       }
       const r = await rt.run(sid, snap ? 'view()' : stepToSource(step), { budget: snap ? 1500 : o.excerptTokens, signal: deadline });
       res.steps++;
+      if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
       if (snap) {
         if (!r.ok) {
           await fail(st, firstError(r.text, 'view()'), '');
@@ -180,9 +300,23 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions): Pro
       }
     }
   } finally {
+    if (tc.teardown?.length) await hook(tc.teardown, 'teardown');
+    if (tiers.length) res.engine = tiers[tiers.length - 1];
+    if (tiers.length > 1) res.engines = tiers;
+    let rec: SessionRecord | undefined;
     try {
+      rec = await rt.deps.store.get<SessionRecord>(SESSION_NS, sid);
+      const e = rec?.emulate;
+      if (e) {
+        const parts = Object.entries(e).filter(([, v]) => v !== undefined && v !== '' && v !== false).map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`);
+        if (parts.length) res.emulation = parts.join(' ');
+      }
       await rt.deps.store.del(SESSION_NS, sid);
     } catch {}
+    // the test's browser pages (one per tab) are closed now, not when they go idle: a suite holds
+    // only as many browser contexts as it has workers
+    const ids = [sid, ...(rec?.tabs ?? []).map((t) => liveId({ id: sid }, t.n)), ...(rec?.tab ? [liveId({ id: sid }, rec.tab)] : [])];
+    await Promise.all(Object.values(rt.deps.engines).flatMap((e) => (e && e.tier !== 'wire' ? ids.map((id) => e.release(id).catch(() => {})) : [])));
     res.ms = Math.round(performance.now() - t0);
   }
   return res;
@@ -216,6 +350,35 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
   const results: TestResult[] = new Array(cases.length);
   let next = 0;
   let stop = false;
+  // file-level hooks: setup once before the file's first test (its printed name=value lines are shared by
+  // the file's tests), teardown once after its last
+  const left = new Map<string, number>();
+  for (const c of cases) if (!c.skip) left.set(c.file, (left.get(c.file) ?? 0) + 1);
+  const setups = new Map<string, Promise<{ ok: boolean; vars: Record<string, string>; message: string }>>();
+  const fileSetup = (tc: TestCase) => {
+    let p = setups.get(tc.file);
+    if (!p) {
+      p = (async () => {
+        const vars: Record<string, string> = {};
+        for (const cmd of tc.fileSetup ?? []) {
+          if (o.exec === false) return { ok: false, vars, message: 'setup commands are switched off (--no-exec)' };
+          const r = await runShell(cmd, hookEnv(tc, o.base ?? tc.base, vars), 300_000);
+          if (!r.ok) return { ok: false, vars, message: `setup failed (${cmd}): ${tail(r.err || r.out) || 'no output'}` };
+          Object.assign(vars, varsFrom(r.out));
+        }
+        return { ok: true, vars, message: '' };
+      })();
+      setups.set(tc.file, p);
+    }
+    return p;
+  };
+  const fileDone = async (tc: TestCase) => {
+    const n = (left.get(tc.file) ?? 1) - 1;
+    left.set(tc.file, n);
+    if (n > 0 || !tc.fileTeardown?.length || o.exec === false) return;
+    const vars = (await setups.get(tc.file))?.vars ?? {};
+    for (const cmd of tc.fileTeardown) await runShell(cmd, hookEnv(tc, o.base ?? tc.base, vars), 300_000);
+  };
   const worker = async () => {
     for (;;) {
       if (stop) return;
@@ -223,7 +386,16 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
       if (i >= cases.length) return;
       let r: TestResult;
       try {
-        r = await runCase(rt, cases[i], o);
+        const tc = cases[i];
+        if (tc.skip) r = await runCase(rt, tc, o);
+        else {
+          const su = await fileSetup(tc);
+          try {
+            r = su.ok ? await runCase(rt, tc, o, su.vars) : { file: tc.file, name: tc.name, line: tc.line, ok: false, ms: 0, steps: 0, failure: { line: 1, step: '', message: su.message, excerpt: '' } };
+          } finally {
+            await fileDone(tc);
+          }
+        }
       } catch (e) {
         r = { file: cases[i].file, name: cases[i].name, line: cases[i].line, ok: false, ms: 0, steps: 0, failure: { line: cases[i].line, step: '', message: `runner error: ${(e as Error).message}`, excerpt: '' } };
       }

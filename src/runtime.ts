@@ -278,6 +278,7 @@ export class RunCtx {
     const before = this.rec.page?.tier;
     let page: Page;
     const tried = new Set<Tier>();
+    let hops = 0;
     for (;;) {
       tried.add(tier);
       let loaded: Loaded;
@@ -293,6 +294,23 @@ export class RunCtx {
         continue;
       }
       this.fetches++;
+      // A redirect written into the page (<meta http-equiv=refresh>; Next.js streams one when a server
+      // component redirects after the response has started). A browser follows it; without scripts we must.
+      const hop = tier === 'wire' && method === 'GET' && hops < 4 ? loaded.doc?.meta.refresh : undefined;
+      if (hop) {
+        let to = '';
+        try {
+          to = new URL(hop, loaded.url).toString();
+        } catch {}
+        if (to && to !== loaded.url && to !== req.url) {
+          const v = await this.guard.checkStep({ verb: 'open', origin: originOf(loaded.url), dest: to, method: 'GET' });
+          if (!v.ok) throw new AwError('policy', v.reason);
+          hops++;
+          this.note(`${new URL(loaded.url).pathname} redirects to ${to} (in the page); followed`);
+          req = { url: to, referer: loaded.url };
+          continue;
+        }
+      }
       page = await this.toPage(loaded, tier);
       this.wallSeen = method === 'GET' ? browserWall(loaded) ?? (loaded.escalate?.startsWith('bot wall') ? loaded.escalate.replace(/^bot wall \(?|\)$/g, '') : undefined) : undefined;
       const hollow = tier === 'ghost' && !loaded.escalate && hollowMain(page);

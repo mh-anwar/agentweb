@@ -114,6 +114,20 @@ export function cookieFromCdp(c: any): CookieData {
   return out;
 }
 
+/** hot-reload / live-reload sockets of development servers */
+export function isDevSocket(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (/\/_next\/(webpack-hmr|hmr)|\/__webpack_hmr|\/sockjs-node|\/__vite|\/@vite|\/__turbopack|\/livereload|\/browser-sync\/|\/__parcel|\/_nuxt\/|\/__hmr|\/_hmr/i.test(u.pathname)) return true;
+  // generic paths (webpack-dev-server's /ws, Vite's /?token=…) only count on a local address
+  const local = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0|.*\.localhost|.*\.local)$/i.test(u.hostname);
+  return local && (/^\/(ws|hmr)?$/.test(u.pathname) || u.searchParams.has('token'));
+}
+
 export class PageDriver {
   readonly cdp: Cdp;
   readonly s: CdpSession;
@@ -371,12 +385,18 @@ export class PageDriver {
 
     // Sites that answer over a socket (computations, live search) are silent on HTTP while the
     // answer streams in over a WebSocket; socket traffic shortly after load counts as loading.
-    const sock = () => {
+    // A dev server's hot-reload socket (Next.js, Vite, webpack) chatters for as long as the page is open
+    // and says nothing about the page being ready: it must not hold a test back for seconds per page.
+    const devSockets = new Set<string>();
+    const sock = (p: any) => {
+      if (p && typeof p.url === 'string' && isDevSocket(p.url)) devSockets.add(String(p.requestId));
+      if (p && devSockets.has(String(p.requestId))) return;
       this.wsLast = Date.now();
     };
     s.on('Network.webSocketCreated', sock);
     s.on('Network.webSocketFrameSent', sock);
     s.on('Network.webSocketFrameReceived', sock);
+    s.on('Network.webSocketClosed', (p) => void devSockets.delete(String(p.requestId)));
     s.on('Network.requestWillBeSent', (p) => {
       const now = Date.now();
       this.lastNet = now;

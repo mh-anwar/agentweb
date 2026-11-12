@@ -6,6 +6,7 @@ import { createAgentweb } from '../index.ts';
 import { parseTestFile, type TestCase } from './parse.ts';
 import { formatReport, summarize } from './report.ts';
 import { recordCase, runAll, type RunOptions, type TestResult } from './runner.ts';
+import { watchResources } from './resources.ts';
 
 export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs, failures in a few lines
 
@@ -16,17 +17,23 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
         --bail                      stop after the first failure
         --update                    accept new or changed snapshot('name') baselines
         --ci                        a missing snapshot baseline fails instead of being written
-        --json                      machine-readable result
-        --verbose                   one line per test
+        --json                      machine-readable result (each test: engine, engines, emulation, ms, failure)
+        --verbose                   one line per test, with the engine that ran it
+        --engine NAME               load every page in chrome | ghost | wire | firefox | webkit (overrides "# engine:")
+        --no-ghost  --no-chrome     switch an engine off     --browser chrome|firefox|webkit   the real browser to use
+        --no-exec                   refuse "# setup:", "# teardown:" and exec() commands
         --timeout SEC               per-test limit (default 60)
         --excerpt N                 tokens of page shown with a failure (default 200)
   agentweb test --record out.aw "open('/'); click('Sign in'); expect('Welcome')" [--base URL] [--profile NAME]
                                     run the program; if it passes (and passes again in a fresh session), write it as a test
                                     with numbered targets replaced by their visible labels
 
-  Test file:   # base: http://localhost:3000  (also # profile: parent, # timeout: 30)
+  Test file:   # base: http://localhost:3000  (also # profile: parent, # timeout: 30, # engine: chrome)
+               # setup: node scripts/seed.mjs      shell commands; name=value lines they print become \${name}
+               # teardown: node scripts/clean.mjs  (top of file: once per file; under a ## test: for that test)
                ## sign in works
                open('/login'); fill('Email','a@b.co'); submit(); expect('Welcome'); expect(url='/dashboard')
+  Commands:    exec('node scripts/otp.mjs', as='otp', retry=10); fill('Code', '\${otp}')
   Assertions:  expect('text')  expect('Item', n=3)  expect(not='Error')  expect(url='/cart')  expect(title='Cart')
                snapshot('name')   compare the page's text view with __aw_snapshots__/ (--update to accept)
   Exit code 0 when everything passes, 1 on a failure, 2 on bad usage.
@@ -38,7 +45,8 @@ interface TestFlags {
   bool: Set<string>;
 }
 
-const BOOL = new Set(['bail', 'update', 'ci', 'json', 'verbose', 'help', 'v']);
+const BOOL = new Set(['bail', 'update', 'ci', 'json', 'verbose', 'help', 'v', 'no-ghost', 'no-chrome', 'no-exec', 'record']);
+const VALUE = new Set(['base', 'workers', 'grep', 'timeout', 'excerpt', 'engine', 'browser', 'record', 'profile', 'name']);
 
 export function parseTestArgs(argv: string[]): TestFlags {
   const f: TestFlags = { paths: [], str: {}, bool: new Set() };
@@ -87,8 +95,17 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     io.out(TEST_HELP);
     return 0;
   }
+  // a flag that does nothing is worse than an error: the run would not be what was asked for
+  const unknown = [...Object.keys(f.str), ...f.bool].filter((k) => !BOOL.has(k) && !VALUE.has(k));
+  if (unknown.length) {
+    io.err(`agentweb test: unknown option${unknown.length > 1 ? 's' : ''} ${unknown.map((k) => '--' + k).join(', ')} (agentweb test --help lists them)`);
+    return 2;
+  }
   const env = process.env;
+  const engine = f.str.engine?.toLowerCase();
   const opts: RunOptions = {
+    engine: engine && engine !== 'auto' ? engine : undefined,
+    exec: !f.bool.has('no-exec'),
     base: f.str.base ?? env.AGENTWEB_BASE,
     workers: Math.max(1, Number(f.str.workers ?? env.AGENTWEB_TEST_WORKERS ?? 3) || 3),
     bail: f.bool.has('bail'),
@@ -98,7 +115,17 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     excerptTokens: Math.max(200, Number(f.str.excerpt) || 200),
   };
 
-  const mk = () => createAgentweb({ store: 'memory:', cache: false, atlas: false, budget: opts.excerptTokens });
+  const browser = f.str.browser?.toLowerCase() === 'safari' ? 'webkit' : f.str.browser?.toLowerCase();
+  const mk = () =>
+    createAgentweb({
+      store: 'memory:',
+      cache: false,
+      atlas: false,
+      budget: opts.excerptTokens,
+      ...(f.bool.has('no-ghost') ? { ghost: false } : {}),
+      ...(f.bool.has('no-chrome') ? { chrome: false } : {}),
+      ...(browser === 'chrome' || browser === 'firefox' || browser === 'webkit' ? { browser } : {}),
+    });
 
   if (f.str.record !== undefined || f.bool.has('record')) {
     // agentweb test --record out.aw "program"   (--record may also come first: out.aw is then its value)
@@ -155,16 +182,21 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
   }
 
   const t0 = performance.now();
+  const watch = watchResources();
   const rt = await mk();
   let results: TestResult[];
+  let resources: ReturnType<typeof watch.stop>;
   try {
     results = await runAll(rt, cases, opts);
   } finally {
+    // measured before the browser is closed: after that its processes are gone from the tree
+    resources = watch.stop();
     await rt.close();
   }
   results = [...bad, ...results].map((r) => ({ ...r, file: rel(r.file) }));
   const ms = Math.round(performance.now() - t0);
   const s = summarize(results, ms);
+  if (resources) s.resources = resources;
   io.out(f.bool.has('json') ? JSON.stringify(s, null, 2) : formatReport(s, { verbose: f.bool.has('verbose') }));
   return s.failed ? 1 : 0;
 }

@@ -113,7 +113,8 @@ export function parseHtml(html: string): Doc {
         else if (key === 'og:title') ogTitle = at.content ?? '';
         else if (key === 'refresh') {
           const m = /url\s*=\s*['"]?([^'";]+)/i.exec(at.content ?? '');
-          if (m && !inNoscript) meta.refresh = m[1].trim();
+          // a redirect, not a "this page reloads every minute": only short delays count
+          if (m && !inNoscript && !(parseFloat(at.content ?? '') > 10)) meta.refresh = m[1].trim();
         }
         continue;
       }

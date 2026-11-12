@@ -141,6 +141,42 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
   a few `-`/`+` lines; `--update` accepts it.
 * **Record.** `--record out.aw "program"` runs the program and, if it passes and passes again in a fresh session,
   saves it with numbered targets replaced by their visible labels and URLs made relative to `--base`.
+* **Engines.** A test runs on the cheapest engine that can do it: `wire` (plain HTTP, no scripts), `ghost`
+  (the page's scripts, no real browser) or `chrome`. A pass without a real browser is a weaker check, so the
+  summary always says which engines ran (`✓ 17 passed (5.2s; ghost 12, chrome 5)`), `--verbose` says it per test
+  (`[wire→ghost]`, with any device, viewport or timezone that was emulated) and `--json` carries `engine`,
+  `engines` and `emulation` for each test. `# engine: chrome` at the top of a file (or under one `##` test), or
+  `--engine chrome` for a whole run, makes every page load in that engine. `emulate(...)` with a viewport, locale
+  or timezone needs a real browser and moves the test to one. `--no-ghost` and `--no-chrome` switch an engine off;
+  an option the runner does not know is an error, not ignored.
+* **Real-browser cost.** One browser serves the whole run; each test gets its own isolated context, closed the
+  moment the test ends, so a suite holds as many pages as it has workers. `--verbose` and `--json` report the CPU
+  and peak memory of the whole process tree (runner, browser, renderers), sampled from `/proc` on Linux; a
+  browser that is killed at the end is counted too, which `getrusage(RUSAGE_CHILDREN)` in a wrapper misses.
+* **Readiness.** On a page with scripts `expect(...)` waits until it holds, so assert on something only the
+  finished page shows (`expect('Visits today')`, `expect(url='/dashboard')`) before clicking; there is no separate
+  "hydrated" step to get wrong. A redirect written into the page (`<meta http-equiv=refresh>`, which Next.js
+  streams when a server component redirects) is followed on every engine, so `expect(url=...)` gives the same
+  answer on all of them. A failing `expect` on an HTTP-only page re-opens it with scripts before giving up, which
+  is why one failure can start a browser.
+* **Setup, teardown and commands.** What the page language cannot express is a shell command:
+
+  ```
+  # setup: node scripts/seed.mjs            (top of the file: once before its first test)
+  # teardown: node scripts/unseed.mjs       (once after its last)
+  ## sign in with a one-time code
+  # setup: node scripts/reset-mailbox.mjs   (under a test: before that test)
+  open('/login'); fill('Email', '${email}'); submit()
+  exec('node scripts/otp.mjs ${email}', as='otp', retry=10)
+  fill('Code', '${otp}'); submit(); expect('Welcome')
+  ```
+
+  `name=value` lines (or one JSON object) that a setup command prints become `${name}` in the file's tests;
+  `exec('cmd', as='name')` keeps a command's output, and `retry=10` runs it again for up to 10 s until it
+  succeeds (a mail that has not arrived yet). Commands get `AGENTWEB_BASE`, `AGENTWEB_TEST_FILE`,
+  `AGENTWEB_TEST_NAME` and every variable as `AW_<NAME>`. A failing command fails the test with its last lines.
+  They exist only in `agentweb test` (files you wrote); the agent tool has no way to run a command, and
+  `--no-exec` refuses them.
 * **Exit code** 0 all passed, 1 a failure, 2 bad usage.
 
 ## Verified collections and semantic changes
