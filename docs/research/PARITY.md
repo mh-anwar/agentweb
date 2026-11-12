@@ -60,6 +60,7 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 | list network requests, failures, response body | PW, CDT | FIXED: `network('words', failed=1, n=40)`, `network('api', body=1)` |
 | mock/route requests, offline, throttle | PW caps network, CDT emulate | FIXED: `route()`/`routes()` (`netcontrol.ts`, `chrome/page.ts onPaused`), `emulate(offline=1, throttle=, cpu=)`; `chrome.netcontrol.test.ts` |
 | extra HTTP headers, basic-auth credentials | CDT emulate, PW `httpCredentials`, AB `set headers/credentials` | FIXED: `headers()`, `auth()` on wire, ghost and chrome (`net/http.ts`, `ghost/net.ts`, `chrome/page.ts`; `netcontrol.wire.test.ts`, `chrome.netcontrol.test.ts`) |
+| console / requests clean as an assertion | PW (`page.on('console')` + `expect`) | FIXED: `expect(console=0)`, `console='warn'`, `expect(requests=0)`, `allow=`, `all=1`; `# console: clean` header; agentweb's own blocking never counts (`checks/index.ts`, `chrome/page.ts problems`; `checks.test.ts`, `testrunner.checks.test.ts`) |
 | HAR recording | PW devtools | FIXED: `network(har='name')` writes HAR 1.2 (`chrome/page.ts har`, `netcontrol.ts buildHar`; `chrome.netcontrol.test.ts`). Trace/video: MISSING (low) |
 
 ### JavaScript
@@ -84,8 +85,17 @@ browser-use, Stagehand. Status: HAS (file), PARTIAL, MISSING, N/A (reason). Veri
 |:--|:--|:--|
 | screenshot viewport / full page / element | all | FIXED: engine supported it, the verb did not expose it: `shot(full=1)`, `shot(12)`, `shot(save=1)` also keeps the file |
 | PDF | PW `--caps pdf` | FIXED: `shot(pdf=1)` / `pdf()` saves a file and reports the path |
-| screencast / video | PW, CDT | MISSING (low) |
-| annotated screenshots, highlight | PW, AB | N/A |
+| screencast / video | PW, CDT | FIXED (GIF): `record('name')` ... `record(stop=1)`, screencast frames, own PNG decoder and GIF/LZW encoder (`checks/gif.ts`, `chrome/record.ts`; `checks.test.ts`). Video formats: MISSING (low) |
+| annotated screenshots, highlight | PW, AB | FIXED: `shot(annotate=1)` draws the text view's element numbers (`checks/inpage.ts label`) |
+| screenshots at several viewport widths | PW (loop + `setViewportSize`) | FIXED: `shot(widths='375,768,1280', save=1)` restores the viewport; `checks.test.ts` |
+| screenshot comparison with a baseline | PW `toHaveScreenshot` | FIXED in `agentweb test`: `screenshot('name', widths=, threshold=)`, `--update`, `--ci` (`test/screenshots.ts`; `testrunner.checks.test.ts`). Masking regions, animations off: MISSING |
+
+### Layout and accessibility checks
+| Capability | Competitors | Status |
+|:--|:--|:--|
+| horizontal overflow of the page, offending elements, clipped text | PW (`js` on `scrollWidth`, by hand) | FIXED: `overflow()`, `overflow(clipped=1)`, `overflow(widths=)`, `expect(overflow=0)` (`checks/inpage.ts`; `checks.test.ts`) |
+| accessibility rules | PW + axe-core, Lighthouse, CDT a11y panel | PARTIAL, on purpose: `audit()` is a built-in set of 14 rules, each tied to a WCAG 2.2 success criterion, dependency-free; `audit(axe=1)` runs axe-core when it is installed in the project. Not axe-core: no ARIA-validity, landmark-nesting, colour-over-image, table or list rules |
+| accessibility assertion in a test | PW `expect(await axe…)` | FIXED: `expect(audit=0)`, `expect(audit='names,alt')` |
 
 ### Attaching, endpoints, proxy
 | Capability | Competitors | Status |

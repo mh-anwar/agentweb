@@ -258,6 +258,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
           const sc = parseProgram(st.src)[0];
           res.steps++;
           const v = await compareScreenshot(rt, sid, tc, sc, o, deadline);
+          if (v.tier && tiers[tiers.length - 1] !== v.tier) tiers.push(v.tier);
           if (v.wrote) (res.wrote ??= []).push(...v.wrote);
           if (v.failure) {
             await fail(st0, v.failure, '');
@@ -320,6 +321,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       const src = `expect(console=${tc.console.warn ? "'warn'" : 0}, all=1${allow})`;
       const r = await rt.run(sid, src, { budget: o.excerptTokens, signal: deadline });
       res.steps++;
+      if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
       if (!r.ok) await fail({ line: tc.line, src: `# console: clean${tc.console.warn ? ', warn' : ''}${tc.console.allow ? ', allow=' + tc.console.allow : ''}` }, firstError(r.text, src), '');
     }
   } finally {

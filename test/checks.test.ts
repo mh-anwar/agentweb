@@ -58,6 +58,7 @@ const SITE: Record<string, string> = {
   '/quiet': page('Quiet', `<main><h1>Quiet</h1></main><script>console.log('only a log');fetch('/api/items')</script><script src="https://www.google-analytics.com/analytics.js"></script>`),
   '/warnonly': page('Warn', `<main><h1>Warn</h1></main><script>console.warn('deprecated thing')</script>`),
   '/hot': page('Hot', `<main><h1>Hot</h1></main><script>fetch('/static/x.hot-update.json').catch(()=>{});console.error('favicon trouble')</script>`),
+  '/imgs': page('Imgs', `<main><h1>Imgs</h1><img src="/missing.png" alt="gone" width="5" height="5"><script src="https://www.google-analytics.com/analytics.js"></script></main>`),
   '/anim': page('Anim', `<main><h1>Anim</h1><div id="b" style="width:300px;height:200px;background:#e22"></div></main><script>let i=0;setInterval(()=>{document.getElementById('b').style.background=['#e22','#2a2','#22e','#ee2'][++i%4]},120)</script>`),
   '/ok': page('OK', '<main><h1>OK</h1></main>'),
   '/tall': page('Tall', `<main><h1>Tall</h1><div style="height:1500px;background:#ccf">tall</div><div id="w" style="width:50%;background:#fcc">half</div></main>`),
@@ -464,5 +465,31 @@ describe('record()', { concurrency: false }, () => {
     assert.match(none.text, /no recording is running on this page/);
     const still = await run('rc2', "record('x'); record(stop=1)");
     assert.equal(still.ok, true, still.text);
+  });
+});
+
+describe('what agentweb blocks itself is never the page\'s fault', { concurrency: false }, () => {
+  it('images and trackers that agentweb refuses do not count; with AGENTWEB_IMAGES=1 a broken image does', async () => {
+    const plain = await createAgentweb({ store: 'memory:', ghost: false, env: { AGENTWEB_ALLOW_PRIVATE: '1', AGENTWEB_NO_SANDBOX: '1', AGENTWEB_USAGE_LOG: '', AGENTWEB_ATLAS: '0' } });
+    try {
+      const r = await plain.run('bl1', `open('${base}/imgs'); engine('chrome'); expect(console=0, requests=0)`);
+      assert.equal(r.ok, true, r.text);
+    } finally {
+      await plain.close?.();
+    }
+    const seen = await at('/imgs', 'bl2', 'expect(requests=0)');
+    assert.equal(seen.ok, false);
+    assert.match(seen.text, /GET 404 \/missing\.png/);
+    assert.doesNotMatch(seen.text, /google-analytics/);
+  });
+});
+
+describe('the page is left as it was found', { concurrency: false }, () => {
+  it('overflow, audit and annotated screenshots change no DOM, focus or scroll position', async () => {
+    const state = "js('JSON.stringify([document.documentElement.outerHTML.length, document.documentElement.outerHTML.slice(-300), String(document.activeElement && document.activeElement.tagName), scrollX, scrollY, document.querySelectorAll(\"[data-agentweb-labels]\").length])')";
+    const before = (await at('/a11y', 'pg1', state)).text.split('\n').find((l) => l.startsWith('"['))!;
+    await run('pg1', "overflow(clipped=1); audit(); shot(annotate=1); shot(widths='375,768', save=1); expect(console=0, requests=0, overflow=0, audit=0)");
+    const after = (await run('pg1', state)).text.split('\n').find((l) => l.startsWith('"['))!;
+    assert.equal(after, before);
   });
 });

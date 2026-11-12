@@ -34,7 +34,7 @@ export async function compareScreenshot(
   step: Step,
   o: { update?: boolean; ci?: boolean; excerptTokens: number },
   signal?: AbortSignal,
-): Promise<{ wrote?: string[]; failure?: string }> {
+): Promise<{ wrote?: string[]; failure?: string; tier?: string }> {
   registerImgdiff(rt);
   const name = typeof step.args[0] === 'string' && step.args[0] ? step.args[0] : 'page';
   const threshold = step.opts.threshold === undefined ? 0.01 : Number(step.opts.threshold);
@@ -42,7 +42,8 @@ export async function compareScreenshot(
   const widths = step.opts.widths === undefined ? 'now' : String(step.opts.widths);
   const full = step.opts.full !== undefined && step.opts.full !== 0 && step.opts.full !== false && !/^(0|no|false|off)$/i.test(String(step.opts.full));
   const r = await rt.run(sid, `shot(widths=${JSON.stringify(widths)}, save=1${full ? ', full=1' : ''})`, { budget: o.excerptTokens, signal });
-  if (!r.ok) return { failure: errorOf(r.text) };
+  const tier = r.stats.tier;
+  if (!r.ok) return { failure: errorOf(r.text), tier };
   const shots = r.text.split('\n').flatMap((l) => {
     const m = SHOT_LINE.exec(l);
     return m ? [{ w: Number(m[1]), file: m[2] }] : [];
@@ -93,5 +94,5 @@ export async function compareScreenshot(
         : `screenshot '${name}' at ${w} px differs from the baseline in ${pct}% of pixels (limit ${+(threshold * 100).toFixed(2)}%); the new picture is ${rel(actual)}; --update accepts it`,
     );
   }
-  return { wrote: wrote.length ? wrote : undefined, failure: failures.length ? failures.join('\n') : undefined };
+  return { wrote: wrote.length ? wrote : undefined, failure: failures.length ? failures.join('\n') : undefined, tier };
 }

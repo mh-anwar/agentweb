@@ -179,6 +179,129 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
   `--no-exec` refuses them.
 * **Exit code** 0 all passed, 1 a failure, 2 bad usage.
 
+### Layout, accessibility, console and screenshot checks
+
+Four kinds of check that a Playwright suite usually carries as code. Each is a step an agent can run and an
+assertion a test can make, and each answers in a few lines, never a dump. They need Chromium: a page that was
+fetched without a browser is reopened in it (the result says so), the way `emulate()` does. Pages are loaded with
+their images in `agentweb test`; in the agent tool set `AGENTWEB_IMAGES=1` for layout checks and screenshots to
+see them (by default images, fonts and trackers are not downloaded).
+
+```
+overflow()                          horizontal overflow at the current viewport
+overflow(clipped=1)                 ... and text cut off by its own box;  overflow(widths='375,768') at several widths
+audit()   audit('contrast,names')   built-in accessibility rules, grouped by rule;  audit(axe=1) runs axe-core if installed
+shot(widths='375,768,1280', save=1) one screenshot per viewport width (full=1: whole page);  shot(annotate=1)
+record('demo') ... record(stop=1)   the chrome page as an animated GIF
+expect(overflow=0)  expect(no_overflow=1)  expect(audit=0)  expect(audit='names,alt')
+expect(console=0)   expect(console='warn')  expect(requests=0)   (allow='favicon,hot-update', all=1)
+screenshot('home', widths='375,768', threshold=0.01)        in test files: compare with a saved picture
+# console: clean, allow=favicon                              header: expect(console=0) ends every test
+```
+
+**`overflow()`** says whether the document scrolls sideways (`scrollWidth > clientWidth`) and which elements stick
+out: those whose right edge is past the viewport or that are wider than it. Elements inside something that
+scrolls or clips on its own (`overflow-x: auto|scroll|hidden`, a table wrapper, a carousel) or fixed to the screen
+are skipped, and an offender's own contents are not listed again. At most 5 offenders, worst first, each with the
+page view's number when it is something you can click or fill. To check a phone layout set the viewport first
+(`emulate(375, 812); overflow()`) or pass `widths=`, which puts the viewport back afterwards.
+
+```
+the page scrolls sideways: 980 px of content in a 768 px viewport (212 px too wide)
+overflows by 212 px: <table.schedule> "Mon 9:00 Tue" 980 px wide in a 768 px viewport
+overflows by 192 px: <a.wide>[Book a table now]1 900 px wide in a 768 px viewport
+```
+
+`overflow(clipped=1)` adds a separate report, `clipped: <div.cut> "A very long" needs 261 px, box is 120 px`, for
+text cut by `text-overflow: ellipsis` or `overflow: hidden` on its own box. `expect(overflow=0)` fails with the
+lines above under the error; `expect(overflow=8)` lets up to 8 px through.
+
+**`audit()`** runs a fixed set of rules in the page. **This is a built-in subset, not axe-core**: it checks the
+cases below, in the way described, and nothing else, so a clean `audit()` means "none of these 14 problems", not
+"accessible". Each rule names the WCAG 2.2 success criterion it relates to. `audit('contrast,names')` runs only
+some (rule ids, or the groups `names` = labels, placeholder, buttons, links; `forms`, `images`, `color`,
+`targets`, `structure`, `all`).
+
+| rule | WCAG | finds |
+|:--|:--|:--|
+| `alt` | 1.1.1 | `<img>` with no `alt` attribute (`alt=""` and `role=presentation` are decorative and pass), `role=img` or `input type=image` with no name |
+| `labels` | 4.1.2 | form controls with no accessible name: `<label>`, `aria-label`, `aria-labelledby` or `title` |
+| `placeholder` | 3.3.2 | controls named only by their placeholder: a weak name, reported apart |
+| `buttons` | 4.1.2 | buttons (`button`, `input type=submit/button/image`, `role=button`, `summary`) with no name |
+| `links` | 2.4.4 | links with no text, image `alt`, `aria-label` or `title` |
+| `lang` | 3.1.1 | `<html>` without `lang` |
+| `title` | 2.4.2 | missing or empty `<title>` |
+| `ids` | 4.1.2 | duplicate `id`s that a `label for`, `aria-labelledby`, `-describedby`, `-controls`, `-owns` ... refers to |
+| `headings` | 1.3.1 | a level that skips (h1 then h3) |
+| `main` | 2.4.1 | no rendered `<main>`, or more than one |
+| `tabindex` | 2.4.3 | positive `tabindex` |
+| `contrast` | 1.4.3 | text below 4.5:1 (3:1 for large text: 24 px, or 18.66 px bold), from resolved colours composited over the background; elements whose background is an image or gradient are skipped and counted in the header line |
+| `target` | 2.5.8 | actionable elements under 24x24 px, except links inside a sentence and targets with 24 px of space around them (the criterion's own exceptions) |
+| `aria-hidden` | 4.1.2 | `aria-hidden` elements that contain focusable elements |
+
+```
+audit: 4 of 14 rules failed, 5 elements (built-in WCAG 2.2 AA subset, not axe-core; contrast: 13 text elements checked, 1 skipped (background is an image or gradient))
+tabindex (2.4.3) ×1: <div> "ordered" tabindex=3
+contrast (1.4.3) ×1: <p> "Pale text" 1.9:1 (needs 4.5) #bbb on #fff
+target (2.5.8) ×2: <button>[unlabeled button]3 16x6 px · <button>[x]5 23x21 px
+aria-hidden (4.1.2) ×1: <div> "hidden but focusable" hides 1 focusable (<a>)
+```
+
+At most 12 lines; a rule that fails shows its count and its first two offenders (numbered like the view when
+actionable); when more rules fail than fit, the last line names the rest. `expect(audit=0)` fails with these
+lines; `expect(audit='names,alt')` checks only those rules (a number is how many offending elements are let
+through). `audit(axe=1)` injects axe-core (into the isolated world; the page is not touched) if the package can be
+resolved from the folder agentweb runs in, and prints its violations the same way, with CSS selectors; if not it
+says how to install it (`npm install --save-dev axe-core`). axe-core is not a dependency of agentweb.
+
+**Console and requests.** `expect(console=0)` fails if the page logged errors since it loaded: `console.error`,
+uncaught exceptions, `console.assert`, and failed resource loads (the browser logs a 404 as an error).
+`console='warn'` includes warnings. `expect(requests=0)` fails on requests that failed or came back 4xx/5xx
+(including the page itself). `allow='favicon,hot-update'` ignores messages containing any of those substrings.
+The first three kinds are listed, one line each, repeats counted:
+
+```
+✗ expect(console=0) — console has 5 errors since the page loaded:
+  error: boom one (×2)
+  error: Failed to load resource: the server responded with a status of 404 (Not Found) (/missing.png)
+  error: Failed to load resource: the server responded with a status of 404 (Not Found) (/gone)
+  … 1 more kinds
+```
+
+Anything agentweb itself refuses (its tracker list, fonts, images when they are off, policy) is reported by the
+browser as `net::ERR_BLOCKED_BY_CLIENT` and is never counted. Default scope is the current document; `all=1` covers
+every page the session visited. `# console: clean` (or `# console: clean, warn, allow=favicon`) at the top of a test
+file, or under a `##` test (`# console: off` turns it off there), applies `expect(console=0, all=1)` at the end of
+every test; the file then runs in chrome from the first page, so the console is the browser's.
+
+**Screenshots at several widths.** `shot(widths='375,768,1280', save=1)` resizes the viewport to each width, takes a
+picture, and restores the viewport. With `save=1` the files go to the session's downloads folder (full size, the
+width in the name) and one line each is printed; without it the images are returned, as `shot()` does:
+
+```
+375 px wide: /home/me/.agentweb/downloads/s1/shot-w375-20261112044408.jpg (375x800 px, 3 KB)
+768 px wide: /home/me/.agentweb/downloads/s1/shot-w768-20261112044408.jpg (768x800 px, 4 KB)
+```
+
+`shot(annotate=1)` draws the element numbers the text view shows (red labels, drawn for that picture only and removed
+before it returns), so a vision model and the text agree; it works with `widths=`, `full=1` and `shot(12)`.
+In a test file `screenshot('home', widths='375,768')` saves under `__aw_screenshots__/<file>/<test>.<name>.<width>.jpg`
+next to the test file (without `widths=`, at the current viewport) and compares with the baseline by the share of
+pixels that differ (`threshold=0.01`, 1%, the default; the comparison draws both pictures in the browser, per-pixel
+tolerance for JPEG noise). A missing baseline is written, `--ci` fails instead, `--update` accepts changes; a
+difference leaves the new picture next to the baseline as `….actual.jpg`:
+
+```
+✗ look  tests/shot.aw:2
+  step:  screenshot('box', widths='375,768')
+  error: screenshot 'box' at 375 px differs from the baseline in 9.6% of pixels (limit 1%); the new picture is __aw_screenshots__/shot/look.box.375.actual.jpg; --update accepts it
+```
+
+**`record('name')` ... `record(stop=1)`** captures the chrome page (screencast frames, at most about 10 a second,
+800 px wide, at most 30 s) and saves an animated GIF in the downloads folder, made by a small encoder in agentweb
+itself (no external program): `saved recording: /…/demo-20261111230102.gif (25 frames, 2.9 s, 15 KB, 800x500 px)`.
+A recording belongs to the live page: it is lost if the page is closed or idle for long.
+
 ## Controlling the network (mock, headers, credentials, throttle)
 
 Everything here is kept in the session record, so it survives the browser page being evicted and re-created, and it is a

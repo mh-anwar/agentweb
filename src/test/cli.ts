@@ -121,6 +121,8 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
       store: 'memory:',
       cache: false,
       atlas: false,
+      // tests see the page's images: layout checks, screenshots and expect(requests=0) are wrong without them
+      env: { ...process.env, AGENTWEB_IMAGES: process.env.AGENTWEB_IMAGES ?? '1' },
       budget: opts.excerptTokens,
       ...(f.bool.has('no-ghost') ? { ghost: false } : {}),
       ...(f.bool.has('no-chrome') ? { chrome: false } : {}),

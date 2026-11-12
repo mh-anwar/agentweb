@@ -140,6 +140,8 @@ describe('screenshot(…) baselines', { concurrency: false }, () => {
     assert.equal(upd.code, 0, upd.out);
     assert.deepEqual(shots(), ['look.box.375.jpg', 'look.box.768.jpg'], 'accepting removes the .actual pictures');
     assert.equal((await run('shot.aw', test, ['--ci'])).code, 0);
+    const j = JSON.parse((await run('shot.aw', test, ['--json'])).out);
+    assert.equal(j.tests[0].engine, 'chrome', 'the receipt says the pictures came from a real browser');
   });
 
   it('a change in size is its own message; the default width is the current viewport', async () => {
