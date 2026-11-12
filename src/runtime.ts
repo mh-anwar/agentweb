@@ -92,7 +92,7 @@ export type BrowserTier = 'chrome' | 'firefox' | 'webkit';
 /** real browsers, in the order they are tried as a fallback when one meets a bot wall */
 export const BROWSERS: BrowserTier[] = ['chrome', 'firefox', 'webkit'];
 export const isBrowser = (t: Tier | undefined): t is BrowserTier => t === 'chrome' || t === 'firefox' || t === 'webkit';
-const ENGINE_NAMES = 'auto, wire (HTTP only), ghost (JavaScript, no pixels), chrome, firefox, webkit (Safari\'s engine; alias safari)';
+const ENGINE_NAMES = 'auto, wire (HTTP only), ghost (JavaScript, no pixels), chrome, firefox, webkit (Safari\'s engine; alias safari), mine (the user\'s own browser, through the agentweb extension)';
 
 export type VerbHandler = (rc: RunCtx, step: Step) => Promise<void>;
 
@@ -156,6 +156,7 @@ export class RunCtx {
       storage: rec.storage,
       userAgent: rec.emulate?.ua ?? rt.opts.emulate?.ua ?? rt.opts.userAgent,
       emulate: rec.emulate ?? rt.opts.emulate,
+      own: rec.own,
       guard: this.guard,
       timeoutMs: rt.opts.timeoutMs,
       signal,
@@ -1106,22 +1107,36 @@ const VERBS: Record<string, VerbHandler> = {
 
   async engine(rc, step) {
     const name = lc(str(step.args[0]));
+    const dropLive = async () => {
+      const page = rc.rec.page;
+      if (page && page.tier !== 'wire') await rc.engine(page.tier).release(rc.rec.id).catch(() => {});
+    };
     if (name === 'auto' || name === '') {
+      if (rc.rec.own) await dropLive();
       rc.rec.engine = undefined;
+      rc.rec.own = undefined;
+      rc.ctx.own = undefined;
       return rc.note('engine: automatic');
     }
     const alias: Record<string, Tier> = { wire: 'wire', http: 'wire', ghost: 'ghost', chrome: 'chrome', chromium: 'chrome', firefox: 'firefox', gecko: 'firefox', webkit: 'webkit', safari: 'webkit' };
-    const tier = alias[name];
+    const mine = name === 'mine' || name === 'my' || name === 'own' || name === 'user' || name === 'extension';
+    const tier = mine ? 'chrome' : alias[name];
     if (!tier) throw new AwError('bad_request', `unknown engine '${name}'`, `engines: ${ENGINE_NAMES}`);
     if (!(await rc.rt.available(tier))) {
       const how = tier === 'firefox' || tier === 'webkit' ? `npm i playwright-core && npx playwright-core install ${tier}` : tier === 'chrome' ? 'install Chrome or set AGENTWEB_CHROME' : '';
       throw new AwError('unsupported', `the ${tier} engine is not available here`, how || undefined);
     }
     if (name === 'safari') rc.note("safari: using WebKit, Safari's engine (not Safari itself)");
-    rc.rec.engine = tier;
     const p = rc.rec.page;
-    if (p && p.tier !== tier && p.method === 'GET' && /^https?:/.test(p.url)) await rc.navigate({ url: p.url }, { tier, push: false });
-    else rc.note(`engine: ${tier}`);
+    // the isolated browser and the user's own are different places: a page live in one is not carried to the other
+    if (!!rc.rec.own !== mine) await dropLive();
+    const moved = !!rc.rec.own !== mine;
+    rc.rec.own = mine || undefined;
+    rc.ctx.own = mine || undefined;
+    rc.rec.engine = tier;
+    if (mine) rc.note("engine: the user's own browser (their sign-ins are live; act only on what was asked)");
+    if (p && (p.tier !== tier || moved) && p.method === 'GET' && /^https?:/.test(p.url)) await rc.navigate({ url: p.url }, { tier, push: false });
+    else if (!mine) rc.note(`engine: ${tier}`);
   },
 };
 VERBS.uncheck = VERBS.check;

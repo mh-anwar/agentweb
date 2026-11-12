@@ -1,0 +1,32 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body { font: 13px/1.45 system-ui, sans-serif; width: 300px; margin: 0; padding: 14px; color: #111; background: #fff; }
+      h1 { font-size: 15px; margin: 0 0 8px; }
+      .row { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
+      .dot { width: 9px; height: 9px; border-radius: 50%; background: #9ca3af; flex: none; }
+      .dot.on { background: #16a34a; }
+      button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid #d1d5db; background: #f9fafb; cursor: pointer; }
+      button.stop { background: #dc2626; border-color: #dc2626; color: #fff; width: 100%; }
+      button.go { background: #2563eb; border-color: #2563eb; color: #fff; width: 100%; }
+      ul { margin: 4px 0; padding-left: 18px; }
+      li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      input[type='number'] { width: 70px; font: inherit; padding: 3px 5px; }
+      small { color: #6b7280; }
+      @media (prefers-color-scheme: dark) { body { background: #1f2937; color: #f3f4f6; } button { background: #374151; border-color: #4b5563; color: #f3f4f6; } small { color: #9ca3af; } }
+    </style>
+  </head>
+  <body>
+    <h1>agentweb</h1>
+    <div class="row"><span class="dot" id="dot"></span><span id="state">…</span></div>
+    <div id="tabs"></div>
+    <div class="row"><button id="share"></button></div>
+    <div class="row"><button class="stop" id="stop">Stop the agent</button></div>
+    <div class="row"><button class="go" id="start" hidden>Switch on</button></div>
+    <div class="row"><small>Bridge port</small><input type="number" id="port" min="1" max="65535" /><button id="save">Save</button></div>
+    <small>Agents work only in tabs they open (the "agentweb" group) and tabs you share here.</small>
+    <script src="popup.js"></script>
+  </body>
+</html>

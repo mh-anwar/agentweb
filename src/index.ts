@@ -36,6 +36,11 @@ export interface AgentwebConfig extends RuntimeOptions {
    * (AGENTWEB_CDP_SHARED=1). Off by default: each session otherwise gets an isolated context.
    */
   cdpShared?: boolean;
+  /**
+   * Use the user's own Chrome through the agentweb browser extension (AGENTWEB_EXTENSION=1): pages
+   * open as tabs in their profile, with their sign-ins. Needs the extension from extension/.
+   */
+  extension?: boolean;
   /** proxy for all traffic: http://[user:pass@]host:port (all engines) or socks5://host:port (chrome only) */
   proxy?: string;
   /** browser window size, default 1280x800 */
@@ -91,14 +96,39 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       const mod = await import('./engines/chrome/index.ts');
       const vp = /^(\d{3,4})\s*[x,]\s*(\d{3,4})$/.exec(env.AGENTWEB_VIEWPORT ?? '');
       const dl = env.AGENTWEB_DOWNLOADS;
-      engines.chrome = mod.createChromeEngine({
-        endpoint: config.cdp ?? env.AGENTWEB_CDP,
-        shared: config.cdpShared ?? /^(1|true|yes|on)$/i.test(env.AGENTWEB_CDP_SHARED ?? ''),
+      // The user's own browser through the agentweb extension is a shared DevTools endpoint found through
+      // the bridge. AGENTWEB_EXTENSION=1 sends every session there; otherwise a session asks with engine('mine').
+      const viaExtension = config.extension ?? /^(1|true|yes|on)$/i.test(env.AGENTWEB_EXTENSION ?? '');
+      if (viaExtension) void import('./bridge/hub.ts').then((m) => m.bridgeEndpoint(env)).catch(() => {}); // listen now, so the extension is connected by the first call
+      const common = {
         proxy: proxy ? proxy.replace(/\/\/[^@/]*@/, '//') : undefined,
         viewport: config.viewport ?? (vp ? { width: Number(vp[1]), height: Number(vp[2]) } : undefined),
+        downloadDir: dl === 'off' || dl === '0' ? (false as const) : dl || undefined,
+      };
+      const isolated = mod.createChromeEngine({
+        ...common,
+        endpoint: viaExtension ? 'extension:' : config.cdp ?? env.AGENTWEB_CDP,
+        shared: viaExtension || (config.cdpShared ?? /^(1|true|yes|on)$/i.test(env.AGENTWEB_CDP_SHARED ?? '')),
         args: config.ignoreHttpsErrors || /^(1|true|yes|on)$/i.test(env.AGENTWEB_IGNORE_HTTPS_ERRORS ?? '') ? ['--ignore-certificate-errors'] : undefined,
-        downloadDir: dl === 'off' || dl === '0' ? false : dl || undefined,
       });
+      let own: Engine | undefined;
+      const mine = () => (own ??= mod.createChromeEngine({ ...common, proxy: undefined, endpoint: 'extension:', shared: true }));
+      const pick = (ctx: { own?: boolean }) => (ctx.own && !viaExtension ? mine() : isolated);
+      engines.chrome = {
+        tier: 'chrome',
+        available: () => isolated.available(),
+        open: (ctx, req) => pick(ctx).open(ctx, req),
+        act: (ctx, action) => pick(ctx).act!(ctx, action),
+        snapshot: (ctx) => pick(ctx).snapshot!(ctx),
+        live: (id) => !!isolated.live?.(id) || !!own?.live?.(id),
+        release: async (id) => {
+          await Promise.all([isolated.release(id), own?.release(id)]);
+        },
+        close: async () => {
+          await Promise.all([isolated.close(), own?.close()]);
+        },
+        stats: () => isolated.stats?.() ?? {},
+      };
     } catch {
       // no chrome engine in this build
     }

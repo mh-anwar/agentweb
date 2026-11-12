@@ -318,6 +318,22 @@ function writeLauncher(home: string, platform: NodeJS.Platform, cmd: string[], d
   return file;
 }
 
+/** The browser extension shipped with this install (next to dist/ or src/). */
+export function extensionDir(entry: string = realSafe(process.argv[1] ?? '')): string | undefined {
+  const root = packageRoot(entry);
+  const dir = root ? join(root, 'extension') : '';
+  return dir && existsSync(join(dir, 'manifest.json')) ? dir : undefined;
+}
+
+export const EXTENSION_HELP = (dir: string) =>
+  [
+    'Let agents use your own Chrome, with your sign-ins (optional):',
+    '  1. Open chrome://extensions and switch on "Developer mode" (top right).',
+    `  2. Press "Load unpacked" and choose this folder: ${dir}`,
+    "  3. The agent then starts a task with engine('mine'). It works in tabs it opens (a tab group named agentweb)",
+    '     and tabs you share from the extension\'s toolbar button. "Stop the agent" there takes every tab back.',
+  ].join('\n');
+
 export function setup(o: SetupOptions = {}): SetupResult {
   const home = o.home ?? homedir();
   const platform = o.platform ?? process.platform;
@@ -386,6 +402,8 @@ export function setup(o: SetupOptions = {}): SetupResult {
       'Then use the `web` tool for every web task: reading pages, searching, signing in, filling forms, testing a site.',
       "Put several steps in one call, for example  open('example.com'); click('Pricing'); find('per month')",
     );
+    const extDir = extensionDir(entry);
+    if (extDir) out.push('', EXTENSION_HELP(extDir));
   }
   return { entry, command, launcher, changes, text: out.join('\n') };
 }

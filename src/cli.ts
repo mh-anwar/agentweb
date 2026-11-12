@@ -58,6 +58,8 @@ const HELP = `agentweb ${VERSION} - a browser for agents
         --workers N              processes (default 1)
         --keys k1=tenant1,k2=…   bearer API keys (also AGENTWEB_KEYS)
   agentweb test [paths] [--base URL] [--json] [--update] [--record out.aw "program"]   end-to-end tests (agentweb test --help)
+  agentweb extension             where the browser extension is and how to load it (lets agents use your own Chrome)
+  agentweb bridge                run the extension bridge by itself and show who is connected
   agentweb tool [--format mcp|openai|anthropic]
   agentweb doctor
   agentweb report "<site> | <task> | <why>"   an agent fell back to another browser (AGENTWEB_USAGE_LOG)
@@ -102,6 +104,34 @@ async function main() {
     const agents = typeof f.agent === 'string' ? f.agent.split(',') : typeof f.agents === 'string' ? f.agents.split(',') : undefined;
     const r = setup({ agents, dryRun: !!f['dry-run'], remove: cmd === 'uninstall' || !!f.remove });
     return void console.log(r.text);
+  }
+
+  if (cmd === 'extension') {
+    const { extensionDir, EXTENSION_HELP } = await import('./setup.ts');
+    const dir = extensionDir();
+    return void console.log(dir ? EXTENSION_HELP(dir) : 'agentweb: the extension folder is missing from this install');
+  }
+
+  if (cmd === 'bridge') {
+    const { bridgeEndpoint, ownHub } = await import('./bridge/hub.ts');
+    await bridgeEndpoint();
+    const hub = await ownHub();
+    if (!hub) return void console.log('agentweb: a bridge is already running on this machine (another agentweb process owns it)');
+    console.error(`agentweb bridge listening on 127.0.0.1:${hub.port}; waiting for the browser extension (Ctrl-C to stop)`);
+    let last = '';
+    const tick = setInterval(() => {
+      const st = hub.status();
+      const line = st.extension ? `extension connected (${st.browser}); ${st.clients} agent process(es), ${st.tabs.length} tab(s) in use, ${st.offered.length} shared by the user` : 'extension not connected';
+      if (line !== last) console.error((last = line));
+    }, 1000);
+    const stop = async () => {
+      clearInterval(tick);
+      await hub.close().catch(() => {});
+      process.exit(0);
+    };
+    process.on('SIGINT', stop);
+    process.on('SIGTERM', stop);
+    return;
   }
 
   if (cmd === 'tool') {

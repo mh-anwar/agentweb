@@ -38,6 +38,8 @@ export interface SessionRecord {
   dirty?: Record<string, string>;
   /** viewport, device, locale, timezone, location the agent asked for with emulate() */
   emulate?: import('./types.ts').Emulation;
+  /** engine('mine'): browser pages of this session open in the user's own browser through the extension */
+  own?: boolean;
   /** pages left by back(), most recent last, for forward() */
   forward?: string[];
   /** At most four bounded semantic collection baselines, private to this session. */

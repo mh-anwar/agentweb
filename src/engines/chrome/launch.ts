@@ -608,6 +608,8 @@ export async function launch(opts: LaunchOptions = {}): Promise<Browser> {
 }
 
 async function remote(endpoint: string, t0: number): Promise<Browser> {
+  // 'extension:' = the user's own browser through the agentweb extension; the bridge is found (or started) now
+  if (/^extension:/i.test(endpoint)) endpoint = await (await import('../../bridge/hub.ts')).bridgeEndpoint();
   const cdp = await connect(endpoint);
   let version: { product: string; userAgent: string };
   try {

@@ -240,6 +240,8 @@ export interface SessionCtx {
   /** URL the session is on, so a stateful engine can rehydrate after eviction */
   url?: string;
   emulate?: Emulation;
+  /** this session browses in the user's own browser (through the agentweb extension), not an isolated one */
+  own?: boolean;
 }
 
 export interface Engine {
