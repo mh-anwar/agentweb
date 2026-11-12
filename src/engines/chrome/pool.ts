@@ -61,6 +61,9 @@ export class Pool<T> {
   private byContext = new Map<string, Slot<T>>();
   private bySession = new Map<string, Slot<T>>();
   /** contexts being created: browserContextId -> resolver for the page's session */
+  /** shared mode: attach events of pages that may be ours, held until createTarget names the target */
+  private held = new Map<string, any>();
+  private waitHeld = new Map<string, (p: any) => void>();
   private expecting = new Map<string, (v: { sessionId: string; targetId: string }) => void>();
   private locks = new Map<string, Promise<void>>();
   private waiters: (() => void)[] = [];
@@ -71,6 +74,11 @@ export class Pool<T> {
   private emptySince = Date.now();
 
   private n = { launches: 0, crashes: 0, evictions: 0, expired: 0, created: 0, popups: 0, retries: 0, createMs: 0, launchMs: 0 };
+
+  /** pages open in the browser's default context (the user's profile) and are closed one by one */
+  private get shared(): boolean {
+    return !!this.opts.shared && !!this.opts.endpoint;
+  }
 
   constructor(opts: PoolOptions, hooks: PoolHooks<T>) {
     this.opts = opts;
@@ -166,7 +174,13 @@ export class Pool<T> {
     this.timer = undefined;
     for (const w of this.waiters.splice(0)) w();
     const pending = this.starting;
-    for (const slot of [...this.slots.values()]) this.hooks.dispose?.(slot, 'closed');
+    for (const slot of [...this.slots.values()]) {
+      this.hooks.dispose?.(slot, 'closed');
+      // the user's browser keeps running: take away only the tabs we opened
+      if (this.shared && slot.browser.alive()) await slot.browser.cdp.send('Target.closeTarget', { targetId: slot.targetId }, { timeoutMs: 3000 }).catch(noop);
+      // a browser that outlives us must not keep our contexts either
+      else if (slot.browser.remote && slot.browser.alive()) await slot.browser.cdp.send('Target.disposeBrowserContext', { browserContextId: slot.contextId }, { timeoutMs: 3000 }).catch(noop);
+    }
     this.slots.clear();
     this.byContext.clear();
     this.bySession.clear();
@@ -216,6 +230,12 @@ export class Pool<T> {
 
   private async start(): Promise<Browser> {
     const b = await launch(this.opts);
+    if (this.shared) {
+      process.stderr.write(
+        "agentweb: AGENTWEB_CDP_SHARED is on. Pages open in YOUR browser's own profile (" + b.product + '): your cookies and logins are visible to the agent, ' +
+          'and it can act as you on any site you are signed in to. agentweb opens its own tabs and closes only those; it never closes your browser or your tabs.\n',
+      );
+    }
     this.n.launches++;
     this.n.launchMs = b.launchMs;
     const cdp = b.cdp;
@@ -271,6 +291,7 @@ export class Pool<T> {
   private onAttached(b: Browser, p: any): void {
     const info = p.targetInfo ?? {};
     const sessionId: string = p.sessionId;
+    if (this.shared) return this.onAttachedShared(b, p);
     const ctx: string = info.browserContextId ?? '';
     const expect = this.expecting.get(ctx);
     if (expect && !info.openerId) {
@@ -283,22 +304,61 @@ export class Pool<T> {
       // A second page in one of our contexts is a popup (window.open, target=_blank). A session has
       // one page, so close it; the engine navigates the opener there instead. A popup that can reach
       // its opener blocks the opener until it runs, so let it run with its network cut off.
-      this.n.popups++;
-      const ps = b.cdp.session(sessionId);
-      ps.on('Fetch.requestPaused', (q) => void ps.send('Fetch.failRequest', { requestId: q.requestId, errorReason: 'Aborted' }).catch(noop));
-      void ps.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] }).catch(noop);
-      void ps.send('Runtime.runIfWaitingForDebugger').catch(noop);
-      void b.cdp.send('Target.closeTarget', { targetId: info.targetId }).catch(noop).then(() => b.cdp.dropSession(sessionId, 'popup closed'));
-      if (owner) {
-        try {
-          this.hooks.popup?.(owner);
-        } catch {}
-      }
+      this.closePopup(b, p, owner);
       return;
     }
     // Not ours (a shared remote browser): let it go on its way.
     void b.cdp.send('Runtime.runIfWaitingForDebugger', undefined, { sessionId }).catch(noop);
     void b.cdp.send('Target.detachFromTarget', { sessionId }).catch(noop);
+  }
+
+  /**
+   * Default-context pages are the user's: a new tab attaches here too, and only the target
+   * createTarget returned is ours. Attach events are held until that id is known; the rest are let go.
+   */
+  private onAttachedShared(b: Browser, p: any): void {
+    const info = p.targetInfo ?? {};
+    const mine = this.waitHeld.get(info.targetId);
+    if (mine) {
+      this.waitHeld.delete(info.targetId);
+      mine(p);
+      return;
+    }
+    const owner = info.openerId ? [...this.slots.values()].find((s) => s.targetId === info.openerId) : undefined;
+    if (owner) return this.closePopup(b, p, owner);
+    if (this.creating > 0 && !info.openerId) {
+      this.held.set(info.targetId, p);
+      return;
+    }
+    this.letGo(b, p.sessionId);
+  }
+
+  private letGo(b: Browser, sessionId: string): void {
+    void b.cdp.send('Runtime.runIfWaitingForDebugger', undefined, { sessionId }).catch(noop);
+    void b.cdp.send('Target.detachFromTarget', { sessionId }).catch(noop);
+  }
+
+  private releaseHeld(b: Browser): void {
+    for (const [id, p] of [...this.held]) {
+      this.held.delete(id);
+      this.letGo(b, p.sessionId);
+    }
+  }
+
+  private closePopup(b: Browser, p: any, owner: Slot<T> | undefined): void {
+    const info = p.targetInfo ?? {};
+    const sessionId: string = p.sessionId;
+    this.n.popups++;
+    const ps = b.cdp.session(sessionId);
+    ps.on('Fetch.requestPaused', (q) => void ps.send('Fetch.failRequest', { requestId: q.requestId, errorReason: 'Aborted' }).catch(noop));
+    void ps.send('Fetch.enable', { patterns: [{ urlPattern: '*' }] }).catch(noop);
+    void ps.send('Runtime.runIfWaitingForDebugger').catch(noop);
+    void b.cdp.send('Target.closeTarget', { targetId: info.targetId }).catch(noop).then(() => b.cdp.dropSession(sessionId, 'popup closed'));
+    if (owner) {
+      try {
+        this.hooks.popup?.(owner);
+      } catch {}
+    }
   }
 
   // ───────────────────────────── slots ─────────────────────────────
@@ -307,15 +367,31 @@ export class Pool<T> {
     await this.makeRoom(deadline);
     this.creating++;
     let contextId = '';
+    let sharedTarget = '';
     let b: Browser | undefined;
     try {
       b = await this.ensureBrowser();
       const cdp = b.cdp;
       const t0 = performance.now();
-      const made = await cdp.send<{ browserContextId: string }>('Target.createBrowserContext', { disposeOnDetach: false });
-      contextId = made.browserContextId;
-      const attached = new Promise<{ sessionId: string; targetId: string }>((resolve) => this.expecting.set(contextId, resolve));
-      const { targetId } = await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank', browserContextId: contextId });
+      let targetId: string;
+      let attached: Promise<{ sessionId: string; targetId: string }>;
+      if (this.shared) {
+        // the user's own profile: a new tab in the default context, opened in the background
+        targetId = (await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank', background: true }).catch(() => cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' }))).targetId;
+        sharedTarget = targetId;
+        const early = this.held.get(targetId);
+        this.held.delete(targetId);
+        attached = new Promise((resolve) => {
+          const done = (p: any) => resolve({ sessionId: p.sessionId, targetId });
+          if (early) done(early);
+          else this.waitHeld.set(targetId, done);
+        });
+      } else {
+        const made = await cdp.send<{ browserContextId: string }>('Target.createBrowserContext', { disposeOnDetach: false });
+        contextId = made.browserContextId;
+        attached = new Promise<{ sessionId: string; targetId: string }>((resolve) => this.expecting.set(contextId, resolve));
+        targetId = (await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank', browserContextId: contextId })).targetId;
+      }
       const at = await Promise.race([
         attached,
         new Promise<never>((_, reject) => {
@@ -338,7 +414,7 @@ export class Pool<T> {
         committed: false,
         data: undefined as T,
       };
-      this.byContext.set(contextId, slot);
+      if (!this.shared) this.byContext.set(contextId, slot);
       this.bySession.set(at.sessionId, slot);
       try {
         slot.data = await this.hooks.create(slot);
@@ -356,9 +432,14 @@ export class Pool<T> {
     } catch (e) {
       this.expecting.delete(contextId);
       if (contextId && b && b.alive()) void b.cdp.send('Target.disposeBrowserContext', { browserContextId: contextId }).catch(noop);
+      if (sharedTarget) {
+        this.waitHeld.delete(sharedTarget);
+        if (b && b.alive()) void b.cdp.send('Target.closeTarget', { targetId: sharedTarget }).catch(noop);
+      }
       throw e;
     } finally {
       this.creating--;
+      if (this.creating === 0 && b) this.releaseHeld(b);
       this.wake();
     }
   }
@@ -411,7 +492,8 @@ export class Pool<T> {
     const b = slot.browser;
     if (!b.alive()) return;
     try {
-      await b.cdp.send('Target.disposeBrowserContext', { browserContextId: slot.contextId }, { timeoutMs: 10_000 });
+      if (this.shared) await b.cdp.send('Target.closeTarget', { targetId: slot.targetId }, { timeoutMs: 10_000 });
+      else await b.cdp.send('Target.disposeBrowserContext', { browserContextId: slot.contextId }, { timeoutMs: 10_000 });
     } catch {}
     b.cdp.dropSession(slot.session.id, reason);
     this.wake();

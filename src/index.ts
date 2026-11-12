@@ -31,6 +31,11 @@ export interface AgentwebConfig extends RuntimeOptions {
   atlas?: boolean;
   /** remote Chromium DevTools endpoint instead of launching one (ws://… or http://host:port) */
   cdp?: string;
+  /**
+   * With `cdp`: open pages in that browser's default context, the user's own profile and logins
+   * (AGENTWEB_CDP_SHARED=1). Off by default: each session otherwise gets an isolated context.
+   */
+  cdpShared?: boolean;
   /** proxy for all traffic: http://[user:pass@]host:port (all engines) or socks5://host:port (chrome only) */
   proxy?: string;
   /** browser window size, default 1280x800 */
@@ -88,6 +93,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       const dl = env.AGENTWEB_DOWNLOADS;
       engines.chrome = mod.createChromeEngine({
         endpoint: config.cdp ?? env.AGENTWEB_CDP,
+        shared: config.cdpShared ?? /^(1|true|yes|on)$/i.test(env.AGENTWEB_CDP_SHARED ?? ''),
         proxy: proxy ? proxy.replace(/\/\/[^@/]*@/, '//') : undefined,
         viewport: config.viewport ?? (vp ? { width: Number(vp[1]), height: Number(vp[2]) } : undefined),
         args: config.ignoreHttpsErrors || /^(1|true|yes|on)$/i.test(env.AGENTWEB_IGNORE_HTTPS_ERRORS ?? '') ? ['--ignore-certificate-errors'] : undefined,
