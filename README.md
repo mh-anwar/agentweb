@@ -99,12 +99,20 @@ a 9k-token error file it points the agent to ([details](docs/research/TESTING.md
   `engine('mine')` works in your real, signed-in browser: in its own tab group, on tabs you share,
   with a "Stop the agent" button. Nothing is copied out of the browser.
 - **Sign in once.** `profile('instructor')` loads a saved sign-in (a Playwright `storageState` file),
-  so the agent skips login flows. `profile('x', save=1)` saves the current one.
+  so the agent skips login flows. `profile('x', save=1)` saves the current one. `login('github')`
+  signs in from a stored credential (also from a password manager) that is typed only on its own
+  site and that the model never sees.
+- **Fewer round trips.** A `find()` that misses answers from the site's own search or scrolls the
+  feed; numbers from an earlier page still work; long JSON comes with counts over every row. Each
+  of these removes a call the agent would otherwise make.
+- **Page tools.** When a page publishes its own tools for agents (WebMCP), agentweb says so and
+  `call('search_flights', from='YYZ', to='LIS')` runs one instead of clicking through a form.
 - **Collect data.** `records('price', pages=3)` and `collect(...)` return structured rows across
   pages, with coverage receipts so a partial answer is never passed off as complete.
 - **Test your app.** `agentweb test` runs `*.aw` test files with no model in the loop. Assertions
   wait for late content, failures are reported in a few lines, setup and teardown commands seed
-  data, and every result says which engine checked it.
+  data, and every result says which engine checked it. Built-in checks for layout overflow,
+  accessibility, console and request errors, and screenshots at several widths.
 - **Repeat and schedule.** Save a program under a name and run it with parameters; schedule it from
   the command line and let the agent read what the last runs found. Map a whole site and collect
   from every page with a coverage receipt.
