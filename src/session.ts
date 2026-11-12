@@ -210,6 +210,8 @@ export interface ResolveOpts {
   verb: string;
   near?: string;
   nth?: number;
+  /** only the control with exactly this test id */
+  testid?: string;
 }
 
 /**
@@ -235,6 +237,9 @@ export function resolveTarget(page: Page, refs: SessionRefs, target: Arg, o: Res
     const score = (l: string) => (l === want ? 100 : l.startsWith(want) ? 70 : l.includes(want) ? 50 : want.split(' ').every((w) => l.includes(w)) ? 35 : 0);
     let s = score(norm(r.act.l));
     for (const alt of r.act.al ?? []) s = Math.max(s, score(norm(alt)));
+    // a test id is an exact name the page's author gave the control
+    if (r.act.tid && (o.testid ? r.act.tid === o.testid : norm(r.act.tid) === want)) s = Math.max(s, 95);
+    else if (o.testid) continue;
     const fname = norm(fieldName(page, r.act));
     if (fname && fname === want) s = Math.max(s, 90);
     if (r.act.href && want.length > 5 && r.act.href.toLowerCase().includes(String(target).toLowerCase().trim())) s = Math.max(s, 60);

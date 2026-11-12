@@ -196,6 +196,12 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     buf.push(s);
     if (!blank) bufHas = true;
   };
+  /** the element's test id (data-testid and its cousins), so click(testid='save') can find it */
+  const withTid = (act: Act, at: Record<string, string>): Act => {
+    const tid = at['data-testid'] ?? at['data-test'] ?? at['data-test-id'] ?? at['data-cy'] ?? at['data-qa'];
+    if (tid) act.tid = tid;
+    return act;
+  };
   const pushAct = (a: Act) => {
     if (pendingSep) {
       if (bufHas) buf.push(pendingSep);
@@ -417,7 +423,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     if (scripted) {
       if (a.onclick !== undefined || a.role === 'button' || n.p || live) {
         const l = labelOf(n, a);
-        if (l) return void pushAct(mkClick(n, a, l, 'click'));
+        if (l) return void pushAct(withTid(mkClick(n, a, l, 'click'), a));
       }
       return walkChildren(n);
     }
@@ -441,7 +447,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     const act = linkAct(l, href);
     if (n.n !== undefined) act.n = n.n;
     if (a['aria-current'] && a['aria-current'] !== 'false') act.on = true;
-    pushAct(act);
+    pushAct(withTid(act, a));
   };
 
   const mkClick = (n: LNode, a: Record<string, string>, l: string, k: Act['k']): Act => {
@@ -473,9 +479,9 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
       if (a.formmethod) act.type = a.formmethod.toUpperCase();
       if (n.n !== undefined) act.n = n.n;
       if ('disabled' in a) act.dis = true;
-      return void pushAct(act);
+      return void pushAct(withTid(act, a));
     }
-    pushAct(mkClick(n, a, l, 'button'));
+    pushAct(withTid(mkClick(n, a, l, 'button'), a));
   };
 
   const doInput = (n: LNode, a: Record<string, string>) => {
@@ -492,13 +498,13 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
       const act: Act = { f: uniq('F' + hash(formKeyOf() + '\n' + name + '\n' + type + '\n' + value + '\n' + l)), k: type === 'radio' ? 'radio' : 'check', l };
       if (on) act.on = true;
       wire(act, n, a, fi);
-      return void pushAct(act);
+      return void pushAct(withTid(act, a));
     }
     if (type === 'file') {
       const l = controlLabel(n, a, 'file');
       const act: Act = { f: uniq('F' + hash(formKeyOf() + '\n' + name + '\nfile')), k: 'file', l, js: true };
       if (n.n !== undefined) act.n = n.n;
-      return void pushAct(act);
+      return void pushAct(withTid(act, a));
     }
     const value = n.v ?? a.value ?? '';
     const l = controlLabel(n, a, type === 'text' ? 'input' : type);
@@ -507,7 +513,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     if (type !== 'text') act.type = type;
     if (value) act.val = type === 'password' ? '••••' : clip(value, 60);
     wire(act, n, a, fi);
-    pushAct(act);
+    pushAct(withTid(act, a));
   };
 
   /** Attach form linkage (wire tier) or the live node id, and decide whether the control needs scripting. */
@@ -534,7 +540,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     act.opts = opts.slice(0, 14).map((x) => clip(x.l, 30));
     if (opts.length > 14) act.opts.push('…+' + (opts.length - 14));
     wire(act, n, a, fi);
-    pushAct(act);
+    pushAct(withTid(act, a));
   };
 
   const doTextarea = (n: LNode, a: Record<string, string>) => {
@@ -544,7 +550,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
     const act: Act = { f: uniq('F' + hash(formKeyOf() + '\n' + (a.name ?? '') + '\ntextarea\n' + l)), k: 'textarea', l };
     if (value.trim()) act.val = clip(squash(value), 60);
     wire(act, n, a, fi);
-    pushAct(act);
+    pushAct(withTid(act, a));
   };
 
   const containsControl = (n: LNode, depth = 0): boolean => {
@@ -1082,14 +1088,14 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
           const v = squash(plainText(n));
           if (v) act.val = clip(v, 60);
           if (n.n !== undefined) act.n = n.n;
-          return void pushAct(act);
+          return void pushAct(withTid(act, a));
         }
       } else if (!containsInteractive(n) && wc(n) <= 40) {
         const l = labelOf(n, a);
         if (l) {
           const k: Act['k'] = role === 'checkbox' || role === 'switch' || role === 'menuitemcheckbox' ? 'check' : role === 'radio' || role === 'menuitemradio' ? 'radio' : role === 'button' ? 'button' : 'click';
           if (BLOCK.has(tag)) boundary();
-          pushAct(mkClick(n, a, l, k));
+          pushAct(withTid(mkClick(n, a, l, k), a));
           if (BLOCK.has(tag)) boundary();
           return;
         }

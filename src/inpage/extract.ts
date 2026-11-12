@@ -49,7 +49,7 @@ export function extractPage(win: any, opts?: ExtractOptions): Extracted {
   const ATTRS: Record<string, 1> = {};
   for (const k of ('href src alt title name value type placeholder action method enctype for id role aria-label ' +
     'aria-labelledby aria-checked aria-selected aria-expanded aria-current aria-disabled aria-pressed checked ' +
-    'selected disabled readonly multiple colspan label open onclick contenteditable class target data-testid ' +
+    'selected disabled readonly multiple colspan label open onclick contenteditable class target data-testid data-test data-test-id data-cy data-qa ' +
     'required maxlength form formaction formmethod tabindex datetime min max pattern draggable ondrop').split(' ')) ATTRS[k] = 1;
   const SKIP: Record<string, 1> = { script: 1, style: 1, noscript: 1, template: 1, link: 1, meta: 1, head: 1, object: 1, embed: 1, param: 1, source: 1, track: 1 };
   const NATIVE: Record<string, 1> = { a: 1, button: 1, input: 1, select: 1, textarea: 1, option: 1, label: 1, summary: 1 };

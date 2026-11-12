@@ -463,7 +463,9 @@ export class RunCtx {
   }
 
   resolve(step: Step, verb?: string): Resolved | { portable: { href?: string; l: string }; n: number } {
-    if (!step.args.length) throw new AwError('bad_request', `${step.verb} needs a target: a number from the page or the visible text`);
+    const tidOpt = step.opts.testid ?? step.opts.test_id ?? step.opts.testId;
+    const testid = tidOpt !== undefined ? String(tidOpt) : undefined;
+    if (!step.args.length && !testid) throw new AwError('bad_request', `${step.verb} needs a target: a number from the page or the visible text`);
     const near = step.opts.near !== undefined ? String(step.opts.near) : step.verb === 'click' && typeof step.args[1] === 'string' ? String(step.args[1]) : undefined;
     const nth = typeof step.opts.nth === 'number' ? step.opts.nth : typeof step.opts.index === 'number' ? step.opts.index : undefined;
     // a step re-aimed after an engine change carries the control's fingerprint
@@ -471,7 +473,7 @@ export class RunCtx {
       const r = actByFp(this.page, step.opts._fp);
       if (r) return r;
     }
-    return resolveTarget(this.page, this.refs, step.args[0], { verb: verb ?? step.verb, near, nth });
+    return resolveTarget(this.page, this.refs, step.args.length ? step.args[0] : testid!, { verb: verb ?? step.verb, near, nth, testid: step.args.length ? undefined : testid });
   }
 
   /**

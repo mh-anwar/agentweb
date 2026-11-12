@@ -130,3 +130,25 @@ test('help() lists topics and help(topic) shows syntax; the tool description sta
   for (const verb of ['route', 'headers', 'auth', 'init', 'emulate', 'drag', 'dialog', 'program', 'schedule', 'map', 'collect', 'profile', 'engine']) assert.ok(Object.values(HELP_TOPICS).some((t) => t.text.includes(verb + '(')), verb);
   assert.ok(estimateTokens(TOOL.description) < 900, `tool description is ${estimateTokens(TOOL.description)} tokens`);
 });
+
+test('a control answers to its test id: as plain text and as testid=', async () => {
+  const html = '<html><head><title>T</title></head><body><main><h1>Form</h1><form action="/go"><input name="q" data-testid="search-box" aria-label="Find"><button data-testid="go-btn">Search now</button></form><a href="/a" data-cy="first-link">Alpha</a> <a href="/b">Beta</a></main></body></html>';
+  const server = createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(req.url === '/a' ? '<title>A</title><h1>Page A</h1>' : html));
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const rt = await createAgentweb({ store: 'memory:', ghost: false, chrome: false, atlas: false, env: { AGENTWEB_ALLOW_PRIVATE: '1' } });
+  try {
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/`;
+    const a = await rt.run('t', `open('${base}'); fill('search-box', 'usb hub'); view()`);
+    assert.ok(a.ok, a.text);
+    assert.match(a.text, /Find="usb hub"/);
+    const b = await rt.run('t', "click(testid='first-link')");
+    assert.ok(b.ok, b.text);
+    assert.match(b.text, /Page A/);
+    const c = await rt.run('t', `open('${base}'); click(testid='nope')`);
+    assert.ok(!c.ok);
+    assert.match(c.text, /nothing clickable matches 'nope'/);
+  } finally {
+    await rt.close();
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});

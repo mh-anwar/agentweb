@@ -49,7 +49,7 @@ export const ATTRS = new Set([
   'href', 'src', 'alt', 'title', 'name', 'value', 'type', 'placeholder', 'action', 'method', 'enctype',
   'for', 'id', 'role', 'aria-label', 'aria-labelledby', 'aria-checked', 'aria-selected', 'aria-expanded',
   'aria-current', 'aria-disabled', 'aria-pressed', 'checked', 'selected', 'disabled', 'readonly', 'multiple',
-  'colspan', 'label', 'open', 'onclick', 'contenteditable', 'class', 'target', 'data-testid', 'required',
+  'colspan', 'label', 'open', 'onclick', 'contenteditable', 'class', 'target', 'data-testid', 'data-test', 'data-test-id', 'data-cy', 'data-qa', 'required',
   'maxlength', 'form', 'formaction', 'formmethod', 'tabindex', 'datetime', 'srcdoc', 'min', 'max', 'pattern', 'hreflang',
 ]);
 

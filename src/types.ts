@@ -50,6 +50,8 @@ export interface Act {
   dis?: boolean;
   /** other names the control answers to: placeholder, aria-label, title (when not the label) */
   al?: string[];
+  /** test id (data-testid, data-test, data-cy, data-qa) */
+  tid?: string;
   /** needs a script-capable engine: acting on it from the wire tier triggers escalation */
   js?: boolean;
   /** live node id in a stateful engine; never persisted across engine eviction */

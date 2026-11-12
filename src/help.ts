@@ -5,7 +5,8 @@
 export const HELP_TOPICS: Record<string, { about: string; text: string }> = {
   input: {
     about: 'double and right click, drag, hover, keys, dialogs, uploads, file drop',
-    text: `click(t, double=1) · click(t, button='right') · hover(t) · drag(a, b) · press('Control+A') · press('Enter', 12)
+    text: `A target is a number, visible text, or a test id: click('save-button') and click(testid='save-button') find data-testid="save-button" (also data-test, data-cy, data-qa).
+click(t, double=1) · click(t, button='right') · hover(t) · drag(a, b) · press('Control+A') · press('Enter', 12)
 upload(t, 'path/to/file') · drop(t, 'path/to/file') (drop a file onto an element)
 dialog('accept') / dialog('dismiss') / dialog('accept', 'text for a prompt') - set BEFORE the step that opens the alert/confirm
 scroll('bottom') / scroll('top') / scroll(600) · forward() · reload()`,
