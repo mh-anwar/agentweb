@@ -42,8 +42,29 @@ export interface SessionRecord {
   own?: boolean;
   /** pages left by back(), most recent last, for forward() */
   forward?: string[];
+  /** number of the tab the fields above describe (absent = 1) */
+  tab?: number;
+  /** the session's other tabs, set aside; they share its cookies and storage */
+  tabs?: ParkedTab[];
   /** At most four bounded semantic collection baselines, private to this session. */
   collections?: [string, import('./extract/compare.ts').CollectionSnapshot][];
+}
+
+/** A tab that is not the current one: its page model and history. A live script-engine page stays open under liveId(). */
+export interface ParkedTab {
+  n: number;
+  page?: Page;
+  history: string[];
+  forward?: string[];
+  lastField?: string;
+  dirty?: Record<string, string>;
+}
+
+export const MAX_TABS = 8;
+
+/** The id engines know the current tab's live page by. Tab 1 is the session id itself. */
+export function liveId(rec: Pick<SessionRecord, 'id' | 'tab'>, n: number = rec.tab ?? 1): string {
+  return n > 1 ? `${rec.id}~${n}` : rec.id;
 }
 
 export const SESSION_NS = 'session';

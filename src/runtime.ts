@@ -17,7 +17,7 @@ import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
-import { actByFp, allActs, loadSession, rehash, resolveTarget, saveSession, SessionRefs, type Resolved, type SessionRecord } from './session.ts';
+import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
 import { TOOL, toolSpec } from './tooldoc.ts';
 import {
@@ -151,7 +151,7 @@ export class RunCtx {
     this.guard = rt.deps.createGuard(rec.guard, rec.id);
     this.budget = budget;
     this.ctx = {
-      id: rec.id,
+      id: liveId(rec),
       jar: this.jar,
       storage: rec.storage,
       userAgent: rec.emulate?.ua ?? rt.opts.emulate?.ua ?? rt.opts.userAgent,
@@ -300,7 +300,7 @@ export class RunCtx {
         if (alt) {
           this.rt.deps.atlas?.observe({ type: 'load', origin: originOf(loaded.url), url: loaded.url, tier, ok: false, shell: false, ms: loaded.ms });
           this.note(`${tier} was shown a bot wall (${wall}); retried in ${alt}`);
-          await this.engine(tier).release(this.rec.id).catch(() => {});
+          await this.engine(tier).release(this.ctx.id).catch(() => {});
           tier = alt;
           continue;
         }
@@ -327,7 +327,7 @@ export class RunCtx {
       page.notes.push(tier === 'wire' && !(await this.nextTier('wire')) ? `${why}; no script engine is available (install Chrome or set AGENTWEB_CHROME)` : why);
       break;
     }
-    if (before && before !== 'wire' && before !== tier) await this.engine(before).release(this.rec.id).catch(() => {});
+    if (before && before !== 'wire' && before !== tier) await this.engine(before).release(this.ctx.id).catch(() => {});
     if (tier !== 'wire' && method === 'GET' && /^https?:/.test(page.url) && (this.rt.ladder.includes(tier) || tried.size > 1)) (this.rec.tiers ??= {})[originOf(page.url)] = tier;
     if (loaded_meta(page) && this.rt.deps.atlas) {
       this.rt.deps.atlas.observe({ type: 'forms', origin: originOf(page.url), url: page.url, forms: page.forms });
@@ -341,7 +341,7 @@ export class RunCtx {
     const p = this.page;
     if (p.tier === 'wire') return;
     const eng = this.engine(p.tier);
-    if (eng.live?.(this.rec.id)) return;
+    if (eng.live?.(this.ctx.id)) return;
     this.ctx.url = p.url;
     const loaded = eng.snapshot ? await eng.snapshot(this.ctx) : await eng.open(this.ctx, { url: p.url });
     this.fetches++;
@@ -356,6 +356,49 @@ export class RunCtx {
     if (loaded.image) this.images.push(loaded.image);
     if (loaded.doc || loaded.body) this.setPage(await this.toPage(loaded, p.tier));
     return loaded;
+  }
+
+  // ── tabs ──
+
+  /** Set the current tab aside and make tab `n` (parked, or new and empty) the current one. */
+  switchTab(n: number): void {
+    const rec = this.rec;
+    const cur = rec.tab ?? 1;
+    if (n === cur) return;
+    const parked = (rec.tabs ??= []);
+    parked.push({ n: cur, page: rec.page, history: rec.history, forward: rec.forward, lastField: rec.lastField, dirty: rec.dirty });
+    const at = parked.findIndex((t) => t.n === n);
+    const t: ParkedTab = at >= 0 ? parked.splice(at, 1)[0] : { n, history: [] };
+    rec.tab = n;
+    rec.page = t.page;
+    rec.history = t.history;
+    rec.forward = t.forward;
+    rec.lastField = t.lastField;
+    rec.dirty = t.dirty;
+    rec.view.last = undefined;
+    rec.view.cursor = undefined;
+    parked.sort((a, b) => a.n - b.n);
+    this.ctx.id = liveId(rec);
+    this.ctx.url = rec.page?.url;
+    this.baseline = undefined;
+    this.stale = true;
+  }
+
+  /** Close tab `n`. Closing the current tab moves to the nearest other one. */
+  async closeTab(n: number): Promise<void> {
+    const rec = this.rec;
+    const cur = rec.tab ?? 1;
+    const others = rec.tabs ?? [];
+    if (n === cur) {
+      if (!others.length) throw new AwError('bad_request', 'this is the only tab', "open('url') goes somewhere else in it");
+      const next = [...others].sort((a, b) => Math.abs(a.n - n) - Math.abs(b.n - n))[0].n;
+      this.switchTab(next);
+    }
+    const at = (rec.tabs ?? []).findIndex((t) => t.n === n);
+    if (at < 0) throw new AwError('bad_request', `there is no tab ${n}`, 'tabs() lists them');
+    const [gone] = rec.tabs!.splice(at, 1);
+    if (!rec.tabs!.length) rec.tabs = undefined;
+    if (gone.page && gone.page.tier !== 'wire') await this.engine(gone.page.tier).release(liveId(rec, n)).catch(() => {});
   }
 
   /** Run another verb from inside a verb (verb packs use this). */
@@ -1101,7 +1144,7 @@ const VERBS: Record<string, VerbHandler> = {
     for (const [origin, items] of Object.entries(p.storage)) rc.rec.storage[origin] = { ...items };
     // a live page from before the sign-in still shows the signed-out state: load it again
     const page = rc.rec.page;
-    if (page && page.tier !== 'wire') await rc.engine(page.tier).release(rc.rec.id).catch(() => {});
+    if (page && page.tier !== 'wire') await rc.engine(page.tier).release(rc.ctx.id).catch(() => {});
     rc.note(`signed in with '${name}': ${describeProfile(p)}` + (page && page.method === 'GET' && /^https?:/.test(page.url) ? '; open a page to use it' : ''));
   },
 
@@ -1109,7 +1152,7 @@ const VERBS: Record<string, VerbHandler> = {
     const name = lc(str(step.args[0]));
     const dropLive = async () => {
       const page = rc.rec.page;
-      if (page && page.tier !== 'wire') await rc.engine(page.tier).release(rc.rec.id).catch(() => {});
+      if (page && page.tier !== 'wire') await rc.engine(page.tier).release(rc.ctx.id).catch(() => {});
     };
     if (name === 'auto' || name === '') {
       if (rc.rec.own) await dropLive();
@@ -1140,6 +1183,51 @@ const VERBS: Record<string, VerbHandler> = {
   },
 };
 VERBS.uncheck = VERBS.check;
+
+// Tabs: several pages kept open in one session, sharing its cookies and storage. tabs() lists them,
+// tab('new', url) opens one, tab(2) goes to one, tab('close') closes the current one.
+const tabLine = (n: number, page: Page | undefined, cur: boolean) => `${cur ? '*' : ' '} tab ${n}: ${page ? `${page.title || '(untitled)'} - ${page.url}` : '(empty)'}`;
+VERBS.tabs = async (rc) => {
+  const rec = rc.rec;
+  const cur = rec.tab ?? 1;
+  const all = [{ n: cur, page: rec.page }, ...(rec.tabs ?? [])].sort((a, b) => a.n - b.n);
+  rc.emit(all.map((t) => tabLine(t.n, t.page, t.n === cur)).join('\n') + "\n(tab(N) goes to one, tab('new', 'url') opens one, tab('close') closes this one)");
+};
+VERBS.tab = async (rc, step) => {
+  const rec = rc.rec;
+  const a = step.args.length ? step.args[0] : '';
+  const word = typeof a === 'string' ? lc(a) : '';
+  const cur = rec.tab ?? 1;
+  const known = [cur, ...(rec.tabs ?? []).map((t) => t.n)];
+  if (word === 'new' || word === 'open') {
+    if (known.length >= MAX_TABS) throw new AwError('bad_request', `a session keeps at most ${MAX_TABS} tabs`, "close one with tab('close', N)");
+    const n = Math.max(...known) + 1;
+    rc.switchTab(n);
+    const url = step.args.length > 1 ? str(step.args[1]) : '';
+    rc.note(`tab ${n} (new); tab(${cur}) goes back`);
+    if (url) await rc.verb('open', [url]);
+    return;
+  }
+  if (word === 'close') {
+    const n = step.args.length > 1 ? Number(step.args[1]) : cur;
+    await rc.closeTab(n);
+    rc.note(`closed tab ${n}; now on tab ${rec.tab ?? 1}`);
+    if (n === cur && rec.page) await showTab(rc);
+    return;
+  }
+  const n = typeof a === 'number' ? a : Number(a);
+  if (!Number.isInteger(n) || !known.includes(n)) throw new AwError('bad_request', `there is no tab ${str(a) || '(none given)'}`, "tabs() lists them; tab('new', 'url') opens one");
+  if (n !== cur) rc.switchTab(n);
+  await showTab(rc);
+};
+VERBS.newtab = async (rc, step) => rc.verb('tab', ['new', ...step.args]);
+
+/** After moving to a tab: make sure its live page is still there, then show it whole. */
+async function showTab(rc: RunCtx): Promise<void> {
+  if (!rc.rec.page) return void rc.emit(`tab ${rc.rec.tab ?? 1} is empty; open('url') loads a page in it`);
+  if (rc.isLive()) await rc.ensureLive();
+  rc.emit(`tab ${rc.rec.tab ?? 1}\n` + renderView(rc.page, rc.rec.view, rc.refs, { budget: rc.remaining, full: true }).text);
+}
 
 // A consequential step was refused with "confirm <token>": confirm('token') approves exactly that
 // step once. Hosts that want a human in the loop should not let the model write this themselves.
