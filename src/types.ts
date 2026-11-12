@@ -6,8 +6,13 @@ import type { Doc, DocMeta } from './tree.ts';
 
 // ───────────────────────────── page model ─────────────────────────────
 
-/** wire = plain HTTP, no JS · ghost = JS + DOM, no pixels, virtual time · chrome = real Chromium over CDP */
-export type Tier = 'wire' | 'ghost' | 'chrome';
+/**
+ * wire = plain HTTP, no JS · ghost = JS + DOM, no pixels, virtual time · chrome = real Chromium over CDP ·
+ * firefox / webkit = real Firefox or WebKit (Safari's engine) through Playwright. The three real
+ * browsers are interchangeable "browser tiers"; automatic escalation uses one of them (chrome unless
+ * configured otherwise), the others are chosen explicitly or as a fallback past a bot wall.
+ */
+export type Tier = 'wire' | 'ghost' | 'chrome' | 'firefox' | 'webkit';
 
 export type Region = 'dialog' | 'main' | 'other' | 'header' | 'nav' | 'aside' | 'footer' | 'cookie';
 

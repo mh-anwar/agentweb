@@ -61,6 +61,7 @@ const HELP = `agentweb ${VERSION} - a browser for agents
   agentweb usage [--days N]      summary of the usage log (AGENTWEB_USAGE_LOG)
 
   Common options: --store URL (memory: | file:/dir | sqlite:/file | redis://host)  --no-chrome  --no-ghost  --no-cache
+                  --browser chrome|firefox|webkit   the real browser pages escalate to (also AGENTWEB_BROWSER)
 
   Program example:  agentweb run "open('news.ycombinator.com'); find('rust')"
 `;
@@ -73,6 +74,10 @@ function config(f: Flags): AgentwebConfig {
   if (f['no-cache']) c.cache = false;
   if (typeof f.cdp === 'string') c.cdp = f.cdp;
   if (typeof f.budget === 'string') c.budget = Number(f.budget);
+  if (typeof f.browser === 'string') {
+    const b = f.browser.toLowerCase() === 'safari' ? 'webkit' : f.browser.toLowerCase();
+    if (b === 'chrome' || b === 'firefox' || b === 'webkit') c.browser = b;
+  }
   return c;
 }
 
@@ -181,7 +186,7 @@ async function main() {
   if (cmd === 'doctor') {
     const rt = await createAgentweb(config(f));
     const lines: string[] = [`agentweb ${VERSION} on node ${process.version}`];
-    for (const t of ['wire', 'ghost', 'chrome'] as const) lines.push(`${t.padEnd(7)} ${(await rt.available(t)) ? 'available' : 'not available'}`);
+    for (const t of ['wire', 'ghost', 'chrome', 'firefox', 'webkit'] as const) lines.push(`${t.padEnd(7)} ${(await rt.available(t)) ? 'available' : 'not available'}${t === rt.ladder[2] ? ' (browser tier)' : ''}`);
     const r = await rt.run('doctor', "open('https://example.com')").catch((e) => ({ ok: false, text: String(e) }));
     lines.push(`network ${r.ok ? 'ok' : 'failed: ' + r.text.split('\n')[0]}`);
     console.log(lines.join('\n'));

@@ -16,7 +16,7 @@ await build({
   minifyWhitespace: true,
   keepNames: false,
   legalComments: 'none',
-  external: ['jsdom', 'happy-dom', 'unpdf', 'esbuild'],
+  external: ['jsdom', 'happy-dom', 'unpdf', 'esbuild', 'playwright-core', 'playwright'],
   banner: { js: "import { createRequire as __cr } from 'node:module'; const require = __cr(import.meta.url);" },
   logLevel: 'warning',
 });

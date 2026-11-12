@@ -84,11 +84,18 @@ export interface RuntimeOptions {
   sessionTtlSec?: number;
   /** names of configured secrets, mentioned in the tool description */
   secretNames?: string[];
+  /** the real browser automatic escalation ends at (default chrome) */
+  browser?: BrowserTier;
 }
+
+export type BrowserTier = 'chrome' | 'firefox' | 'webkit';
+/** real browsers, in the order they are tried as a fallback when one meets a bot wall */
+export const BROWSERS: BrowserTier[] = ['chrome', 'firefox', 'webkit'];
+export const isBrowser = (t: Tier | undefined): t is BrowserTier => t === 'chrome' || t === 'firefox' || t === 'webkit';
+const ENGINE_NAMES = 'auto, wire (HTTP only), ghost (JavaScript, no pixels), chrome, firefox, webkit (Safari\'s engine; alias safari)';
 
 export type VerbHandler = (rc: RunCtx, step: Step) => Promise<void>;
 
-const TIERS: Tier[] = ['wire', 'ghost', 'chrome'];
 const DEFAULT_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 agentweb/0.1';
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const MISSING_TARGET = /nothing (?:clickable|fillable) matches|is not on this page any more|none is near/;
@@ -230,12 +237,23 @@ export class RunCtx {
     const known = this.rec.tiers?.[originOf(url)];
     if (known && (await this.rt.available(known))) return known;
     const hint = await this.rt.deps.atlas?.site(originOf(url)).catch(() => undefined);
-    if (hint?.tier && (hint.tierConf ?? 0) >= 0.6 && (await this.rt.available(hint.tier))) return hint.tier;
+    // "needs a real browser" means the configured one, whichever browser learned it
+    const rung = hint?.tier && isBrowser(hint.tier) ? this.rt.ladder[this.rt.ladder.length - 1] : hint?.tier;
+    if (rung && (hint!.tierConf ?? 0) >= 0.6 && (await this.rt.available(rung))) return rung;
     return 'wire';
   }
 
   async nextTier(t: Tier): Promise<Tier | undefined> {
-    for (let i = TIERS.indexOf(t) + 1; i < TIERS.length; i++) if (await this.rt.available(TIERS[i])) return TIERS[i];
+    const ladder = this.rt.ladder;
+    const at = ladder.indexOf(t);
+    if (at < 0) return undefined; // a browser chosen outside the ladder is already a real browser
+    for (let i = at + 1; i < ladder.length; i++) if (await this.rt.available(ladder[i])) return ladder[i];
+    return undefined;
+  }
+
+  /** Another real browser to try when this one met a bot wall (each is tried at most once per open). */
+  async otherBrowser(tried: Set<Tier>): Promise<BrowserTier | undefined> {
+    for (const b of BROWSERS) if (!tried.has(b) && this.rt.deps.engines[b] && (await this.rt.available(b))) return b;
     return undefined;
   }
 
@@ -251,7 +269,9 @@ export class RunCtx {
     const pinned = !!o?.tier || !!this.rec.engine;
     const before = this.rec.page?.tier;
     let page: Page;
+    const tried = new Set<Tier>();
     for (;;) {
+      tried.add(tier);
       let loaded: Loaded;
       try {
         loaded = await this.engine(tier).open(this.ctx, req);
@@ -267,6 +287,20 @@ export class RunCtx {
       this.fetches++;
       page = await this.toPage(loaded, tier);
       const hollow = tier === 'ghost' && !loaded.escalate && hollowMain(page);
+      // a real browser that is shown a bot wall: another browser engine may be let through
+      // one retry only: a wall that two browser engines both get is not going to open for a third
+      const wall = isBrowser(tier) && method === 'GET' && !this.rec.engine && ![...tried].some((t) => t !== tier && isBrowser(t)) ? browserWall(loaded) : undefined;
+      if (wall) {
+        const alt = await this.otherBrowser(tried);
+        this.rt.count('browser_walls');
+        if (alt) {
+          this.rt.deps.atlas?.observe({ type: 'load', origin: originOf(loaded.url), url: loaded.url, tier, ok: false, shell: false, ms: loaded.ms });
+          this.note(`${tier} was shown a bot wall (${wall}); retried in ${alt}`);
+          await this.engine(tier).release(this.rec.id).catch(() => {});
+          tier = alt;
+          continue;
+        }
+      }
       const failed = !!page.shell || !!loaded.escalate || hollow;
       this.rt.deps.atlas?.observe({ type: 'load', origin: originOf(loaded.url), url: loaded.url, tier, ok: !failed, shell: !!page.shell, ms: loaded.ms });
       if (!failed) break;
@@ -290,7 +324,7 @@ export class RunCtx {
       break;
     }
     if (before && before !== 'wire' && before !== tier) await this.engine(before).release(this.rec.id).catch(() => {});
-    if (tier !== 'wire' && method === 'GET' && /^https?:/.test(page.url)) (this.rec.tiers ??= {})[originOf(page.url)] = tier;
+    if (tier !== 'wire' && method === 'GET' && /^https?:/.test(page.url) && (this.rt.ladder.includes(tier) || tried.size > 1)) (this.rec.tiers ??= {})[originOf(page.url)] = tier;
     if (loaded_meta(page) && this.rt.deps.atlas) {
       this.rt.deps.atlas.observe({ type: 'forms', origin: originOf(page.url), url: page.url, forms: page.forms });
       this.rt.deps.atlas.observe({ type: 'meta', origin: originOf(page.url), url: page.url, links: page.meta?.links ?? [], markdown: page.kind === 'markdown' });
@@ -480,12 +514,19 @@ function clipTokens(text: string, tokens: number): string {
 }
 
 /** Load the current page in the chrome engine when it is not already there (verbs that only a browser can do). */
-async function needChrome(rc: RunCtx, what: string): Promise<void> {
-  if (rc.rec.page && rc.isLive() && rc.rec.page.tier === 'chrome') return void (await rc.ensureLive());
-  if (!(await rc.rt.available('chrome'))) throw new AwError('unsupported', `${what} need the chrome engine, which is not available`, 'install Chrome or set AGENTWEB_CHROME');
+async function needChrome(rc: RunCtx, what: string, anyBrowser = false): Promise<void> {
+  const tier = rc.rec.page?.tier;
+  if (rc.rec.page && rc.isLive() && (tier === 'chrome' || (anyBrowser && isBrowser(tier)))) return void (await rc.ensureLive());
+  let target: Tier | undefined = 'chrome';
+  if (anyBrowser) {
+    // a pinned browser, else the configured real browser, else any installed one
+    const top = rc.rt.ladder[rc.rt.ladder.length - 1];
+    target = isBrowser(rc.rec.engine) && (await rc.rt.available(rc.rec.engine)) ? rc.rec.engine : isBrowser(top) && (await rc.rt.available(top)) ? top : await rc.otherBrowser(new Set());
+  } else if (!(await rc.rt.available('chrome'))) target = undefined;
+  if (!target) throw new AwError('unsupported', `${what} need ${anyBrowser ? 'a real browser engine' : 'the chrome engine'}, which is not available`, 'install Chrome or set AGENTWEB_CHROME');
   const p = rc.page;
   if (p.method !== 'GET') throw new AwError('unsupported', 'this page is the result of a form POST and cannot be re-opened in a browser');
-  await rc.navigate({ url: p.url }, { tier: 'chrome', push: false });
+  await rc.navigate({ url: p.url }, { tier: target, push: false });
   await rc.ensureLive();
 }
 
@@ -882,7 +923,7 @@ const VERBS: Record<string, VerbHandler> = {
   async shot(rc, step) {
     const n = typeof step.args[0] === 'number' || typeof step.args[0] === 'string';
     const pdf = truthy(step.opts.pdf);
-    await needChrome(rc, 'screenshots');
+    await needChrome(rc, 'screenshots', !pdf);
     let target: number | undefined;
     if (n) {
       const r = rc.resolve(step);
@@ -895,7 +936,7 @@ const VERBS: Record<string, VerbHandler> = {
   },
 
   async upload(rc, step) {
-    if (!rc.isLive()) await rc.escalate('file upload needs the chrome engine');
+    if (!rc.isLive()) await rc.escalate('file upload needs a browser engine');
     const name = str(step.args[1]) || 'file.txt';
     const data = Buffer.from(str(step.opts.text ?? step.args[2] ?? ''), 'utf8').toString('base64');
     await rc.liveOn(step, (n) => ({ do: 'upload', n, files: [{ name, mime: str(step.opts.mime) || 'text/plain', data }] }));
@@ -1039,9 +1080,14 @@ const VERBS: Record<string, VerbHandler> = {
       rc.rec.engine = undefined;
       return rc.note('engine: automatic');
     }
-    if (!TIERS.includes(name as Tier)) throw new AwError('bad_request', `unknown engine '${name}'`, 'engines: auto, wire (HTTP only), ghost (JavaScript, no pixels), chrome');
-    const tier = name as Tier;
-    if (!(await rc.rt.available(tier))) throw new AwError('unsupported', `the ${tier} engine is not available here`);
+    const alias: Record<string, Tier> = { wire: 'wire', http: 'wire', ghost: 'ghost', chrome: 'chrome', chromium: 'chrome', firefox: 'firefox', gecko: 'firefox', webkit: 'webkit', safari: 'webkit' };
+    const tier = alias[name];
+    if (!tier) throw new AwError('bad_request', `unknown engine '${name}'`, `engines: ${ENGINE_NAMES}`);
+    if (!(await rc.rt.available(tier))) {
+      const how = tier === 'firefox' || tier === 'webkit' ? `npm i playwright-core && npx playwright-core install ${tier}` : tier === 'chrome' ? 'install Chrome or set AGENTWEB_CHROME' : '';
+      throw new AwError('unsupported', `the ${tier} engine is not available here`, how || undefined);
+    }
+    if (name === 'safari') rc.note("safari: using WebKit, Safari's engine (not Safari itself)");
     rc.rec.engine = tier;
     const p = rc.rec.page;
     if (p && p.tier !== tier && p.method === 'GET' && /^https?:/.test(p.url)) await rc.navigate({ url: p.url }, { tier, push: false });
@@ -1099,10 +1145,13 @@ export class RuntimeImpl implements Runtime {
   private subs = new Set<(e: RunEvent) => void>();
   private counters: Record<string, number> = { runs: 0, steps: 0, errors: 0, fetches: 0, tokens_out: 0, escalations: 0, submits: 0 };
   private avail = new Map<Tier, Promise<boolean>>();
+  /** automatic escalation order: wire -> ghost -> the configured real browser */
+  readonly ladder: Tier[];
 
   constructor(deps: RuntimeDeps) {
     this.deps = deps;
     const o = deps.options ?? {};
+    this.ladder = ['wire', 'ghost', o.browser && deps.engines[o.browser] ? o.browser : 'chrome'];
     this.opts = {
       budget: o.budget ?? 2000,
       timeoutMs: o.timeoutMs ?? 20000,
@@ -1112,6 +1161,7 @@ export class RuntimeImpl implements Runtime {
       secretNames: o.secretNames ?? [],
       defaultEngine: o.defaultEngine,
       emulate: o.emulate,
+      browser: (this.ladder[2] as BrowserTier) ?? 'chrome',
     };
   }
 
@@ -1151,7 +1201,7 @@ export class RuntimeImpl implements Runtime {
 
   metrics(): Record<string, number> {
     const m: Record<string, number> = { ...this.counters };
-    for (const t of TIERS) {
+    for (const t of Object.keys(this.deps.engines) as Tier[]) {
       const s = this.deps.engines[t]?.stats?.();
       if (s) for (const k in s) m[`${t}_${k}`] = s[k];
     }
@@ -1401,4 +1451,43 @@ export function flagInjections(page: Page, score: ((text: string) => number) | u
   }
   if (n && !page.notes.includes(SUS_NOTE)) page.notes.push(SUS_NOTE);
   return n;
+}
+
+/**
+ * A real browser was shown a bot wall instead of the page: a search engine's "sorry" page, a
+ * captcha or challenge interstitial. Another browser engine may get through, so the runtime may
+ * retry there. Deliberately narrow: an ordinary page that merely embeds a captcha is not a wall.
+ */
+export function browserWall(l: Loaded): string | undefined {
+  let path = '';
+  try {
+    const u = new URL(l.url);
+    path = u.hostname + u.pathname;
+  } catch {}
+  if (/(^|\.)google\.[a-z.]+\/sorry\//.test(path)) return 'google /sorry';
+  if (/\/cdn-cgi\/challenge-platform\/|\/captcha(\/|$)|\/_sec\/cp_challenge/.test(path)) return 'challenge page';
+  const doc = l.doc;
+  if (!doc) return undefined;
+  const title = (doc.meta.title ?? '').toLowerCase();
+  if (/^(just a moment|attention required|access denied|verify(ing)? you are human|are you a (human|robot)|security check|captcha)/.test(title.trim())) return doc.meta.title;
+  if (l.status === 403 || l.status === 429 || l.status === 503) {
+    let words = 0;
+    let hit = '';
+    for (const x of walkText(doc.root)) {
+      words += x.split(/\s+/).length;
+      if (!hit && /unusual traffic from your (computer|network)|verify (that )?you(?:'re| are) (a )?human|are you a robot|complete the security check|press (and|&) hold|enable javascript and cookies to continue/i.test(x)) hit = x.slice(0, 60);
+      if (words > 600) break;
+    }
+    if (hit && words <= 600) return `${l.status} challenge`;
+  }
+  return undefined;
+}
+
+function* walkText(n: Doc['root']): Generator<string> {
+  if (n.t === '#text') {
+    if (n.x) yield n.x;
+    return;
+  }
+  if (n.h) return;
+  for (const c of n.c ?? []) yield* walkText(c);
 }
