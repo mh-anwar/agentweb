@@ -107,3 +107,15 @@ test('an entry further down an endless feed: the last find() scrolls for it', as
     await full.close();
   }
 });
+
+test("records('price stock'): a field name that is written on no item is dropped, not a reason to match nothing", async () => {
+  const { createAgentweb } = await import('../src/index.ts');
+  const full = await createAgentweb({ store: 'memory:', atlas: false, env: { ...process.env, AGENTWEB_ALLOW_PRIVATE: '1' } });
+  try {
+    const text = (await full.run('rec', `open('${farm.url}/spa/'); click('Keyboards'); records('price stock', pages=5)`, { budget: 6000 })).text;
+    assert.match(text, /no record has the word 'price' \(words filter what is written on an item\), so only the rest is used\. 25 records matching 'price stock' over 2 pages:/);
+    assert.match(text, /Keyboard\]\d+ \| \$\d/);
+  } finally {
+    await full.close();
+  }
+});
