@@ -651,7 +651,7 @@ export function rank(page: Page, query: string): Hit[] {
       let tf = 0;
       // find('$') means "prices": a bare currency or percent sign matches any amount; '359.99' matches '$359.99'
       const symbol = /^[$€£%]+$/.test(t);
-      for (const w of d) if (w === t || (t.length >= 4 && w.startsWith(t)) || (symbol && w.includes(t)) || (w.length > t.length && /^[$€£]/.test(w) && w.replace(/^[$€£]+/, '') === t)) tf++;
+      for (const w of d) if (w === t || (t.length >= 4 && w.startsWith(t)) || (symbol && w.includes(t)) || (w.length > t.length && /^[$€£]/.test(w) && w.replace(/^[$€£]+/, '') === t) || (w.length > t.length && w.includes('.') && w.split('.').includes(t))) tf++;
       if (!tf) continue;
       matched++;
       const n = df.get(t) ?? 1;

@@ -17,7 +17,7 @@ import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { redactProgram, writeBug } from './usage.ts';
 import { helpText } from './help.ts';
-import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange, terms } from './render.ts';
+import { rank, renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange, terms } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
 import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions } from './netcontrol.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
@@ -108,18 +108,15 @@ export function hintKey(url: string): string {
   }
 }
 
-/** A link on the page is labelled with every word of the query: a results page that only repeats the query back has none. */
+/**
+ * A search results page has the thing: a content line that is a result (it carries a link, and is not a heading)
+ * holds every word of the query. A page that only repeats the query back ("No results for X") has no such line.
+ */
 function namesLink(page: Page, query: string): boolean {
-  const q = [...new Set(terms(query))];
-  if (!q.length) return false;
-  for (const b of page.blocks) {
-    for (const x of b.i) {
-      if (typeof x === 'string' || x.k !== 'link') continue;
-      const words = terms(x.l);
-      if (q.every((t) => words.some((w) => w === t || (t.length >= 4 && w.startsWith(t))))) return true;
-    }
-  }
-  return false;
+  return rank(page, query).some((h) => {
+    const b = page.blocks[h.index];
+    return h.all && b.k !== 'h' && (b.r === 'main' || b.r === 'other') && b.i.some((x) => typeof x !== 'string' && x.k === 'link');
+  });
 }
 
 export const isBrowser = (t: Tier | undefined): t is BrowserTier => t === 'chrome' || t === 'firefox' || t === 'webkit';
@@ -892,6 +889,33 @@ const VERBS: Record<string, VerbHandler> = {
     const r = renderFind(p, rc.rec.view, rc.refs, q, rc.remaining);
     // The words are not on this page and nothing follows in the program: when the site's own search has a line with
     // all of them, that page is what the agent would ask for next, so it is shown now instead of costing a call.
+    if (r.partial && rc.lastStep && p.method === 'GET' && (p.stats.scripts || rc.isLive())) {
+      // "Feed entry 45" on a feed that shows entries 1 to 20 and loads more as it scrolls: scroll until it is there
+      const qs = [...new Set(terms(q))];
+      const words = qs.filter((t) => !/^\d+$/.test(t));
+      const has = (b: Block) => {
+        const ws = terms(blockText(b));
+        return words.every((w) => ws.includes(w));
+      };
+      if (words.length && words.length < qs.length && p.blocks.filter(has).length >= 5) {
+        try {
+          for (let i = 1; i <= 8; i++) {
+            const before = new Set(rc.page.blocks.map((b) => b.hx));
+            await rc.verb('scroll', ['bottom']);
+            if (rank(rc.page, q).some((h) => h.all)) {
+              rc.note(`scrolled ${i === 1 ? 'once' : i + ' times'} for more of the list`);
+              rc.emit(renderFind(rc.page, rc.rec.view, rc.refs, q, rc.remaining).text);
+              return;
+            }
+            if (!rc.page.blocks.some((b) => !before.has(b.hx))) break;
+          }
+        } catch {
+          // the page does not scroll: the answer below is about what it shows
+        }
+        rc.emit(renderFind(rc.page, rc.rec.view, rc.refs, q, rc.remaining).text);
+        return;
+      }
+    }
     if ((r.miss || r.partial) && rc.lastStep && p.method === 'GET' && /^https?:/.test(p.url)) {
       const here = originOf(p.url);
       const tpl = searchTemplate(p.forms, here) ?? (await rc.rt.deps.atlas?.site(here).catch(() => undefined))?.search;

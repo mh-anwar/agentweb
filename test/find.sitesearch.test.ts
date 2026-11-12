@@ -82,3 +82,28 @@ test("click('2') is the control that reads 2 (a page link), not whatever happens
   await rt.run(t, `open('${farm.url}/shop/'); search('Auberon'); view()`);
   assert.match((await rt.run(t, "click(2); find('products ·')")).text, /Accept all/);
 });
+
+test('a config key on a docs site: the last find() answers from the docs search, value included', async () => {
+  const text = await run("open('$U/docs/'); find('scheduler.trace.idle_timeout_ms')");
+  assert.match(text, /this is the site's own search for it/);
+  assert.match(text, /\[Configuration reference\]\d+ .*scheduler\.trace\.idle_timeout_ms integer 7847/);
+});
+
+test('word for word beats lines that only share words', async () => {
+  const text = await run("open('$U/docs/configuration-reference'); find('dispatcher.audit.idle_timeout_ms')");
+  assert.match(text, /^1 match for 'dispatcher\.audit\.idle_timeout_ms' \(word for word; \d+ looser matches left out\):/m);
+  assert.match(text, /dispatcher\.audit\.idle_timeout_ms \| integer \| 4202/);
+  assert.doesNotMatch(text, /collector\.core/);
+});
+
+test('an entry further down an endless feed: the last find() scrolls for it', async () => {
+  const { createAgentweb } = await import('../src/index.ts');
+  const full = await createAgentweb({ store: 'memory:', atlas: false, env: { ...process.env, AGENTWEB_ALLOW_PRIVATE: '1' } });
+  try {
+    const r = await full.run('feed', `open('${farm.url}/hard/infinite'); find('Feed entry 45')`);
+    assert.match(r.text, /note: scrolled .* for more of the list/);
+    assert.match(r.text, /45\. Feed entry 45: /);
+  } finally {
+    await full.close();
+  }
+});
