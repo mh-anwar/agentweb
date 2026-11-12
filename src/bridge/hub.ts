@@ -119,8 +119,11 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     });
   }
 
+  /** connected and introduced: the hello carries the browser's version, which callers need */
+  const ready = () => !!ext?.open && !!hello.product;
+
   async function needExtension(): Promise<void> {
-    if (ext?.open) return;
+    if (ready()) return;
     await new Promise<void>((resolve) => {
       const t = setTimeout(done, waitMs);
       function done() {
@@ -129,7 +132,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       }
       extWaiters.push(done);
     });
-    if (!ext?.open) throw new Error(NOT_CONNECTED);
+    if (!ready()) throw new Error(NOT_CONNECTED);
   }
 
   function emit(c: Client, method: string, params: unknown, sessionId?: string): void {
@@ -263,6 +266,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       case 'hello':
         hello = { product: String(msg.product ?? ''), userAgent: String(msg.userAgent ?? ''), version: String(msg.version ?? '') };
         log(`extension connected (${hello.product})`);
+        for (const w of extWaiters.splice(0)) w();
         return;
       case 'cdp': {
         const t = tabs.get(msg.tabId);
@@ -306,7 +310,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       return;
     }
     if (path === '/status') {
-      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ agentweb: 'bridge', extension: !!ext?.open }));
+      res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ agentweb: 'bridge', extension: ready() }));
       return;
     }
     res.writeHead(404).end();
@@ -332,7 +336,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
       conn.onClose = () => {
         if (ext === conn) dropExtension('closed');
       };
-      for (const w of extWaiters.splice(0)) w();
+      hello = { product: '', userAgent: '', version: '' };
       return;
     }
     if (u.pathname === '/cdp') {
@@ -386,7 +390,7 @@ export async function startHub(opts: HubOptions = {}): Promise<Hub> {
     token,
     status: () => ({
       port,
-      extension: !!ext?.open,
+      extension: ready(),
       browser: hello.product,
       clients: clients.size,
       tabs: [...tabs].map(([tabId, t]) => ({ tabId, targetId: t.targetId, owned: t.owned })),

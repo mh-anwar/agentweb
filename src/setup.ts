@@ -401,6 +401,7 @@ export function setup(o: SetupOptions = {}): SetupResult {
       '',
       'Then use the `web` tool for every web task: reading pages, searching, signing in, filling forms, testing a site.',
       "Put several steps in one call, for example  open('example.com'); click('Pricing'); find('per month')",
+      `Something did not work? Finish the task another way, then:  ${launcher} report "<site> | <what you were doing> | <what went wrong>"`,
     );
     const extDir = extensionDir(entry);
     if (extDir) out.push('', EXTENSION_HELP(extDir));

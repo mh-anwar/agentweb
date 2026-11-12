@@ -62,7 +62,7 @@ const HELP = `agentweb ${VERSION} - a browser for agents
   agentweb bridge                run the extension bridge by itself and show who is connected
   agentweb tool [--format mcp|openai|anthropic]
   agentweb doctor
-  agentweb report "<site> | <task> | <why>"   an agent fell back to another browser (AGENTWEB_USAGE_LOG)
+  agentweb report "<site> | <task> | <what went wrong>"   report a bug or a page agentweb could not handle
   agentweb usage [--days N]      summary of the usage log (AGENTWEB_USAGE_LOG)
 
   Common options: --store URL (memory: | file:/dir | sqlite:/file | redis://host)  --no-chrome  --no-ghost  --no-cache
@@ -146,7 +146,10 @@ async function main() {
   }
 
   if (cmd === 'report' || cmd === 'usage') {
-    const p = usagePath();
+    // reports need no setup: without a usage log they go to ~/.agentweb/reports.jsonl
+    const { homedir } = await import('node:os');
+    const { join } = await import('node:path');
+    const p = usagePath() ?? (cmd === 'report' ? join(process.env.AGENTWEB_HOME ?? join(homedir(), '.agentweb'), 'usage.jsonl') : undefined);
     if (!p) {
       console.error('agentweb: set AGENTWEB_USAGE_LOG=<file> to keep a usage log');
       process.exitCode = 2;
@@ -155,12 +158,15 @@ async function main() {
     if (cmd === 'usage') return void console.log(summary(p, typeof f.days === 'string' ? Number(f.days) || 7 : 7));
     const text = f._.slice(1).join(' ').trim();
     if (!text) {
-      console.error('usage: agentweb report "<site> | <task> | <why>"');
+      console.error('usage: agentweb report "<site> | <what you were doing> | <what went wrong>"');
       process.exitCode = 2;
       return;
     }
     writeReport(p, text);
-    return void console.log('reported');
+    const { reportsPath } = await import('./usage.ts');
+    console.log(`reported (${reportsPath(p)})`);
+    console.log('To reach the maintainers too: gh issue create -R mh-anwar/agentweb --title "<site>: <problem>" --body "<the same line, no secrets or personal data>"');
+    return;
   }
 
   if (cmd === 'run') {

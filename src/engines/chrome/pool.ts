@@ -34,6 +34,8 @@ export interface Slot<T> {
    * Until then a call that fails because the browser vanished is retried on a fresh browser.
    */
   committed: boolean;
+  /** a tab the user already had open: on release it is detached from, never closed */
+  adopted?: boolean;
   data: T;
 }
 
@@ -102,7 +104,7 @@ export class Pool<T> {
    * time; calls for different sessions run concurrently. `fresh` tells the callee that the page was
    * just created and holds nothing of the session yet.
    */
-  async use<R>(id: string, timeoutMs: number, fn: (slot: Slot<T>, fresh: boolean) => Promise<R>): Promise<R> {
+  async use<R>(id: string, timeoutMs: number, fn: (slot: Slot<T>, fresh: boolean) => Promise<R>, adopt?: string): Promise<R> {
     if (this.closed) throw new AwError('gone', 'the browser engine is closed');
     const deadline = Date.now() + Math.max(1000, timeoutMs);
     const prev = this.locks.get(id) ?? Promise.resolve();
@@ -122,8 +124,10 @@ export class Pool<T> {
             slot = undefined;
           }
           if (!slot) {
-            slot = await this.createSlot(id, deadline);
+            slot = await this.createSlot(id, deadline, adopt);
             fresh = true;
+          } else if (adopt) {
+            throw new AwError('bad_request', 'this tab already has a page; take the shared tab over in a new tab');
           }
           slot.busy = true;
           slot.committed = false;
@@ -177,7 +181,8 @@ export class Pool<T> {
     for (const slot of [...this.slots.values()]) {
       this.hooks.dispose?.(slot, 'closed');
       // the user's browser keeps running: take away only the tabs we opened
-      if (this.shared && slot.browser.alive()) await slot.browser.cdp.send('Target.closeTarget', { targetId: slot.targetId }, { timeoutMs: 3000 }).catch(noop);
+      if (slot.adopted && slot.browser.alive()) await slot.browser.cdp.send('Target.detachFromTarget', { sessionId: slot.session.id }, { timeoutMs: 3000 }).catch(noop);
+      else if (this.shared && slot.browser.alive()) await slot.browser.cdp.send('Target.closeTarget', { targetId: slot.targetId }, { timeoutMs: 3000 }).catch(noop);
       // a browser that outlives us must not keep our contexts either
       else if (slot.browser.remote && slot.browser.alive()) await slot.browser.cdp.send('Target.disposeBrowserContext', { browserContextId: slot.contextId }, { timeoutMs: 3000 }).catch(noop);
     }
@@ -363,11 +368,23 @@ export class Pool<T> {
 
   // ───────────────────────────── slots ─────────────────────────────
 
-  private async createSlot(id: string, deadline: number): Promise<Slot<T>> {
+  /** The browser, started or connected if need be. */
+  async browserNow(): Promise<Browser> {
+    if (this.closed) throw new AwError('gone', 'the browser engine is closed');
+    return this.ensureBrowser();
+  }
+
+  /** targets of the pages this pool holds */
+  targetIds(): string[] {
+    return [...this.slots.values()].map((s) => s.targetId);
+  }
+
+  private async createSlot(id: string, deadline: number, adopt?: string): Promise<Slot<T>> {
     await this.makeRoom(deadline);
     this.creating++;
     let contextId = '';
     let sharedTarget = '';
+    let adoptedSession = '';
     let b: Browser | undefined;
     try {
       b = await this.ensureBrowser();
@@ -375,7 +392,19 @@ export class Pool<T> {
       const t0 = performance.now();
       let targetId: string;
       let attached: Promise<{ sessionId: string; targetId: string }>;
-      if (this.shared) {
+      if (adopt) {
+        // a tab the user already has open: attach to it, and never close it
+        if (!this.shared) throw new AwError('unsupported', "taking over a tab needs the user's own browser", "engine('mine') first");
+        const r = await cdp.send<{ sessionId: string }>('Target.attachToTarget', { targetId: adopt, flatten: true });
+        targetId = adopt;
+        for (const [tid, p] of [...this.held]) {
+          if (p.sessionId !== r.sessionId) continue;
+          this.held.delete(tid); // its attach event was parked with the strangers' ones
+          targetId = tid;
+        }
+        adoptedSession = r.sessionId;
+        attached = Promise.resolve({ sessionId: r.sessionId, targetId });
+      } else if (this.shared) {
         // the user's own profile: a new tab in the default context, opened in the background
         targetId = (await cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank', background: true }).catch(() => cdp.send<{ targetId: string }>('Target.createTarget', { url: 'about:blank' }))).targetId;
         sharedTarget = targetId;
@@ -412,6 +441,7 @@ export class Pool<T> {
         busy: true,
         dead: '',
         committed: false,
+        adopted: !!adopt,
         data: undefined as T,
       };
       if (!this.shared) this.byContext.set(contextId, slot);
@@ -436,6 +466,7 @@ export class Pool<T> {
         this.waitHeld.delete(sharedTarget);
         if (b && b.alive()) void b.cdp.send('Target.closeTarget', { targetId: sharedTarget }).catch(noop);
       }
+      if (adoptedSession && b && b.alive()) void b.cdp.send('Target.detachFromTarget', { sessionId: adoptedSession }).catch(noop);
       throw e;
     } finally {
       this.creating--;
@@ -492,7 +523,8 @@ export class Pool<T> {
     const b = slot.browser;
     if (!b.alive()) return;
     try {
-      if (this.shared) await b.cdp.send('Target.closeTarget', { targetId: slot.targetId }, { timeoutMs: 10_000 });
+      if (slot.adopted) await b.cdp.send('Target.detachFromTarget', { sessionId: slot.session.id }, { timeoutMs: 10_000 });
+      else if (this.shared) await b.cdp.send('Target.closeTarget', { targetId: slot.targetId }, { timeoutMs: 10_000 });
       else await b.cdp.send('Target.disposeBrowserContext', { browserContextId: slot.contextId }, { timeoutMs: 10_000 });
     } catch {}
     b.cdp.dropSession(slot.session.id, reason);
