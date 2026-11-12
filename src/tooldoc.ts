@@ -21,6 +21,8 @@ click(t, double=1) · drag(a, b) · forward() · dialog('dismiss') · emulate('i
 profile('name') - use a saved sign-in (Playwright storageState file); profile('name', save=1) saves the current one
 tabs() · tab('new', url) · tab(2) · tab('close') - several pages open at once in this session, same cookies
 engine('mine') - work in the user's own browser with their sign-ins (needs the agentweb extension); engine('auto') goes back
+program('name', key='v') - run a saved program (save="steps with {key}", delete=1); programs() lists · schedule() - what scheduled runs found
+map() - this site's URLs (save=1); each/collect(..., crawl=1) visit them · read(url, outline=1) sizes of sections · read('llms')
 
 A target is a number shown on the page or its visible text: click(12), click('Sign in'), click('Add to cart', near='USB hub').
 

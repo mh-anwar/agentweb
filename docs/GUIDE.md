@@ -146,6 +146,91 @@ starting-URL changes reset it. Duplicate keys withhold comparisons. Each session
 four baselines, each bounded to 256 records / 64KB, with the session's normal expiry. There are no
 background watchers or extra browser processes.
 
+## Saved programs
+
+```
+program('price-check', save="open('shop.example'); find('{item}')")   # store it
+program('price-check', item='usb hub')                                 # run it
+programs()                                                             # names, placeholders, first step
+program('price-check', show=1)    program('price-check', delete=1)
+```
+
+A saved program is a plain file, `NAME.aw`, in `AGENTWEB_PROGRAMS` (default `~/.agentweb/programs`), in the same
+format `agentweb test` reads (`# name:`, `# base:`, `# profile:` headers, then steps one per line or `;`-separated).
+`{word}` in a step is a placeholder; `program('x', word='…')` fills it, case-insensitively, and a value that contains a
+quote or `;` stays one argument instead of becoming another step. A missing placeholder is an error that lists the
+placeholders. `{{secret:name}}` handles are not placeholders. `# base:` makes `open('/x')` relative to a site; `# profile:`
+loads a saved sign-in first.
+
+A stored program runs inside the caller's run: same session, same guard, same budget. It gets no extra rights (a
+refused address is refused inside a program too), and saving refuses text containing a stored secret value. Programs may
+call programs, three deep; a program calling itself ends at that limit. A failure names the program and step.
+
+```
+agentweb program list | show NAME | delete NAME
+agentweb program save NAME "open('shop.example'); find('{item}')"
+agentweb program save NAME --from out.aw        # a recording from: agentweb test --record out.aw "<program>"
+agentweb program run NAME item='usb hub' --session S --budget N
+agentweb test ~/.agentweb/programs/NAME.aw      # a program without placeholders is also a test
+```
+
+## Scheduled programs
+
+```
+agentweb schedule add price-watch "every 6h" "price-check" --on-change      # a program name, or program text
+agentweb schedule add morning "weekdays 08:30" "open('news.example'); find('outage')" --session news
+agentweb schedule list | run NAME | log NAME --n 5 | remove NAME
+agentweb schedule daemon              # a foreground loop that runs what is due; agentweb serve --schedules does it in the server
+```
+
+`when` is a 5-field cron expression in local time (`*`, lists, ranges, steps, month and weekday names; when both
+day fields are restricted a day matches if either does), `every 30m|6h|2d`, `hourly`, `daily 09:00`, `weekdays 08:30` or
+`weekly mon 09:00`. Entries live in `~/.agentweb/schedules.json`; each run appends `{at, ok, ms, text}` (text capped at
+4000 characters) to `~/.agentweb/schedule-logs/NAME.jsonl`. Runs share the session's cookies, but every run starts with
+no page open and nothing "already shown", so output is comparable from run to run. `--on-change` records only runs whose
+output differs from the previous run's, marked `"changed": true` (the first run counts as changed). After downtime an
+entry runs once, not once per missed slot, and the daemon runs one entry at a time.
+
+In the tool, `schedule()` lists the entries and what their last run found, and `schedule('name', n=3)` shows the last runs.
+An agent **cannot** add, change, run or remove a schedule: that would let it give itself standing tasks. `schedule('add', …)`
+is refused with the command line to ask the user to run.
+
+## Mapping a site and crawling it
+
+```
+map('docs.example.com')                       # or map() for the site of the current page
+map('docs.example.com', match='/docs/', max=500, depth=2, save=1)
+each('install', find='npm', crawl=1, n=10)    # the lines matching 'npm' on the mapped pages whose URL mentions 'install'
+collect(name='link', price='money', crawl=1, max=30)
+```
+
+`map` reads `robots.txt` for `Sitemap:` lines (else `/sitemap.xml`), follows sitemap indexes and `.xml.gz` files, and
+when the site has no sitemap walks same-origin links breadth-first (`depth=2` hops, at most `fetches=100` pages and 45 s,
+session cookies sent). It prints a count, a tree by path prefix with counts, the first URLs, what was left out and why
+(`robots`, `other_origin`, `policy`, `http_error`, `fetch_cap`, …), and notes saying whether the map is complete. URLs that
+`robots.txt` disallows are neither fetched nor listed; the guard checks every request; other origins are never followed.
+`max` (default 200, up to 5000) is how many URLs are kept; the count shows how many were found.
+
+`save=1` keeps the list with the session, and `crawl=1` (or `from='map'`) makes `each` and `collect` visit those URLs instead
+of the links on the current page. `each` takes `n` (up to 40) and filters URLs by words; `collect` takes `max` (up to 100) and
+all of its usual fields, `pages` and `diff`. Both end with a receipt: `coverage.visited` / `total`, `skipped` by reason
+(`limit`, `http_error`, `javascript_required`, `policy`, `error`, `time`) and `complete`, which is true only when every URL
+of a complete map was visited and read cleanly. Pages are fetched through the same guard as any `open`.
+
+## Reading documentation cheaply
+
+```
+read('docs.example.com/guide', outline=1)     # headings with the size of each section, nothing else
+read('Configure')                              # then just that section
+read('llms')                                   # this site's /llms.txt (read('llms-full') for /llms-full.txt)
+```
+
+`outline()` and `read(url, outline=1)` show each heading with its size in tokens (a section includes its subsections);
+when the outline does not fit the budget the deepest headings go first. On pages that look like documentation (a `docs.` /
+`developer.` host, or `/docs/`, `/guide/`, `/api/`… in the path) `open` and `read(url)` check once per origin whether the site
+publishes `/llms.txt` or `/llms-full.txt` (remembered for a week; with the atlas off, `AGENTWEB_ATLAS=0`, nothing extra is
+fetched) and add a one-line note saying so, once per session and site.
+
 ## Running it for many agents
 
 ```bash
@@ -171,6 +256,7 @@ This serves MCP (Streamable HTTP) at `/mcp` and REST at `POST /v1/run` with
 | `AGENTWEB_CDP_SHARED=1` | with `AGENTWEB_CDP`: open pages in that browser's own profile, see below |
 | `AGENTWEB_GOOGLE_CSE_KEY` + `AGENTWEB_GOOGLE_CSE_CX` | a Google Programmable Search API key and engine id: `search()` then uses Google's results through the official API |
 | `AGENTWEB_STORE`, `AGENTWEB_BUDGET`, `AGENTWEB_USER_AGENT` | store URL, default budget, user agent |
+| `AGENTWEB_HOME=/dir`, `AGENTWEB_PROGRAMS=/dir` | where state lives (default `~/.agentweb`: `schedules.json`, `schedule-logs/`, `programs/`) and where saved programs live |
 
 ## Bot walls and Google
 
