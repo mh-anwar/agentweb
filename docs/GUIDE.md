@@ -390,6 +390,12 @@ with the agent"). The toolbar icon shows how many tabs an agent is using; "Stop 
 all back at once and keeps the extension off until you switch it on again. Chrome shows its
 "is debugging this browser" bar while a tab is in use; that is Chrome's own notice.
 
+Site permissions are yours, set in the popup and enforced inside the extension, whatever the agent's
+host is configured to allow. By default an agent may use any site you have not blocked. Tick "Ask me
+before an agent uses a new site" and it may use only the sites on your list: the first time it tries a
+new one, the step fails with a message telling the agent you were asked, the toolbar icon shows `?`, and
+you choose Allow once, Always allow or Block. A blocked site refuses every agent action on its pages.
+
 How it connects: the extension dials out to a small hub on `127.0.0.1:4466`
 (`AGENTWEB_EXTENSION_PORT`, and the same port in the extension's popup) that the first agentweb
 process to need it starts; other agentweb processes join it. The hub accepts DevTools connections only

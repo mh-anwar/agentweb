@@ -19,6 +19,44 @@ let waiting = '';
 
 const settings = () => chrome.storage.local.get({ port: DEFAULT_PORT, enabled: true });
 
+// ───────────────────────────── site permissions ─────────────────────────────
+// Which sites an agent may use in this browser is the person's call, made here and not by the agent's
+// host. mode 'all': any site except blocked ones. mode 'ask': only sites on the allowed list; a new one
+// waits in the popup for "Allow once", "Always allow" or "Block".
+const perms = () => chrome.storage.local.get({ mode: 'all', allowed: [], blocked: [] });
+/** hosts allowed until the browser restarts ("Allow once") */
+const once = new Set();
+/** hosts an agent asked for and the person has not answered yet */
+const asking = new Set();
+/** tabId -> the URL the tab is on (kept current by tabs.onUpdated) */
+const tabUrl = new Map();
+
+const hostOf = (url) => {
+  try {
+    const u = new URL(url);
+    return /^https?:$/.test(u.protocol) ? u.hostname.toLowerCase() : '';
+  } catch {
+    return '';
+  }
+};
+const covers = (list, host) => list.some((h) => host === h || host.endsWith('.' + h));
+
+/** '' when the agent may use this host; otherwise the reason it may not (shown to the agent). */
+async function refusal(host) {
+  if (!host) return '';
+  const p = await perms();
+  if (covers(p.blocked, host)) return `the user has blocked ${host} for agents in their browser`;
+  if (p.mode !== 'ask' || covers(p.allowed, host) || once.has(host)) return '';
+  if (!asking.has(host)) {
+    asking.add(host);
+    badge();
+    try {
+      chrome.notifications.create('agentweb-site-' + host, { type: 'basic', iconUrl: 'icon128.png', title: 'agentweb: allow this site?', message: `An agent wants to use ${host}. Open the agentweb button to allow or block it.`, priority: 2 });
+    } catch {}
+  }
+  return `the user has not allowed ${host} for agents yet: they were asked in the agentweb extension (toolbar button). Try again once they have answered, or work on another site`;
+}
+
 function send(obj) {
   if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj));
 }
@@ -26,8 +64,9 @@ function send(obj) {
 function badge() {
   const on = !!ws && ws.readyState === 1;
   const n = tabs.size;
-  chrome.action.setBadgeText({ text: on ? (waiting ? '!' : n ? String(n) : '') : '' });
-  chrome.action.setBadgeBackgroundColor({ color: waiting ? '#dc2626' : '#2563eb' });
+  const attention = waiting || asking.size;
+  chrome.action.setBadgeText({ text: on ? (waiting ? '!' : asking.size ? '?' : n ? String(n) : '') : '' });
+  chrome.action.setBadgeBackgroundColor({ color: attention ? '#dc2626' : '#2563eb' });
   chrome.action.setTitle({ title: on && waiting ? `agentweb is waiting for you: ${waiting}` : on ? (n ? `agentweb: an agent is using ${n} tab${n > 1 ? 's' : ''}` : 'agentweb: connected') : 'agentweb: not connected' });
 }
 
@@ -93,6 +132,9 @@ async function targetOf(tabId) {
   return r.targetInfo.targetId;
 }
 
+/** set-up and bookkeeping commands that touch nothing of the site's */
+const PASSIVE = /^(Runtime\.runIfWaitingForDebugger|Target\.|Page\.enable|Network\.enable|Fetch\.(enable|continueRequest|failRequest)|Log\.enable|Emulation\.|Page\.(setInterceptFileChooserDialog|addScriptToEvaluateOnNewDocument|createIsolatedWorld|stopLoading|getNavigationHistory))/;
+
 const handlers = {
   ping: async () => ({}),
   async createTab({ url, background }) {
@@ -113,6 +155,8 @@ const handlers = {
     await chrome.debugger.attach({ tabId }, '1.3');
     offered.delete(tabId);
     tabs.set(tabId, { owned: false });
+    const t = await chrome.tabs.get(tabId).catch(() => undefined);
+    if (t && t.url) tabUrl.set(tabId, t.url);
     badge();
     return { targetId: await targetOf(tabId) };
   },
@@ -156,6 +200,9 @@ const handlers = {
   },
   async cdp({ tabId, sessionId, method, params }) {
     if (!tabs.has(tabId)) throw new Error('Session with given id not found');
+    // going to a site, and doing anything on a page of a site, both need the person's permission for that site
+    const why = await refusal(method === 'Page.navigate' ? hostOf(params && params.url) : hostOf(tabUrl.get(tabId) || ''));
+    if (why && !PASSIVE.test(method)) throw new Error(why);
     return (await chrome.debugger.sendCommand(sessionId ? { tabId, sessionId } : { tabId }, method, params || {})) || {};
   },
 };
@@ -204,7 +251,12 @@ chrome.tabs.onCreated.addListener(async (tab) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
+  tabUrl.delete(tabId);
   if (offered.delete(tabId)) void sendOffered();
+});
+
+chrome.tabs.onUpdated.addListener((tabId, change, tab) => {
+  if (tabs.has(tabId) && (change.url || tab.url)) tabUrl.set(tabId, change.url || tab.url);
 });
 
 // the popup talks to the worker
@@ -217,7 +269,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
         const tab = await chrome.tabs.get(tabId).catch(() => undefined);
         agentTabs.push({ tabId, owned: t.owned, title: tab ? tab.title || tab.url || '' : '' });
       }
-      return { connected: !!ws && ws.readyState === 1, port: s.port, enabled: s.enabled, tabs: agentTabs, offered: [...offered], waiting };
+      const p = await perms();
+      return { connected: !!ws && ws.readyState === 1, port: s.port, enabled: s.enabled, tabs: agentTabs, offered: [...offered], waiting, mode: p.mode, allowed: p.allowed, blocked: p.blocked, asking: [...asking] };
+    }
+    if (msg.type === 'site') {
+      // the person's answer for one site: 'once' | 'always' | 'block' | 'forget'
+      const p = await perms();
+      const host = String(msg.host || '').toLowerCase();
+      const without = (list) => list.filter((h) => h !== host);
+      asking.delete(host);
+      once.delete(host);
+      let allowed = without(p.allowed);
+      let blocked = without(p.blocked);
+      if (msg.answer === 'once') once.add(host);
+      if (msg.answer === 'always') allowed = [...allowed, host];
+      if (msg.answer === 'block') blocked = [...blocked, host];
+      await chrome.storage.local.set({ allowed, blocked });
+      badge();
+      return {};
+    }
+    if (msg.type === 'mode') {
+      await chrome.storage.local.set({ mode: msg.mode === 'ask' ? 'ask' : 'all' });
+      return {};
     }
     if (msg.type === 'share') {
       if (msg.on) offered.add(msg.tabId);

@@ -16,6 +16,43 @@ async function draw() {
   $('waiting').textContent = s.waiting ? 'The agent is waiting for you: ' + s.waiting : '';
   $('stop').hidden = !s.enabled;
   $('start').hidden = s.enabled;
+  $('ask').checked = s.mode === 'ask';
+  $('ask').onchange = async () => {
+    await ask({ type: 'mode', mode: $('ask').checked ? 'ask' : 'all' });
+    draw();
+  };
+  const answer = (host, how) => async () => {
+    await ask({ type: 'site', host, answer: how });
+    draw();
+  };
+  const button = (label, fn) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.onclick = fn;
+    return b;
+  };
+  const asking = $('asking');
+  asking.textContent = '';
+  for (const host of s.asking) {
+    const d = document.createElement('div');
+    d.className = 'ask';
+    const t = document.createElement('div');
+    t.textContent = `An agent wants to use ${host}`;
+    d.append(t, button('Allow once', answer(host, 'once')), button('Always allow', answer(host, 'always')), button('Block', answer(host, 'block')));
+    asking.append(d);
+  }
+  const sites = $('sites');
+  sites.textContent = '';
+  for (const [list, word] of [[s.allowed, 'allowed'], [s.blocked, 'blocked']]) {
+    for (const host of list) {
+      const d = document.createElement('div');
+      d.className = 'site';
+      const t = document.createElement('small');
+      t.textContent = `${host} (${word})`;
+      d.append(t, button('Remove', answer(host, 'forget')));
+      sites.append(d);
+    }
+  }
   const box = $('tabs');
   box.textContent = '';
   if (s.tabs.length) {

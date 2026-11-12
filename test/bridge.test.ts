@@ -250,4 +250,59 @@ describe('browser extension bridge', { skip: exe ? false : 'no full Chromium fou
     assert.ok((await targets()).some((t) => t.targetId === theirs), "the user's tab is still open");
     user.close('done');
   });
+
+  it('asks the person before an agent uses a new site, when they switched that on; a blocked site stays blocked', async () => {
+    await waitFor('the extension to connect', () => hub.status().extension);
+    const user = await connect(`http://127.0.0.1:${debugPort}`);
+    const targets = async () => (await user.send<{ targetInfos: { targetId: string; type: string; url: string }[] }>('Target.getTargets')).targetInfos;
+    const evalIn = async (targetId: string, expression: string) => {
+      const { sessionId } = await user.send<{ sessionId: string }>('Target.attachToTarget', { targetId, flatten: true });
+      const r = await user.send<any>('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, { sessionId });
+      await user.send('Target.detachFromTarget', { sessionId }).catch(() => {});
+      return r.result?.value;
+    };
+    let extId: string | undefined;
+    for (const t of (await targets()).filter((x) => x.type === 'service_worker' && /^chrome-extension:\/\//.test(x.url))) {
+      if ((await evalIn(t.targetId, 'chrome.runtime.getManifest().name').catch(() => '')) === 'agentweb') extId = /^chrome-extension:\/\/([^/]+)/.exec(t.url)?.[1];
+    }
+    assert.ok(extId);
+    const { targetId: popup } = await user.send<{ targetId: string }>('Target.createTarget', { url: `chrome-extension://${extId}/popup.html` });
+    await waitFor('the popup page', async () => (await evalIn(popup, 'typeof chrome !== "undefined" && !!chrome.runtime && document.readyState').catch(() => '')) === 'complete');
+    const say = (msg: object) => evalIn(popup, `chrome.runtime.sendMessage(${JSON.stringify(msg)}).then((r) => JSON.stringify(r))`);
+
+    const saved = { home: process.env.AGENTWEB_HOME, port: process.env.AGENTWEB_EXTENSION_PORT };
+    process.env.AGENTWEB_HOME = join(dir, 'home');
+    process.env.AGENTWEB_EXTENSION_PORT = String(hub.port);
+    const write = process.stderr.write.bind(process.stderr);
+    process.stderr.write = (() => true) as any;
+    const rt = await createAgentweb({ store: 'memory:', ghost: false, env: { AGENTWEB_ALLOW_PRIVATE: '1', AGENTWEB_NO_SANDBOX: '1', AGENTWEB_USAGE_LOG: '', AGENTWEB_ATLAS: '0' } });
+    try {
+      await say({ type: 'mode', mode: 'ask' });
+      const first = await rt.run('perm', `engine('mine'); open('${base}/who')`);
+      assert.ok(!first.ok, first.text);
+      assert.match(first.text, /has not allowed 127\.0\.0\.1 for agents yet/);
+      assert.deepEqual(JSON.parse(await say({ type: 'status' })).asking, ['127.0.0.1']);
+
+      await say({ type: 'site', host: '127.0.0.1', answer: 'always' });
+      const second = await rt.run('perm', `open('${base}/who')`);
+      assert.ok(second.ok, second.text);
+      assert.match(second.text, /cookie:/);
+
+      await say({ type: 'site', host: '127.0.0.1', answer: 'block' });
+      const third = await rt.run('perm', "click('Press me')");
+      assert.ok(!third.ok, third.text);
+      assert.match(third.text, /the user has blocked 127\.0\.0\.1/);
+    } finally {
+      await say({ type: 'site', host: '127.0.0.1', answer: 'forget' }).catch(() => {});
+      await say({ type: 'mode', mode: 'all' }).catch(() => {});
+      process.stderr.write = write;
+      await rt.close();
+      for (const [k, v] of [['AGENTWEB_HOME', saved.home], ['AGENTWEB_EXTENSION_PORT', saved.port]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+      await user.send('Target.closeTarget', { targetId: popup }).catch(() => {});
+      user.close('done');
+    }
+  });
 });

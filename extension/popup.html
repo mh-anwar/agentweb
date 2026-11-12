@@ -15,6 +15,9 @@
       li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       input[type='number'] { width: 70px; font: inherit; padding: 3px 5px; }
       small { color: #6b7280; }
+      .ask { background: #fef3c7; color: #78350f; padding: 8px; border-radius: 6px; margin: 8px 0; }
+      .ask button, .site button { padding: 2px 7px; margin: 4px 4px 0 0; }
+      .site { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
       @media (prefers-color-scheme: dark) { body { background: #1f2937; color: #f3f4f6; } button { background: #374151; border-color: #4b5563; color: #f3f4f6; } small { color: #9ca3af; } }
     </style>
   </head>
@@ -22,10 +25,13 @@
     <h1>agentweb</h1>
     <div class="row"><span class="dot" id="dot"></span><span id="state">…</span></div>
     <div id="waiting" hidden style="background:#fee2e2;color:#7f1d1d;padding:8px;border-radius:6px;margin:8px 0"></div>
+    <div id="asking"></div>
     <div id="tabs"></div>
     <div class="row"><button id="share"></button></div>
     <div class="row"><button class="stop" id="stop">Stop the agent</button></div>
     <div class="row"><button class="go" id="start" hidden>Switch on</button></div>
+    <div class="row"><label><input type="checkbox" id="ask" /> Ask me before an agent uses a new site</label></div>
+    <div id="sites"></div>
     <div class="row"><small>Bridge port</small><input type="number" id="port" min="1" max="65535" /><button id="save">Save</button></div>
     <small>Agents work only in tabs they open (the "agentweb" group) and tabs you share here.</small>
     <script src="popup.js"></script>
