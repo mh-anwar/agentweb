@@ -7,6 +7,7 @@ import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { Action, Engine, Loaded, NavRequest, SessionCtx } from '../../types.ts';
 import { AwError } from '../../types.ts';
+import { fileStem, urlMatcher } from '../../netcontrol.ts';
 import { hostMatcher, TRACKER_HOSTS } from './blocklist.ts';
 import { connect } from './cdp.ts';
 import { chordEvents, parseChord } from './keys.ts';
@@ -329,9 +330,48 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     else if (after) d.note(`more content loaded (page height ${Math.round(before.h)} → ${Math.round(after.h)} px)`);
   }
 
-  async function wait(d: PageDriver, a: { ms?: number; text?: string }, deadline: number): Promise<void> {
+  /** The start of the page, for a timeout message: what is there instead of what was awaited. */
+  async function glance(d: PageDriver): Promise<string> {
+    const text = await d.run<string>('__awh.glance()', { timeoutMs: 2000 }).catch(() => '');
+    return `The page shows ${d.url}: ${text ? `"${text}"` : '(no text)'}`;
+  }
+
+  async function wait(d: PageDriver, a: Extract<Action, { do: 'wait' }>, deadline: number, out: Out): Promise<void> {
     const started = Date.now();
     const end = Math.min(settleBy(deadline), a.ms !== undefined ? started + Math.max(0, a.ms) : Infinity);
+    const seconds = () => Math.max(1, Math.round((Date.now() - started) / 1000));
+    if (a.any || a.gone || a.url || a.state) {
+      // several conditions at once: look every 100 ms until all hold
+      const urlOk = a.url ? urlMatcher(a.url) : () => true;
+      const wantsPage = !!(a.any || a.gone || a.state);
+      let st = '';
+      for (;;) {
+        let ok = urlOk(d.url);
+        if (ok && wantsPage) {
+          try {
+            const r = await d.run<{ ok: boolean; hit?: string; st?: string }>(`__awh.probe(${JSON.stringify({ any: a.any, gone: a.gone, n: a.n, state: a.state })})`, { timeoutMs: 3000 });
+            ok = !!r.ok;
+            if (ok && r.hit !== undefined) out.value = r.hit;
+            if (r.st) st = r.st;
+          } catch (e) {
+            if (e instanceof AwError && e.code === 'gone') throw e;
+            ok = false; // the page navigated or was busy: look again
+          }
+        }
+        if (ok) return;
+        if (d.crashed) throw new AwError('gone', d.crashed);
+        const left = end - Date.now();
+        if (left <= 0) break;
+        await sleep(Math.min(100, left));
+      }
+      const asked = [
+        a.any ? (a.any.length === 1 ? `"${clip(a.any[0], 60)}" to appear` : `any of ${a.any.map((t) => `"${clip(t, 30)}"`).join(', ')} to appear`) : '',
+        a.gone ? `"${clip(a.gone, 60)}" to go away` : '',
+        a.url ? `the URL to match ${clip(a.url, 60)}` : '',
+        a.state ? `[${a.n}] to be ${a.state}${st ? ` (it is ${st})` : ''}` : '',
+      ].filter(Boolean).join(' and ');
+      throw new AwError('timeout', `waited ${seconds()} s for ${asked}. ${await glance(d)}`, 'read() shows the page; wait(timeout=30) waits longer');
+    }
     if (!a.text) {
       if (a.ms) await sleep(Math.max(0, end - Date.now()));
       return;
@@ -346,7 +386,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         await sleep(50); // the page navigated or was busy; keep looking until time is up
       }
     }
-    throw new AwError('timeout', `"${clip(a.text, 60)}" did not appear within ${Math.max(1, Math.round((Date.now() - started) / 1000))} s`, 'read the page to see what is there instead');
+    throw new AwError('timeout', `"${clip(a.text, 60)}" did not appear within ${seconds()} s. ${await glance(d)}`, 'read the page to see what is there instead');
   }
 
   async function back(d: PageDriver): Promise<void> {
@@ -399,6 +439,13 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     d.chooser = undefined;
     if (!ch || !ch.backendNodeId) throw new AwError('bad_request', 'that element is not a file input and did not open a file chooser', 'target the file input, or the button that opens it');
     await d.s.send('DOM.setFileInputFiles', { files: ch.mode === 'selectMultiple' ? paths : paths.slice(0, 1), backendNodeId: ch.backendNodeId });
+  }
+
+  /** Drop files on an element with the drag events a person's drop would send. */
+  async function drop(d: PageDriver, id: number, files: { name: string; mime: string; data: string }[]): Promise<void> {
+    if (!Array.isArray(files) || !files.length) throw new AwError('bad_request', 'drop needs at least one file');
+    const r = await d.call<any>('drop', id, files);
+    if (r && r.ok && !r.accepted) d.note(`the ${r.tag} did not cancel dragover, so it may not accept dropped files; the events were sent anyway`);
   }
 
   /** Write a file the agent asked to keep next to the session's downloads and say where it is. */
@@ -494,8 +541,17 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         await scroll(d, action.to, deadline);
         return;
       case 'wait':
-        await wait(d, action, deadline);
+        await wait(d, action, deadline, out);
         return;
+      case 'drop':
+        slot.committed = true;
+        await drop(d, action.n, action.files);
+        return;
+      case 'har': {
+        const h = d.har();
+        out.value = `saved HAR (${h.count} request${h.count === 1 ? '' : 's'}): ` + keep(d, Buffer.from(h.text, 'utf8'), fileStem(action.name), 'har');
+        return;
+      }
       case 'back':
         slot.committed = true;
         await back(d);
