@@ -72,7 +72,8 @@ export async function startSite(): Promise<TestSite> {
       const p = PRODUCTS.find((x) => x.id === Number(u.pathname.slice(3)));
       if (!p) return html('Not found', '<h1>Not found</h1>', 404);
       return html(p.name, `<h1>${p.name}</h1><p>Price: <b>$${p.price.toFixed(2)}</b></p><table><tr><th>Spec</th><th>Value</th></tr><tr><td>SKU</td><td>SKU-${p.id}00</td></tr><tr><td>Weight</td><td>${p.id * 110} g</td></tr></table>
-        <form action="/cart/add" method="post"><input type="hidden" name="id" value="${p.id}"><button type="submit">Add to cart</button></form>`);
+        <form action="/cart/add" method="post"><input type="hidden" name="id" value="${p.id}"><button type="submit">Add to cart</button></form>
+        <h2>Customers also bought</h2><div class="grid">${PRODUCTS.filter((x) => x.id !== p.id).slice(0, 3).map(row).join('')}</div>`);
     }
     if (u.pathname === '/search') {
       const q = (u.searchParams.get('q') ?? '').toLowerCase();

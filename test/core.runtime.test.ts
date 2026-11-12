@@ -248,3 +248,15 @@ test("search() on a site with a search box uses that box", async () => {
   assert.match(r.text, /Results for "mouse"/);
   assert.match(r.text, /site='web'/);
 });
+
+test("a bare target on a detail page picks the page's own control over related-item cards", async () => {
+  const s = fresh();
+  const own = await rt.run(s, `open('${site.url}/p/2')`);
+  const name = /^(.+?) - Test Shop —/.exec(own.text)?.[1] ?? /^(.+?) —/.exec(own.text)?.[1] ?? '';
+  const r = await rt.run(s, `click('Add to cart'); open('${site.url}/cart'); view()`);
+  assert.equal(r.ok, true, r.text);
+  assert.ok(name && r.text.includes(name), name + '\n' + r.text);
+  // a listing keeps refusing to guess
+  const amb = await rt.run(s, `open('${site.url}/products'); click('Add to cart')`);
+  assert.equal(amb.ok, false);
+});

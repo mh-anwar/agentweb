@@ -257,7 +257,34 @@ export function resolveTarget(page: Page, refs: SessionRefs, target: Arg, o: Res
     }
     throw new AwError('bad_request', `'${target}' matches ${top.length} things and none is near '${o.near}'`, listCandidates(top, refs));
   }
+  const main = primaryControl(page, top);
+  if (main) return main;
   throw new AwError('bad_request', `'${target}' matches ${top.length} things; use the number, or near='text on the same line'`, listCandidates(top, refs));
+}
+
+/**
+ * A detail page (one product, one article) has its own control under the page title and the same
+ * control repeated on related-item cards further down. The page's own one wins when it is the only
+ * candidate in the title's section and is not itself one of a repeated group of items.
+ */
+function primaryControl(page: Page, top: Resolved[]): Resolved | undefined {
+  const bs = page.blocks;
+  const isH1 = (b: Block) => b.k === 'h' && (b.lv ?? 9) === 1;
+  let h = bs.findIndex((b) => isH1(b) && b.r === 'main');
+  if (h < 0) h = bs.findIndex(isH1);
+  if (h < 0 || bs.filter(isH1).length > 1) return undefined;
+  let end = bs.length;
+  for (let i = h + 1; i < bs.length; i++) {
+    if (bs[i].k === 'h' && (bs[i].lv ?? 9) <= 2) {
+      end = i;
+      break;
+    }
+  }
+  const inside = top.filter((r) => r.index > h && r.index < end && r.block.r !== 'nav' && r.block.r !== 'header' && r.block.r !== 'footer');
+  if (inside.length !== 1 || inside[0].block.g !== undefined) return undefined;
+  // the others must sit after the section (related items), not before it (a site-wide bar)
+  if (top.some((r) => r !== inside[0] && r.index < h && r.block.r === 'main')) return undefined;
+  return inside[0];
 }
 
 function listCandidates(top: Resolved[], refs: SessionRefs): string {
