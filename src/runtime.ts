@@ -679,8 +679,70 @@ export async function needChrome(rc: RunCtx, what: string, anyBrowser = false): 
   if (!target) throw new AwError('unsupported', `${what} need ${anyBrowser ? 'a real browser engine' : 'the chrome engine'}, which is not available`, 'install Chrome or set AGENTWEB_CHROME');
   const p = rc.page;
   if (p.method !== 'GET') throw new AwError('unsupported', 'this page is the result of a form POST and cannot be re-opened in a browser');
+  // a page that was live in the script engine has what the agent filled in so far: put it back in the browser
+  const filled = rc.isLive() ? formState(p) : undefined;
+  // a page without scripts keeps what was typed into it, exactly, in the session record
+  const dirty = rc.isLive() ? undefined : { ...(rc.rec.dirty ?? {}) };
   await rc.navigate({ url: p.url }, { tier: target, push: false });
   await rc.ensureLive();
+  if (filled) await refill(rc, filled, `the page was re-opened in ${target}`);
+  for (const [fp, value] of Object.entries(dirty ?? {})) {
+    const r = actByFp(rc.page, fp);
+    if (!r || r.act.n === undefined) continue;
+    const action: Action = r.act.k === 'select' ? { do: 'select', n: r.act.n, value } : r.act.k === 'check' || r.act.k === 'radio' ? { do: 'check', n: r.act.n, on: value === '1' } : { do: 'fill', n: r.act.n, value: rc.guard.reveal(value, originOf(rc.page.url)) };
+    await rc.live(action).catch(() => {});
+  }
+}
+
+interface FormState {
+  acts: Act[];
+  /** fields whose value could not be read back whole (a password, a long text) */
+  lost: string[];
+}
+
+/** What is filled in, chosen and ticked on a page, as its controls show it. */
+function formState(page: Page): FormState {
+  const acts: Act[] = [];
+  const lost: string[] = [];
+  for (const { act: a } of allActs(page)) {
+    if (a.type === 'hidden' || a.type === 'file') continue;
+    if (a.k === 'input' || a.k === 'textarea') {
+      if (!a.val) continue;
+      if (a.type === 'password' || a.val.endsWith('…')) lost.push(a.l);
+      else acts.push(a);
+    } else if (a.k === 'select') {
+      if (a.val) acts.push(a);
+    } else if ((a.k === 'check' || a.k === 'radio') && a.on) acts.push(a);
+  }
+  return { acts, lost };
+}
+
+/** Put a remembered form state onto the same page, now live in another engine. Says what it did and what it could not. */
+async function refill(rc: RunCtx, st: FormState, why: string): Promise<void> {
+  let n = 0;
+  for (const a of st.acts) {
+    const hit = actByFp(rc.page, a.f);
+    if (!hit || hit.act.n === undefined) continue;
+    const id = hit.act.n;
+    try {
+      if (a.k === 'check' || a.k === 'radio') {
+        if (hit.act.on) continue;
+        await rc.live({ do: 'check', n: id, on: true });
+      } else if (a.k === 'select') {
+        if (hit.act.val === a.val) continue;
+        const opts = a.opts ?? [];
+        const values = opts.includes(a.val!) || !a.val!.includes(', ') ? [a.val!] : a.val!.split(', ');
+        for (const value of values) await rc.live({ do: 'select', n: id, value });
+      } else {
+        if (hit.act.val === a.val) continue;
+        await rc.live({ do: 'fill', n: id, value: a.val! });
+      }
+      n++;
+    } catch {
+      st.lost.push(a.l);
+    }
+  }
+  if (n || st.lost.length) rc.note(`${why}${n ? `; ${n} field${n === 1 ? '' : 's'} filled in again` : ''}${st.lost.length ? `; fill these again: ${st.lost.map((l) => `{${l}}`).join(' ')}` : ''}`);
 }
 
 async function readLog(rc: RunCtx, step: Step, kind: 'console' | 'network'): Promise<void> {

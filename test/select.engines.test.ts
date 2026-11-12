@@ -30,3 +30,21 @@ for (const engine of ['wire', 'ghost', 'chrome']) {
     assert.match(r.text, /\{Interests[^}]*: Cycling\|\*Chess\|Cooking\|Photography\|Gardening\|\*Hiking\}/);
   });
 }
+
+test('what was filled in survives the move to the real browser (js() on a page that was live without one)', async () => {
+  const s = 'carry';
+  const r = await rt.run(s, `engine('ghost'); open('${farm.url}/forms/controls'); engine('auto'); fill('Full name', 'Maya Lindqvist'); fill('Email address', 'maya@example.com'); fill('Password', 'correct-horse-9'); select('Country', 'Norway'); select('Interests', 'Chess', 'Hiking'); js('document.title'); view()`, { budget: 4000 });
+  assert.ok(r.ok, r.text);
+  assert.match(r.text, /\[chrome\]/);
+  assert.match(r.text, /note: the page was re-opened in chrome; 4 fields filled in again; fill these again: \{[^}]*Password[^}]*\}/);
+  assert.match(r.text, /\{Full name="Maya Lindqvist"\}/);
+  assert.match(r.text, /\{Email address="maya@example\.com"\}/);
+  assert.match(r.text, /\*Norway/);
+  assert.match(r.text, /\*Chess\|Cooking\|Photography\|Gardening\|\*Hiking/);
+});
+
+test('the same from a page that had no scripts running: typed values are replayed exactly, the password too', async () => {
+  const r = await rt.run('carry2', `open('${farm.url}/forms/controls'); fill('Full name', 'Maya Lindqvist'); fill('Password', 'correct-horse-9'); js('document.querySelector("[type=password]").value.length + ":" + document.querySelector("[name=full_name],#full_name,[autocomplete=name]")?.value'); view()`, { budget: 4000 });
+  assert.ok(r.ok, r.text);
+  assert.match(r.text, /15:Maya Lindqvist|"15:/);
+});
