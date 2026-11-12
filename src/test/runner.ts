@@ -62,6 +62,8 @@ export interface TestResult {
   warnings?: string[];
   /** --report: file name of the screenshot of where the test ended */
   shot?: string;
+  /** --report: screenshots the test asked for with shot(attach='label') */
+  shots?: { label: string; file: string }[];
 }
 
 // ───────────────────────────── hooks ─────────────────────────────
@@ -299,6 +301,22 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         const { soft: _soft, ...rest } = step.opts;
         step = { ...step, opts: rest };
       }
+      if (step.verb === 'shot' && step.opts.attach !== undefined) {
+        // shot(full=1, attach='after sign-in'): a picture for the --report page (without --report the step does nothing)
+        res.steps++;
+        if (!o.report) continue;
+        const { attach, ...rest } = step.opts;
+        const r = await rt.run(sid, stepToSource({ ...step, opts: { ...rest, save: 1 } }), { budget: 200, signal: deadline });
+        if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
+        const from = /saved screenshot: (.+?) \(\d+ bytes\)/.exec(r.text)?.[1];
+        if (!r.ok || !from || !existsSync(from)) {
+          await fail(st, r.ok ? 'the screenshot was not saved' : firstError(r.text, step.src), '');
+          break;
+        }
+        const file = saveShot(o.report, from, `${tc.name} ${attach}`);
+        (res.shots ??= []).push({ label: String(attach), file });
+        continue;
+      }
       if (step.verb === 'expect' && step.opts.same !== undefined) {
         // expect(same='menu', of='nav a'): the text of those elements is the same in every test of this run that says so
         res.steps++;
@@ -374,13 +392,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       try {
         const r = await rt.run(sid, 'shot(full=1, save=1)', { budget: 200, signal: AbortSignal.timeout(20_000) });
         const from = /saved screenshot: (.+?) \(\d+ bytes\)/.exec(r.text)?.[1];
-        if (from && existsSync(from)) {
-          mkdirSync(o.report, { recursive: true });
-          const name = `${String(sessionCounter).padStart(3, '0')}-${tc.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'test'}${extname(from) || '.jpg'}`;
-          copyFileSync(from, join(o.report, name));
-          rmSync(from, { force: true });
-          res.shot = name;
-        }
+        if (from && existsSync(from)) res.shot = saveShot(o.report, from, tc.name);
       } catch {}
     }
     if (tc.teardown?.length) await hook(tc.teardown, 'teardown');
@@ -404,6 +416,17 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
     res.ms = Math.round(performance.now() - t0);
   }
   return res;
+}
+
+let shotCounter = 0;
+
+/** Move a saved screenshot into the report folder under a name that says which test it is from. */
+function saveShot(dir: string, from: string, label: string): string {
+  mkdirSync(dir, { recursive: true });
+  const name = `${String(++shotCounter).padStart(3, '0')}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60) || 'test'}${extname(from) || '.jpg'}`;
+  copyFileSync(from, join(dir, name));
+  rmSync(from, { force: true });
+  return name;
 }
 
 /** What one name stood for the first time a test of this run reached it: runtime -> name -> { text, by }. */

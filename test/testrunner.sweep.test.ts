@@ -121,3 +121,14 @@ test("expect(same='menu', of=…): the same in every test of the run; --report w
   for (const s of shots) assert.ok(html.includes(`src="${s}"`) && existsSync(join(dir, 'report', s)));
   assert.match(html, /menu on \/c<\/h2>[\s\S]*differs from the test/);
 });
+
+test("shot(attach='label') puts a named picture in the report; without --report the step does nothing", async () => {
+  const body = "# base: $BASE\n# engine: chrome\nopen('/a'); shot(full=1, attach='first page'); open('/b'); expect('Second page')\n";
+  assert.equal((await run({ 'pics.aw': body })).code, 0);
+  const out = join(dir, 'report2');
+  const r = await run({ 'pics.aw': body }, ['--report', out]);
+  assert.equal(r.code, 0, r.out);
+  const html = readFileSync(join(out, 'index.html'), 'utf8');
+  assert.match(html, /<figcaption>first page<\/figcaption>/);
+  assert.equal(readdirSync(out).filter((f) => /\.(jpe?g|png)$/.test(f)).length, 2);
+});

@@ -20,6 +20,7 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
         --json                      machine-readable result (each test: engine, engines, emulation, ms, failure)
         --verbose                   one line per test, with the engine that ran it, printed as each test ends
         --report DIR                write DIR/index.html: every test's result with a full-page screenshot of where it ended
+                                    (and of every shot(full=1, attach='label') step in between)
         --quiet                     no "… 12/46 done" lines on stderr while a long run is going
         --engine NAME               load every page in chrome | ghost | wire | firefox | webkit (overrides "# engine:")
         --no-ghost  --no-chrome     switch an engine off     --browser chrome|firefox|webkit   the real browser to use

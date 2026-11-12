@@ -77,13 +77,13 @@ export function htmlReport(s: Summary): string {
     return `<section class="${t.skipped ? 'skip' : t.ok ? 'ok' : 'bad'}"><h2>${t.skipped ? '–' : t.ok ? '✓' : '✗'} ${esc(t.name)}</h2>
 <p class="meta">${esc(t.file)}${f?.line ? ':' + f.line : ''} · ${secs(t.ms)}${t.engine ? ' · ' + esc((t.engines ?? [t.engine]).join('→')) : ''}${t.emulation ? ' · ' + esc(t.emulation) : ''}</p>
 ${(t.warnings ?? []).map((w) => `<p class="warn">! ${esc(w)}</p>`).join('')}${f ? `<pre>${esc((f.step ? 'step:  ' + f.step + '\n' : '') + 'error: ' + f.message)}</pre>` : ''}
-${t.shot ? `<a href="${esc(t.shot)}"><img loading="lazy" src="${esc(t.shot)}" alt="where ${esc(t.name)} ended"></a>` : t.skipped ? '' : '<p class="meta">no screenshot: this test did not end in a real browser</p>'}</section>`;
+${(t.shots ?? []).map((x) => `<figure><figcaption>${esc(x.label)}</figcaption><a href="${esc(x.file)}"><img loading="lazy" src="${esc(x.file)}" alt="${esc(x.label)}"></a></figure>`).join('')}${t.shot ? `<a href="${esc(t.shot)}"><img loading="lazy" src="${esc(t.shot)}" alt="where ${esc(t.name)} ended"></a>` : t.skipped ? '' : '<p class="meta">no screenshot: this test did not end in a real browser</p>'}</section>`;
   });
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>agentweb test report</title>
 <style>body{font:15px/1.45 system-ui,sans-serif;margin:0 auto;max-width:1100px;padding:16px;color:#1b1f24;background:#fff}h1{font-size:20px}h2{font-size:16px;margin:0}
 section{border:1px solid #d0d7de;border-left-width:5px;border-radius:6px;padding:12px;margin:12px 0}.ok{border-left-color:#1a7f37}.bad{border-left-color:#cf222e}.skip{border-left-color:#8c959f}
 .meta{color:#57606a;margin:4px 0;font-size:13px}.warn{color:#9a6700;margin:4px 0}pre{background:#f6f8fa;padding:8px;border-radius:6px;white-space:pre-wrap;overflow-wrap:anywhere}
-img{max-width:100%;max-height:520px;border:1px solid #d0d7de;display:block;margin-top:8px}
+figure{margin:8px 0}figcaption{font-size:13px;color:#57606a}img{max-width:100%;max-height:520px;border:1px solid #d0d7de;display:block;margin-top:8px}
 @media(prefers-color-scheme:dark){body{background:#0d1117;color:#e6edf3}section{border-color:#30363d}pre{background:#161b22}.meta{color:#8b949e}img{border-color:#30363d}}</style></head><body>
 <h1>${s.failed ? '✗' : '✓'} ${s.failed ? s.failed + ' failed, ' : ''}${s.passed} passed${s.skipped ? ', ' + s.skipped + ' skipped' : ''} (${secs(s.ms)})</h1>
 ${rows.join('\n')}
