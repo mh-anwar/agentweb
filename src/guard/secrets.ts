@@ -13,6 +13,7 @@
 // because doing so would destroy ordinary text; such secrets should not be used. A model that saw
 // a value through some other channel can always paraphrase it.
 
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { AwError } from '../types.ts';
 
@@ -267,14 +268,44 @@ export function parseSecrets(json: unknown, where = 'secrets'): SecretDef[] {
     if (!Array.isArray(origins) || origins.some((s) => typeof s !== 'string')) throw bad(`secret "${name}": "origins" must be a list of strings`);
     return { name, value: o.value, origins: origins as string[] };
   };
+  // "user": the user name that goes with the password; it becomes the secret <name>_user on the same origins,
+  // and the pair is a sign-in for login('name')
+  const withUser = (name: string, x: unknown): SecretDef[] => {
+    const def = one(name, x);
+    const user = x && typeof x === 'object' ? (x as Record<string, unknown>).user : undefined;
+    if (user === undefined) return [def];
+    if (typeof user !== 'string' || !user) throw bad(`secret "${name}": "user" must be a string`);
+    return [def, { name: name + '_user', value: user, origins: def.origins }];
+  };
   if (Array.isArray(json))
-    return json.map((x, i) => {
+    return json.flatMap((x, i) => {
       const n = (x as { name?: unknown })?.name;
       if (typeof n !== 'string') throw bad(`entry ${i} needs a "name"`);
-      return one(n, x);
+      return withUser(n, x);
     });
-  if (json && typeof json === 'object') return Object.entries(json).map(([n, x]) => one(n, x));
+  if (json && typeof json === 'object') return Object.entries(json).flatMap(([n, x]) => withUser(n, x));
   throw bad('expected an object or a list');
+}
+
+/**
+ * Secrets from a password manager: a command that prints the secrets JSON, run once at start (for example
+ * `op inject -i secrets.tpl.json`, `sops -d secrets.json`, `pass show agentweb`). Its output is never echoed.
+ */
+export function secretsFromCommand(cmd: string, env: Record<string, string | undefined> = process.env): SecretDef[] {
+  let out: string;
+  try {
+    out = execFileSync('/bin/sh', ['-c', cmd], { encoding: 'utf8', timeout: 30_000, maxBuffer: 4_000_000, stdio: ['ignore', 'pipe', 'ignore'], env: env as NodeJS.ProcessEnv });
+  } catch (e) {
+    const x = e as { status?: number; code?: string };
+    throw new AwError('bad_request', `the secrets command failed (${x.code ?? 'exit ' + (x.status ?? '?')}); it must print the secrets JSON`);
+  }
+  let json: unknown;
+  try {
+    json = JSON.parse(out);
+  } catch {
+    throw new AwError('bad_request', 'the secrets command did not print valid JSON');
+  }
+  return parseSecrets(json, 'secrets command');
 }
 
 export function secretsFromFile(path: string): SecretDef[] {

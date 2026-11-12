@@ -32,6 +32,7 @@ export {
   SecretStore,
   secretsFromEnv,
   secretsFromFile,
+  secretsFromCommand,
   toOrigin,
   type SecretDef,
 } from './secrets.ts';

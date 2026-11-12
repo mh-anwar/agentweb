@@ -92,3 +92,23 @@ test('the credential is never typed on a site it is not bound to', async () => {
     await rt.close();
   }
 });
+
+test('a password manager supplies the sign-in: a command that prints the secrets JSON, with "user" beside the password', async () => {
+  const json = JSON.stringify({ shop: { value: 'correct-horse-9', user: 'maya@example.com', origins: [base] } });
+  const rt = await createAgentweb({
+    store: 'memory:', ghost: false, chrome: false, atlas: false,
+    env: { PATH: process.env.PATH, AGENTWEB_ALLOW_PRIVATE: '1', AGENTWEB_SECRETS_CMD: `printf '%s' '${json}'` },
+  });
+  try {
+    const r = await rt.run('m', "login('shop')");
+    assert.ok(r.ok, r.text);
+    assert.match(r.text, /Signed in as Maya/);
+    assert.doesNotMatch(r.text, /correct-horse-9|maya@example\.com/);
+  } finally {
+    await rt.close();
+  }
+  await assert.rejects(
+    createAgentweb({ store: 'memory:', ghost: false, chrome: false, atlas: false, env: { PATH: process.env.PATH, AGENTWEB_SECRETS_CMD: 'echo not-json-secret-value' } }),
+    (e: Error) => /did not print valid JSON/.test(e.message) && !/not-json-secret-value/.test(e.message),
+  );
+});

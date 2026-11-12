@@ -16,6 +16,7 @@
 //   AGENTWEB_CONFIRM=never|consequential   AGENTWEB_FLOW=off|warn|block
 //   AGENTWEB_CONFIRM_KEY=<string>     HMAC key for confirmation tokens (share across workers)
 //   AGENTWEB_SECRETS_FILE=<file>      secrets JSON (see secrets.ts)
+//   AGENTWEB_SECRETS_CMD=<command>    a command that prints the secrets JSON (a password manager), run once at start
 //   AGENTWEB_SECRET_<NAME>=<value>, AGENTWEB_SECRET_<NAME>_ORIGINS=<origins>
 //
 // Host patterns: `example.com` matches example.com and every subdomain; `*.example.com` only
@@ -25,7 +26,7 @@
 import { readFileSync } from 'node:fs';
 import { AwError } from '../types.ts';
 import type { FlowLimits } from './flow.ts';
-import { parseSecrets, secretsFromEnv, secretsFromFile, splitList, type SecretDef } from './secrets.ts';
+import { parseSecrets, secretsFromCommand, secretsFromEnv, secretsFromFile, splitList, type SecretDef } from './secrets.ts';
 import { normHost } from './ssrf.ts';
 
 export type Mode = 'local' | 'hosted';
@@ -183,6 +184,7 @@ export function loadPolicy(env: Record<string, string | undefined> = process.env
   if (env.AGENTWEB_FLOW !== undefined) p.flow = oneOf(env.AGENTWEB_FLOW, ['off', 'warn', 'block'] as const, 'AGENTWEB_FLOW');
   if (env.AGENTWEB_CONFIRM_KEY) p.confirmKey = env.AGENTWEB_CONFIRM_KEY;
   if (env.AGENTWEB_SECRETS_FILE) secrets.push(...secretsFromFile(env.AGENTWEB_SECRETS_FILE));
+  if (env.AGENTWEB_SECRETS_CMD) secrets.push(...secretsFromCommand(env.AGENTWEB_SECRETS_CMD, env));
   secrets.push(...secretsFromEnv(env));
 
   // later sources override earlier ones by name

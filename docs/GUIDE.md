@@ -498,6 +498,7 @@ This serves MCP (Streamable HTTP) at `/mcp` and REST at `POST /v1/run` with
 |:--|:--|
 | `AGENTWEB_SECRET_<NAME>=value`, `AGENTWEB_SECRET_<NAME>_ORIGINS=https://site.com` | a credential the agent can type as `{{secret:name}}`, only on those origins |
 | `AGENTWEB_SECRET_<NAME>_USER=user name` | the user name that goes with `<NAME>`; together they are a sign-in the agent runs with `login('name')` without seeing either |
+| `AGENTWEB_SECRETS_FILE=file.json`, `AGENTWEB_SECRETS_CMD=command` | the same from a JSON file, or from a password manager: a command that prints the JSON, run once at start (`op inject -i secrets.tpl.json`, `sops -d secrets.json`, `pass show agentweb`). Format: `{"github": {"value": "…", "user": "me", "origins": ["https://github.com"]}}` |
 | `AGENTWEB_ALLOW` / `AGENTWEB_DENY` | host patterns |
 | `AGENTWEB_READ_ONLY=1` | refuse form submissions, POSTs and script-driven clicks |
 | `AGENTWEB_CONFIRM=never\|consequential` | ask for a confirmation token before purchases, transfers and deletions (default `consequential`) |
