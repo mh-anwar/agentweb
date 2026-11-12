@@ -12,7 +12,8 @@ test('call syntax with single quotes', () => {
 
 test('numeric refs in every spelling', () => {
   assert.deepEqual(p("click(12); click('12'); click(@12); click('@e12'); click([12]); click(#12)"), [
-    ['click', 12], ['click', 12], ['click', 12], ['click', 12], ['click', 12], ['click', 12],
+    // quoted digits are still the number, and remembered as quoted: a control that reads "12" is preferred to number 12
+    ['click', 12], ['click', 12, { _quoted: true }], ['click', 12], ['click', 12], ['click', 12], ['click', 12],
   ]);
 });
 
