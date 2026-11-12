@@ -18,10 +18,15 @@
   "scripts": {
     "dev": "node src/cli.ts",
     "build": "node scripts/build.mjs",
+    "prepare": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --test --test-concurrency=2 test/*.test.ts",
     "bench": "node bench/run.ts",
     "test:live": "AGENTWEB_LIVE_TESTS=1 node --test --test-concurrency=2 test/search.live.test.ts"
+  },
+  "optionalDependencies": {
+    "jsdom": "^31.0.0",
+    "unpdf": "^2.1.0"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
@@ -30,14 +35,12 @@
     "gpt-tokenizer": "^4.1.0",
     "happy-dom": "^21.0.4",
     "htmlparser2": "^12.0.0",
-    "jsdom": "^31.0.0",
     "playwright-core": "1.64.0",
     "preact": "^11.1.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "typescript": "^7.0.2",
     "undici": "^8.12.4",
-    "unpdf": "^2.1.0",
     "vue": "^3.5.45"
   },
   "peerDependencies": {

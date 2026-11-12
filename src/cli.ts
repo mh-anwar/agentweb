@@ -45,6 +45,9 @@ function parseArgs(argv: string[]): Flags {
 
 const HELP = `agentweb ${VERSION} - a browser for agents
 
+  agentweb setup                 register agentweb with every coding agent on this machine (Claude Code, Codex,
+                                 Cursor, VS Code, Windsurf, Gemini CLI, opencode, Copilot CLI, Claude Desktop)
+        --agent NAME[,NAME]      only these (or "all")     --dry-run     --remove
   agentweb [mcp]                 MCP server on stdio
   agentweb run "<program>"       run a program, print the result
         -s, --session NAME       session to use (default "cli"; sessions persist in ~/.agentweb)
@@ -93,6 +96,13 @@ async function main() {
 
   if (f.version || cmd === 'version') return void console.log(VERSION);
   if (f.help || cmd === 'help') return void console.log(HELP);
+
+  if (cmd === 'setup' || cmd === 'install' || cmd === 'uninstall') {
+    const { setup } = await import('./setup.ts');
+    const agents = typeof f.agent === 'string' ? f.agent.split(',') : typeof f.agents === 'string' ? f.agents.split(',') : undefined;
+    const r = setup({ agents, dryRun: !!f['dry-run'], remove: cmd === 'uninstall' || !!f.remove });
+    return void console.log(r.text);
+  }
 
   if (cmd === 'tool') {
     const fmt = typeof f.format === 'string' ? f.format : 'mcp';
