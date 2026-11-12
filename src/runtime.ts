@@ -117,7 +117,9 @@ export function hintKey(url: string): string {
 function namesLink(page: Page, query: string): boolean {
   return rank(page, query).some((h) => {
     const b = page.blocks[h.index];
-    return h.all && b.k !== 'h' && (b.r === 'main' || b.r === 'other') && b.i.some((x) => typeof x !== 'string' && x.k === 'link');
+    if (!h.all || b.k === 'h' || (b.r !== 'main' && b.r !== 'other') || !b.i.some((x) => typeof x !== 'string' && x.k === 'link')) return false;
+    // "The page X does not exist", "No results for X, did you mean …" link the query too
+    return !/does not exist|doesn['’]t exist|no (?:results|matches|pages|items|products)|not found|nothing (?:found|matches)|did you mean|0 results|create (?:a|the|this) (?:page|draft)/i.test(blockText(b));
   });
 }
 
