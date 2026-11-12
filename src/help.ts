@@ -43,6 +43,7 @@ handoff('Please sign in') - only in the user's own browser: brings the tab to th
   signin: {
     about: 'saved sign-ins, cookies, stored credentials',
     text: `profile('name') loads a saved sign-in (a Playwright storageState file in ~/.config/agentweb/profiles); profile('name', save=1) saves the current one
+login('NAME') signs in with a stored credential: opens its site, finds the sign-in form (also one that asks for the user name first), types user name and password, submits. login('NAME', url='https://site/login') when the form is elsewhere, user='…' when no user name is stored. It types only on the site the credential is bound to.
 cookies() lists this session's cookies · fill(t, '{{secret:NAME}}') types a stored credential you never see`,
   },
   extract: {

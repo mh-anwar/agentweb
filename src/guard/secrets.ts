@@ -241,7 +241,9 @@ export function secretsFromEnv(env: Record<string, string | undefined>): SecretD
   for (const [k, v] of vals) {
     if (k.endsWith('_ORIGINS') && vals.has(k.slice(0, -'_ORIGINS'.length))) continue;
     if (!k) continue;
-    out.push({ name: k.toLowerCase(), value: v, origins: splitList(vals.get(k + '_ORIGINS') ?? '') });
+    // AGENTWEB_SECRET_<NAME>_USER is the user name that goes with <NAME>: it may be typed where <NAME> may
+    const base = k.endsWith('_USER') && vals.has(k.slice(0, -'_USER'.length)) ? k.slice(0, -'_USER'.length) : undefined;
+    out.push({ name: k.toLowerCase(), value: v, origins: splitList(vals.get(k + '_ORIGINS') ?? (base ? vals.get(base + '_ORIGINS') : undefined) ?? '') });
   }
   return out;
 }

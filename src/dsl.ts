@@ -68,7 +68,7 @@ export const VERBS = new Set([
   'view', 'read', 'find', 'links', 'outline', 'shot',
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
   'expect', 'engine', 'confirm', 'js', 'console', 'network', 'dialog', 'emulate', 'forward', 'drag',
-  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab', 'bug', 'help', 'handoff',
+  'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'login', 'tab', 'tabs', 'newtab', 'bug', 'help', 'handoff',
   'route', 'routes', 'headers', 'auth', 'init', 'drop',
 ]);
 

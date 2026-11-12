@@ -46,9 +46,11 @@ const INPUT_SCHEMA: ToolSpec['inputSchema'] = {
  */
 export function toolSpec(o: { secrets?: string[] } = {}): ToolSpec {
   const names = (o.secrets ?? []).map((n) => n.toLowerCase());
+  // a password with its user name is a sign-in: login('name') does the whole form
+  const logins = names.filter((n) => names.includes(n + '_user'));
   const description = TEMPLATE.replace(
     '{{SECRETS}}',
-    names.length ? `Stored credentials: fill(target, '{{secret:NAME}}') with NAME one of ${names.join(', ')}; values are never shown.\n` : '',
+    names.length ? `Stored credentials: fill(target, '{{secret:NAME}}') with NAME one of ${names.join(', ')}; values are never shown.${logins.length ? ` login('${logins[0]}') signs in with ${logins.length > 1 ? 'one of ' + logins.join(', ') : 'it'}.` : ''}\n` : '',
   ).replace('{{PW}}', names.length ? `{{secret:${names[0]}}}` : 'the password');
   return { name: 'web', description, inputSchema: INPUT_SCHEMA };
 }

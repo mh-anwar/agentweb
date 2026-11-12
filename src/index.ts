@@ -190,6 +190,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       emulate: env.AGENTWEB_DEVICE ? findDevice(env.AGENTWEB_DEVICE)?.emu : undefined,
       sessionTtlSec: config.sessionTtlSec,
       secretNames: policy.secrets.map((x) => x.name),
+      secretOrigins: Object.fromEntries(policy.secrets.map((x) => [x.name.toLowerCase(), x.origins])),
       browser,
       userBrowser,
       // drop() reads files from the downloads folder, AGENTWEB_FILES (a path list) and the working directory

@@ -87,6 +87,8 @@ export interface RuntimeOptions {
   sessionTtlSec?: number;
   /** names of configured secrets, mentioned in the tool description */
   secretNames?: string[];
+  /** secret name -> the origins it is bound to (never the value): where login('name') may go */
+  secretOrigins?: Record<string, string[]>;
   /** the real browser automatic escalation ends at (default chrome) */
   browser?: BrowserTier;
   /** browser pages of every session open in the user's own browser, where a person can see and use them */
@@ -1363,6 +1365,64 @@ const VERBS: Record<string, VerbHandler> = {
     });
   },
 
+  /**
+   * login('github'): sign in with the stored credential of that name. The password is the secret `github`, the user
+   * name the secret `github_user` (or user='…'); both are typed only on the origins the secret is bound to, and the
+   * agent never sees either. Handles a form with both fields and one that asks for the user name first.
+   */
+  async login(rc, step) {
+    const name = lc(str(step.args[0]).trim());
+    const stored = Object.keys(rc.rt.opts.secretOrigins).filter((n) => !n.endsWith('_user'));
+    const origins = rc.rt.opts.secretOrigins[name];
+    if (!name || !origins) {
+      throw new AwError(
+        'bad_request',
+        name ? `no stored sign-in is called '${name}'` : "login needs a name: login('github')",
+        stored.length ? `stored: ${stored.join(', ')}` : 'none are stored. The user sets AGENTWEB_SECRET_<NAME> (password), AGENTWEB_SECRET_<NAME>_ORIGINS (https://site) and AGENTWEB_SECRET_<NAME>_USER; or use profile() for a saved browser sign-in',
+      );
+    }
+    const user = step.opts.user !== undefined ? str(step.opts.user) : rc.rt.opts.secretOrigins[name + '_user'] ? `{{secret:${name}_user}}` : undefined;
+    const bound = (url: string) => {
+      try {
+        rc.guard.reveal(`{{secret:${name}}}`, originOf(url));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const start = step.opts.url !== undefined ? str(step.opts.url) : rc.rec.page && bound(rc.rec.page.url) ? undefined : origins.find((o) => !o.includes('*'));
+    if (start) await rc.verb('open', [/^https?:/.test(start) ? start : 'https://' + start]);
+    else if (!rc.rec.page) throw new AwError('bad_request', `'${name}' is bound to ${origins.join(', ') || 'no site'}: say where to sign in with login('${name}', url='https://…')`);
+    const inputs = () => allActs(rc.page).filter((r) => r.act.k === 'input' && !r.act.dis);
+    const password = () => inputs().find((r) => r.act.type === 'password');
+    const userField = (pw?: Resolved) =>
+      inputs().filter((r) => r.act.type !== 'password' && (!r.act.type || /^(text|email|tel)$/.test(r.act.type)) && (pw ? r.act.form === pw.act.form && r.index <= pw.index : /user|e-?mail|login|account|phone|identifier/i.test(r.act.l + ' ' + (r.act.al ?? []).join(' ')))).pop();
+    if (!password() && !userField()) {
+      // a home page: follow its sign-in link
+      const link = allActs(rc.page).find((r) => (r.act.k === 'link' || r.act.k === 'button' || r.act.k === 'click') && /^(sign in|log in|login|signin|sign-in)$/i.test(r.act.l.trim()));
+      if (link) await rc.verb('click', [rc.refs.of(link.act)]);
+    }
+    if (!bound(rc.page.url)) throw new AwError('policy', `the sign-in form is on ${originOf(rc.page.url)}, and '${name}' is bound to ${origins.join(', ')}`, 'the user decides where a credential may be typed (AGENTWEB_SECRET_<NAME>_ORIGINS)');
+    let pw = password();
+    if (!pw) {
+      // user name first, password on the next page
+      const u = userField();
+      if (!u || !user) throw new AwError('bad_request', u ? `this form asks for a user name, and none is stored for '${name}'` : `no sign-in form on ${rc.page.url}`, u ? `login('${name}', user='…'), or the user sets AGENTWEB_SECRET_${name.toUpperCase()}_USER` : `login('${name}', url='the sign-in page')`);
+      await rc.verb('fill', [rc.refs.of(u.act), user]);
+      await rc.verb('submit');
+      pw = password();
+      if (!pw) throw new AwError('bad_request', `after the user name, ${rc.page.url} shows no password field`, 'view() shows what it asks for');
+    } else {
+      const u = userField(pw);
+      if (u && user) await rc.verb('fill', [rc.refs.of(u.act), user]);
+      else if (u && !user) rc.note(`no user name is stored for '${name}': only the password was typed (login('${name}', user='…'))`);
+    }
+    await rc.verb('fill', [rc.refs.of(pw.act), `{{secret:${name}}}`]);
+    await rc.verb('submit');
+    if (password()) rc.note('the sign-in form is still showing: the page says why');
+    else rc.note(`signed in as '${name}'`);
+  },
+
   /** profile('name') loads a saved sign-in (Playwright storageState file); save=1 writes the current one */
   async profile(rc, step) {
     const name = str(step.args[0]).trim();
@@ -1637,6 +1697,7 @@ export class RuntimeImpl implements Runtime {
       userAgent: o.userAgent ?? DEFAULT_UA,
       sessionTtlSec: o.sessionTtlSec ?? 86400,
       secretNames: o.secretNames ?? [],
+      secretOrigins: o.secretOrigins ?? {},
       defaultEngine: o.defaultEngine,
       emulate: o.emulate,
       fileRoots: o.fileRoots,
