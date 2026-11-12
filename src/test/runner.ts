@@ -195,6 +195,11 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
   const tiers: string[] = [];
   const engine = o.engine ?? tc.engine;
   const steps: TestStep[] = [];
+  // The engine a page needed is remembered for the tests after this one (and, on disk, for the next run), so the climb
+  // wire -> ghost -> browser is paid once per page. A test that compares a stored view keeps the plain climb, so its
+  // view never depends on which test ran before it.
+  const hinted = !engine && !tc.console && !tc.steps.some((st) => /\b(?:snapshot|screenshot)\s*\(/.test(st.src));
+  if (hinted) rt.hinted.add(sid);
   // `# console: clean` needs the browser's own console from the first page on
   if (tc.console && !engine) steps.push({ line: tc.line, src: 'engine("chrome")' });
   if (engine && engine !== 'auto') steps.push({ line: tc.line, src: `engine(${JSON.stringify(engine)})` });
@@ -337,6 +342,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         if (parts.length) res.emulation = parts.join(' ');
       }
       await rt.deps.store.del(SESSION_NS, sid);
+      rt.hinted.delete(sid);
     } catch {}
     // the test's browser pages (one per tab) are closed now, not when they go idle: a suite holds
     // only as many browser contexts as it has workers

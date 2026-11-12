@@ -98,6 +98,16 @@ export interface RuntimeOptions {
 export type BrowserTier = 'chrome' | 'firefox' | 'webkit';
 /** real browsers, in the order they are tried as a fallback when one meets a bot wall */
 export const BROWSERS: BrowserTier[] = ['chrome', 'firefox', 'webkit'];
+/** A page without its query: what an engine hint is remembered under. */
+export function hintKey(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url;
+  }
+}
+
 export const isBrowser = (t: Tier | undefined): t is BrowserTier => t === 'chrome' || t === 'firefox' || t === 'webkit';
 const ENGINE_NAMES = 'auto, wire (HTTP only), ghost (JavaScript, no pixels), chrome, firefox, webkit (Safari\'s engine; alias safari), mine (the user\'s own browser, through the agentweb extension)';
 
@@ -251,6 +261,10 @@ export class RunCtx {
     // this session already needed scripts on this site: start there
     const known = this.rec.tiers?.[originOf(url)];
     if (known && (await this.rt.available(known))) return known;
+    // another session of this process (an earlier test of the same run) learned what this site needs
+    const seen = this.rt.hinted.has(this.rec.id.split('~')[0]) ? this.rt.tierHints.get(hintKey(url)) : undefined;
+    const start = seen && isBrowser(seen) ? this.rt.ladder[this.rt.ladder.length - 1] : seen;
+    if (start && (await this.rt.available(start))) return start;
     const hint = await this.rt.deps.atlas?.site(originOf(url)).catch(() => undefined);
     // "needs a real browser" means the configured one, whichever browser learned it
     const rung = hint?.tier && isBrowser(hint.tier) ? this.rt.ladder[this.rt.ladder.length - 1] : hint?.tier;
@@ -368,6 +382,7 @@ export class RunCtx {
     }
     if (before && before !== 'wire' && before !== tier) await this.engine(before).release(this.ctx.id).catch(() => {});
     if (tier !== 'wire' && method === 'GET' && /^https?:/.test(page.url) && (this.rt.ladder.includes(tier) || tried.size > 1)) (this.rec.tiers ??= {})[originOf(page.url)] = tier;
+    if (tier !== 'wire' && method === 'GET' && this.rt.hinted.has(this.rec.id.split('~')[0])) this.rt.tierHints.set(hintKey(req.url), tier);
     if (loaded_meta(page) && this.rt.deps.atlas) {
       this.rt.deps.atlas.observe({ type: 'forms', origin: originOf(page.url), url: page.url, forms: page.forms });
       this.rt.deps.atlas.observe({ type: 'meta', origin: originOf(page.url), url: page.url, links: page.meta?.links ?? [], markdown: page.kind === 'markdown' });
@@ -1503,6 +1518,10 @@ export class RuntimeImpl implements Runtime {
   private avail = new Map<Tier, Promise<boolean>>();
   /** automatic escalation order: wire -> ghost -> the configured real browser */
   readonly ladder: Tier[];
+  /** page (origin + path) -> the engine it needed, shared by the sessions of this process that opt in (test runs) */
+  readonly tierHints = new Map<string, Tier>();
+  /** the sessions that start from those hints */
+  readonly hinted = new Set<string>();
 
   constructor(deps: RuntimeDeps) {
     this.deps = deps;

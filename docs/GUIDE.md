@@ -149,6 +149,10 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
   `--engine chrome` for a whole run, makes every page load in that engine. `emulate(...)` with a viewport, locale
   or timezone needs a real browser and moves the test to one. `--no-ghost` and `--no-chrome` switch an engine off;
   an option the runner does not know is an error, not ignored.
+* **Engine memory.** In automatic mode the first load of a page that needs scripts tries the cheaper engines first.
+  The runner remembers, per page, the engine that worked: later tests in the run start there, and so does the next
+  run (`node_modules/.cache/agentweb/engines.json`, entries kept a week; `AGENTWEB_TEST_MEMORY=0` switches the file
+  off, `AGENTWEB_TEST_MEMORY=path` moves it). Tests that compare a stored view (`snapshot`, `screenshot`) never use it.
 * **Real-browser cost.** One browser serves the whole run; each test gets its own isolated context, closed the
   moment the test ends, so a suite holds as many pages as it has workers. `--verbose` and `--json` report the CPU
   and peak memory of the whole process tree (runner, browser, renderers), sampled from `/proc` on Linux; a

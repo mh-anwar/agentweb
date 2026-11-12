@@ -16,11 +16,15 @@ import { parseTestFile } from '../src/test/parse.ts';
 import { testCommand } from '../src/test/cli.ts';
 import { stepToSource, resolveUrl } from '../src/test/runner.ts';
 
+// runs here must not read or leave an engine memory file in the repository
+process.env.AGENTWEB_TEST_MEMORY = '0';
+
 let site: TestSite;
 let rt: RuntimeImpl;
 let dir: string;
 let late: Server;
 let lateUrl = '';
+const lateHits: string[] = [];
 let farm: Farm;
 let n = 0;
 
@@ -28,6 +32,7 @@ before(async () => {
   site = await startSite();
   farm = await startFarm({ seed: 7 });
   late = createServer((req, res) => {
+    lateHits.push(req.url ?? '');
     res.writeHead(200, { 'content-type': 'text/html' });
     res.end(`<!doctype html><title>Late</title><main><h1>Dashboard</h1><p id="s">Loading…</p><script>
       setTimeout(function(){ document.getElementById('s').textContent = 'Report ready'; }, 500);
@@ -319,5 +324,29 @@ test('fill resolves by placeholder, aria-label and title as well as the label', 
     }
   } finally {
     h.close();
+  }
+});
+
+test('engine memory: a later test opens a page on the engine an earlier one had to climb to, and the next run starts there', async () => {
+  const hits = (path: string) => lateHits.filter((u) => u === path).length;
+  const body = `# base: ${lateUrl}\n## first\nopen('/m1'); expect('Report ready')\n## second\nopen('/m1'); expect('Report ready')\n## third\nopen('/m1'); expect('Dashboard'); snapshot('d')\n`;
+  const file = join(dir, 'engines.json');
+  process.env.AGENTWEB_TEST_MEMORY = file;
+  try {
+    const r = await run({ 'mem.aw': body }, ['--workers', '1', '--json']);
+    assert.equal(r.code, 0, r.out + r.err);
+    const [a, b] = JSON.parse(r.out).tests;
+    assert.notEqual(a.engine, 'wire');
+    assert.equal(b.engine, a.engine);
+    // first: the climb; second: one load; third compares a stored view, so it climbs by itself whatever ran before
+    const climb = (hits('/m1') - 1) / 2;
+    assert.ok(climb > 1 && Number.isInteger(climb), 'loads of the page: ' + hits('/m1'));
+    assert.equal(JSON.parse(readFileSync(file, 'utf8'))[lateUrl + '/m1'].tier, a.engine);
+    const before = hits('/m1');
+    const again = await run({ 'mem.aw': body.split('## second')[0] }, ['--json']);
+    assert.equal(again.code, 0, again.out + again.err);
+    assert.equal(hits('/m1') - before, 1, 'the next run starts on the remembered engine');
+  } finally {
+    process.env.AGENTWEB_TEST_MEMORY = '0';
   }
 });

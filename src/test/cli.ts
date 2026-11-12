@@ -1,7 +1,7 @@
 // `agentweb test`: find test files, run them, print a report an agent can afford to read.
 
-import { existsSync, globSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { basename, join, resolve } from 'node:path';
+import { existsSync, globSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { createAgentweb } from '../index.ts';
 import { parseTestFile, type TestCase } from './parse.ts';
 import { formatReport, summarize } from './report.ts';
@@ -190,6 +190,19 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
   const t0 = performance.now();
   const watch = watchResources();
   const rt = await mk();
+  // which engine each site needed, remembered between runs (a week at most) so a suite does not re-learn it every time
+  const mem = env.AGENTWEB_TEST_MEMORY;
+  const memory = opts.engine || mem === '0' ? undefined : mem && mem !== '1' ? resolve(cwd, mem) : existsSync(join(cwd, 'node_modules')) ? join(cwd, 'node_modules', '.cache', 'agentweb', 'engines.json') : undefined;
+  const WEEK = 7 * 86400_000;
+  const seenAt = new Map<string, number>();
+  if (memory) {
+    try {
+      for (const [origin, v] of Object.entries(JSON.parse(readFileSync(memory, 'utf8')) as Record<string, { tier: string; at: number }>)) {
+        seenAt.set(origin, v.at);
+        if (Date.now() - v.at < WEEK && ['ghost', 'chrome', 'firefox', 'webkit'].includes(v.tier)) rt.tierHints.set(origin, v.tier as never);
+      }
+    } catch {}
+  }
   let results: TestResult[];
   let resources: ReturnType<typeof watch.stop>;
   try {
@@ -197,6 +210,12 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
   } finally {
     // measured before the browser is closed: after that its processes are gone from the tree
     resources = watch.stop();
+    if (memory) {
+      try {
+        mkdirSync(dirname(memory), { recursive: true });
+        writeFileSync(memory, JSON.stringify(Object.fromEntries([...rt.tierHints].map(([origin, tier]) => [origin, { tier, at: seenAt.get(origin) ?? Date.now() }]))));
+      } catch {}
+    }
     await rt.close();
   }
   results = [...bad, ...results].map((r) => ({ ...r, file: rel(r.file) }));

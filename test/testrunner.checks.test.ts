@@ -10,6 +10,9 @@ import { join } from 'node:path';
 import { testCommand } from '../src/test/cli.ts';
 import { parseConsoleRule, parseTestFile } from '../src/test/parse.ts';
 
+// runs here must not read or leave an engine memory file in the repository
+process.env.AGENTWEB_TEST_MEMORY = '0';
+
 let server: Server;
 let base = '';
 let dir = '';
