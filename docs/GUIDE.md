@@ -183,9 +183,10 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
 
 Four kinds of check that a Playwright suite usually carries as code. Each is a step an agent can run and an
 assertion a test can make, and each answers in a few lines, never a dump. They need Chromium: a page that was
-fetched without a browser is reopened in it (the result says so), the way `emulate()` does. Pages are loaded with
-their images in `agentweb test`; in the agent tool set `AGENTWEB_IMAGES=1` for layout checks and screenshots to
-see them (by default images, fonts and trackers are not downloaded).
+fetched without a browser is reopened in it (the result says so), the way `emulate()` does. Images are not
+downloaded by default (they cost time and memory, and most checks do not look at them). `agentweb test` loads them
+on its own for a run whose tests take screenshots, check layout, accessibility, console or requests (`--images`
+forces it); in the agent tool set `AGENTWEB_IMAGES=1` for layout checks and screenshots to see them.
 
 ```
 overflow()                          horizontal overflow at the current viewport

@@ -15,11 +15,10 @@ read() - full text from where the view stopped; read('Section name'); read(url)
 click(target) · fill(target, 'text') · select(target, 'option') · check(target) · uncheck(target) · submit() · press('Enter')
 expect('text') - stop here unless the page contains it
 wait('text') - wait until the page shows it (content that appears late); also wait(url='/x'), wait(gone='text')
-view() - the whole page again · links('words') - URLs · shot() - screenshot (full=1, pdf=1, widths='375,1280', annotate=1)
+view() - the whole page again · links('words') - URLs · shot() - screenshot (full=1, pdf=1)
 js('code') - run JavaScript · console() · network('words', failed=1) - page log
-overflow() · audit() - layout and accessibility problems in a few lines · expect(console=0, requests=0, overflow=0, audit=0)
 tabs() · tab('new', url) · tab(2) - several pages in this session · profile('name') - a saved sign-in · engine('mine') - the user's own signed-in browser
-help() - more steps by topic: drag and dialogs, phone/locale emulation, mocking requests and headers, saved programs, site map and crawl, tests
+help() - more steps by topic: drag and dialogs, phone/locale emulation, mocking requests, saved programs, site map and crawl, layout/accessibility/console checks, tests
 bug('expected | what happened') - report a bug in this tool itself (saves your program, never page text)
 
 A target is a number shown on the page or its visible text: click(12), click('Sign in'), click('Add to cart', near='USB hub').

@@ -64,8 +64,17 @@ read('llms') opens the site's /llms.txt (read('llms-full') for the long one)`,
 schedule() - what the user's scheduled programs found last; schedule('name', n=3) for recent runs. Schedules are added by the user on the command line (agentweb schedule add NAME "daily 09:00" "program"), never from here.`,
   },
   shots: {
-    about: 'screenshots, PDF',
-    text: `shot() viewport · shot(full=1) whole page · shot(12) one element · shot(save=1) keeps the file and prints its path · shot(pdf=1) / pdf() saves a PDF`,
+    about: 'screenshots at several widths, numbered screenshots, PDF, GIF recording',
+    text: `shot() viewport · shot(full=1) whole page · shot(12) one element · shot(save=1) keeps the file and prints its path · shot(pdf=1) / pdf() saves a PDF
+shot(widths='375,768,1280', save=1) one picture per width · shot(annotate=1) draws the element numbers of the text view on the picture
+record('name') ... record(stop=1) saves the page as an animated GIF (at most 30 s) and prints its path`,
+  },
+  checks: {
+    about: 'layout overflow, accessibility audit, console and request errors, as steps or as assertions',
+    text: `overflow() - does the page scroll sideways, and which elements stick out (at most 5 lines); overflow(clipped=1) adds text cut off by its box; overflow(widths='375,768')
+audit() - a built-in WCAG 2.2 AA subset (not axe-core): alt, labels, names, lang, title, ids, headings, main, tabindex, contrast, target size, aria-hidden. audit('contrast,names') limits it; audit(axe=1) runs axe-core if it is installed
+expect(overflow=0) · expect(audit=0) · expect(audit='names,alt') · expect(console=0) (console='warn' includes warnings) · expect(requests=0); allow='favicon,hot-update' ignores matching lines; all=1 covers every page of the session
+These run in the real browser and move the page there.`,
   },
   engines: {
     about: 'which engine loads the page: plain HTTP, scripts without a browser, Chrome, Firefox, WebKit',
@@ -79,7 +88,7 @@ engine('chrome') / engine('firefox') / engine('webkit') / engine('ghost') / engi
   ## cart starts empty
   open('/cart'); expect('Your cart is empty'); expect(url='/cart'); expect(not='Error')
 Run: agentweb test [files] [--engine chrome] [--verbose] [--json]. A pass is one line; a failure is the step, the error and a few lines of the page.
-snapshot('name') compares the page's text with a saved baseline (--update accepts). exec('cmd', as='otp') runs a command and keeps its output as \${otp} (test files only).
+snapshot('name') compares the page's text with a saved baseline (--update accepts). screenshot('name', widths='375,768') does the same with pictures. # console: clean fails any test whose pages logged errors. expect(overflow=0) and expect(audit=0): see help('checks'). exec('cmd', as='otp') runs a command and keeps its output as \${otp} (test files only).
 agentweb test --record out.aw "program" saves a passing program as a test.`,
   },
   bug: {
@@ -98,7 +107,8 @@ const ALIASES: Record<string, string> = {
   collect: 'extract', records: 'extract', each: 'extract', data: 'extract', read: 'extract', outline: 'extract',
   map: 'site', crawl: 'site', sitemap: 'site', llms: 'site',
   program: 'programs', schedule: 'programs', schedules: 'programs', saved: 'programs',
-  shot: 'shots', screenshot: 'shots', pdf: 'shots',
+  shot: 'shots', screenshot: 'shots', pdf: 'shots', record: 'shots', gif: 'shots', annotate: 'shots', widths: 'shots',
+  overflow: 'checks', audit: 'checks', a11y: 'checks', accessibility: 'checks', layout: 'checks',
   engine: 'engines', chrome: 'engines', firefox: 'engines', webkit: 'engines', safari: 'engines',
   test: 'testing', tests: 'testing',
   bugs: 'bug', report: 'bug',

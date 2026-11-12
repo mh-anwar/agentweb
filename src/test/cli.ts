@@ -21,6 +21,7 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
         --verbose                   one line per test, with the engine that ran it
         --engine NAME               load every page in chrome | ghost | wire | firefox | webkit (overrides "# engine:")
         --no-ghost  --no-chrome     switch an engine off     --browser chrome|firefox|webkit   the real browser to use
+        --images                    load page images (on by itself when a test takes screenshots or checks layout, accessibility or requests)
         --no-exec                   refuse "# setup:", "# teardown:" and exec() commands
         --timeout SEC               per-test limit (default 60)
         --excerpt N                 tokens of page shown with a failure (default 200)
@@ -45,7 +46,7 @@ interface TestFlags {
   bool: Set<string>;
 }
 
-const BOOL = new Set(['bail', 'update', 'ci', 'json', 'verbose', 'help', 'v', 'no-ghost', 'no-chrome', 'no-exec', 'record']);
+const BOOL = new Set(['images', 'bail', 'update', 'ci', 'json', 'verbose', 'help', 'v', 'no-ghost', 'no-chrome', 'no-exec', 'record']);
 const VALUE = new Set(['base', 'workers', 'grep', 'timeout', 'excerpt', 'engine', 'browser', 'record', 'profile', 'name']);
 
 export function parseTestArgs(argv: string[]): TestFlags {
@@ -115,14 +116,16 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     excerptTokens: Math.max(200, Number(f.str.excerpt) || 200),
   };
 
+  let wantImages = f.bool.has('images');
   const browser = f.str.browser?.toLowerCase() === 'safari' ? 'webkit' : f.str.browser?.toLowerCase();
   const mk = () =>
     createAgentweb({
       store: 'memory:',
       cache: false,
       atlas: false,
-      // tests see the page's images: layout checks, screenshots and expect(requests=0) are wrong without them
-      env: { ...process.env, AGENTWEB_IMAGES: process.env.AGENTWEB_IMAGES ?? '1' },
+      // Images cost time and memory and most page checks do not look at them, so a run loads them only when it
+      // asks for something that does: a screenshot, a layout or accessibility check, a request check (--images forces it)
+      env: { ...process.env, AGENTWEB_IMAGES: process.env.AGENTWEB_IMAGES ?? (wantImages ? '1' : '0') },
       budget: opts.excerptTokens,
       ...(f.bool.has('no-ghost') ? { ghost: false } : {}),
       ...(f.bool.has('no-chrome') ? { chrome: false } : {}),
@@ -183,6 +186,7 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     return files.length && !grep ? 0 : 1;
   }
 
+  if (cases.some((c) => !!c.console || c.steps.some((st) => /\b(?:screenshot|shot|overflow|audit|record)\s*\(|\b(?:requests|console|overflow|no_overflow|audit)\s*=/.test(st.src)))) wantImages = true;
   const t0 = performance.now();
   const watch = watchResources();
   const rt = await mk();
