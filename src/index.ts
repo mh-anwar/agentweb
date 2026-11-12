@@ -19,6 +19,11 @@ export interface AgentwebConfig extends RuntimeOptions {
   /** which script engines to use: 'auto' = when available on this machine (default) */
   ghost?: boolean | 'auto';
   chrome?: boolean | 'auto';
+  /** Firefox and WebKit through Playwright (needs playwright-core and its browser builds); 'auto' = when installed */
+  firefox?: boolean | 'auto';
+  webkit?: boolean | 'auto';
+  /** the real browser automatic escalation uses: chrome (default), firefox, or webkit / safari (AGENTWEB_BROWSER) */
+  browser?: 'chrome' | 'firefox' | 'webkit';
   /** share fetched public pages between sessions (default true) */
   cache?: boolean;
   /** learn per-site facts and reuse them across sessions (default true) */
@@ -75,6 +80,19 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
     }
   }
 
+  // Firefox and WebKit: creating them costs nothing; playwright-core is loaded the first time one is asked for
+  for (const b of ['firefox', 'webkit'] as const) {
+    if (!want(config[b], b === 'firefox' ? 'AGENTWEB_FIREFOX_ENGINE' : 'AGENTWEB_WEBKIT_ENGINE')) continue;
+    try {
+      const mod = await import('./engines/playwright/index.ts');
+      engines[b] = mod.createPlaywrightEngine({ browser: b });
+    } catch {
+      // no playwright engine in this build
+    }
+  }
+  const asked = String(config.browser ?? env.AGENTWEB_BROWSER ?? '').toLowerCase().trim();
+  const browser = asked === 'safari' ? 'webkit' : asked === 'firefox' || asked === 'webkit' || asked === 'chrome' ? asked : undefined;
+
   let atlas: Atlas | undefined;
   if (config.atlas !== false && env.AGENTWEB_ATLAS !== '0') {
     try {
@@ -104,6 +122,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       userAgent: config.userAgent ?? env.AGENTWEB_USER_AGENT,
       sessionTtlSec: config.sessionTtlSec,
       secretNames: policy.secrets.map((x) => x.name),
+      browser,
     },
   });
 
