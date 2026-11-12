@@ -71,12 +71,26 @@ other case: the agent gave up on agentweb for a task and used another browser.
 | `click(t, double=1)` · `click(t, button='right')` · `drag(a, b)` · `forward()` · `dialog('dismiss')` | more input; how alert/confirm boxes are answered |
 | `emulate('iPhone 15')` · `emulate(390, 844, locale='fr-FR', tz='Europe/Paris', geo='48.8,2.3', dark=1)` | device, viewport, locale, timezone, location, dark mode; `emulate()` resets |
 | `tabs()` · `tab('new', url)` · `tab(2)` · `tab('close')` · `tab('close', 2)` | several pages open in one session; they share its cookies, each keeps its own page, history and live state (at most 8) |
+| `click(role='button', name='Save')` · `click(testid='save')` | a target by ARIA role (button, link, textbox, checkbox, radio, combobox, tab, menuitem) or by test id, when visible text names several controls |
+| `login('name')` · `login('name', url='https://site/login')` | sign in with a stored credential (see Configuration): finds the form, also one that asks for the user name first; types only on the site the credential is bound to |
 | `engine('mine')` · `engine('auto')` | work in the user's own browser with their sign-ins (needs the browser extension, below); back to isolated browsing |
 | `bug('expected \| what happened')` | report a bug in agentweb itself (see Install) |
 
 In the view, `[label]12` is clickable, `{label="value"}13` is fillable, `{label: *A|B}14` is a select and
 `{[x] label}15` is a checkbox. Numbers stay valid for the whole session. Calling again on the same page shows only
 what changed.
+
+What saves calls, without being asked:
+
+* `find()` that misses says so ("no line on this page has all of …", never "1 match" for a near miss). When it is
+  the last step and the site's own search has a result with the words, that result page is shown instead (a note
+  says so; `back()` returns). On a numbered feed that loads more as it scrolls, it scrolls for the entry.
+* `find()` shows only word-for-word lines when there are any, and counts the looser ones it left out.
+* A button's number works from another page of the session: `click(52)` goes back to the page 52 was on.
+* `click('2')` is the control that reads "2" (a page link) when there is one; `click(2)` is number 2.
+* `fill('username', …)` finds a field that has no label of its own by the words beside it.
+* A long JSON array is summarised over all its rows: `status: active 2500 · pending 1265 · archived 1235`.
+* `collect(rating='number', reviews='number')` picks the figure each field is named after on a row with several.
 
 ## Testing with agentweb
 
@@ -482,6 +496,7 @@ This serves MCP (Streamable HTTP) at `/mcp` and REST at `POST /v1/run` with
 | Variable | Meaning |
 |:--|:--|
 | `AGENTWEB_SECRET_<NAME>=value`, `AGENTWEB_SECRET_<NAME>_ORIGINS=https://site.com` | a credential the agent can type as `{{secret:name}}`, only on those origins |
+| `AGENTWEB_SECRET_<NAME>_USER=user name` | the user name that goes with `<NAME>`; together they are a sign-in the agent runs with `login('name')` without seeing either |
 | `AGENTWEB_ALLOW` / `AGENTWEB_DENY` | host patterns |
 | `AGENTWEB_READ_ONLY=1` | refuse form submissions, POSTs and script-driven clicks |
 | `AGENTWEB_CONFIRM=never\|consequential` | ask for a confirmation token before purchases, transfers and deletions (default `consequential`) |

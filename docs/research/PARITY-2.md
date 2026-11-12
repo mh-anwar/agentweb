@@ -268,3 +268,7 @@ one, probed once per origin and remembered a week (kept in the store beside the 
 Also closed (see `docs/GUIDE.md`): gap 1, the browser extension and `engine('mine')`; gap 5, `route` / `headers` /
 `auth` / `init`; gap 6, `tabs` / `tab`; gap 12, the `wait` variants. In `agentweb test`: engine receipts, `# engine:`,
 `# setup:` / `# teardown:` and `exec()`.
+
+Closed on 2026-11-12: gap 4, `login('name')` from a stored credential bound to its site (password + `_USER`, user-name-first
+forms; a password-manager command provider is still open); gap 14, role targets `click(role='button', name='Save')` (test ids
+and `audit()` were already in). `agentweb test` remembers per page which engine it needed.
