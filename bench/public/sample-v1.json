@@ -1,0 +1,1795 @@
+{
+  "version": 1,
+  "source": "MinorJerry/WebVoyager data/ @ 5a7896738c10bfb8b9edccce6bb0e0411f8ae569 (Apache-2.0)",
+  "k": 10,
+  "seed": 1,
+  "cutoff": "2026-12",
+  "createdFor": "2026-11-12",
+  "counts": {
+    "Allrecipes": {
+      "total": 45,
+      "stale": 0,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Amazon": {
+      "total": 41,
+      "stale": 2,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Apple": {
+      "total": 43,
+      "stale": 1,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "ArXiv": {
+      "total": 43,
+      "stale": 6,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "BBC News": {
+      "total": 42,
+      "stale": 1,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Booking": {
+      "total": 44,
+      "stale": 39,
+      "picked": 5,
+      "dev": 3,
+      "sealed": 2
+    },
+    "Cambridge Dictionary": {
+      "total": 43,
+      "stale": 0,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Coursera": {
+      "total": 42,
+      "stale": 0,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "ESPN": {
+      "total": 44,
+      "stale": 8,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "GitHub": {
+      "total": 41,
+      "stale": 3,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Google Flights": {
+      "total": 42,
+      "stale": 41,
+      "picked": 1,
+      "dev": 1,
+      "sealed": 0
+    },
+    "Google Map": {
+      "total": 41,
+      "stale": 0,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Google Search": {
+      "total": 43,
+      "stale": 3,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Huggingface": {
+      "total": 43,
+      "stale": 2,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    },
+    "Wolfram Alpha": {
+      "total": 46,
+      "stale": 7,
+      "picked": 10,
+      "dev": 7,
+      "sealed": 3
+    }
+  },
+  "dropped": [
+    {
+      "id": "Amazon--30",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Amazon--39",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Apple--9",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "ArXiv--14",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ArXiv--15",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ArXiv--29",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ArXiv--31",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "ArXiv--36",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ArXiv--42",
+      "reason": "names year 2000 (before 2026-12)"
+    },
+    {
+      "id": "BBC News--18",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Booking--0",
+      "reason": "names a month/date \"December\""
+    },
+    {
+      "id": "Booking--2",
+      "reason": "names a month/date \"December\""
+    },
+    {
+      "id": "Booking--3",
+      "reason": "names a date \"Dec 1\""
+    },
+    {
+      "id": "Booking--4",
+      "reason": "names a date \"Dec 2\""
+    },
+    {
+      "id": "Booking--5",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--6",
+      "reason": "names a date \"Jan 2\""
+    },
+    {
+      "id": "Booking--7",
+      "reason": "names a month/date \"January\""
+    },
+    {
+      "id": "Booking--8",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Booking--9",
+      "reason": "names a month/date \"December\""
+    },
+    {
+      "id": "Booking--10",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--11",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--12",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--13",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--14",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--15",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--16",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--17",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--18",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--19",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--20",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--21",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--22",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--23",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--24",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--25",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--26",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--27",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--28",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--29",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--30",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--31",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--32",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--34",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--36",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--37",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--38",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--39",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--40",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Booking--42",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--15",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--16",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--17",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--19",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--30",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--31",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--33",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "ESPN--38",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "GitHub--11",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "GitHub--28",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "GitHub--36",
+      "reason": "names year 2022 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--0",
+      "reason": "names a month/date \"December\""
+    },
+    {
+      "id": "Google Flights--1",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--2",
+      "reason": "names a date \"Jan. 2\""
+    },
+    {
+      "id": "Google Flights--3",
+      "reason": "names a date \"Jan. 1\""
+    },
+    {
+      "id": "Google Flights--4",
+      "reason": "names a date \"Dec. 2\""
+    },
+    {
+      "id": "Google Flights--5",
+      "reason": "names a month/date \"December\""
+    },
+    {
+      "id": "Google Flights--6",
+      "reason": "names a month/date \"December\""
+    },
+    {
+      "id": "Google Flights--7",
+      "reason": "names a date \"Dec. 2\""
+    },
+    {
+      "id": "Google Flights--8",
+      "reason": "names a month/date \"December\""
+    },
+    {
+      "id": "Google Flights--9",
+      "reason": "names a date \"Jan. 1\""
+    },
+    {
+      "id": "Google Flights--10",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--11",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--12",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--13",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--14",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--15",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--16",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--17",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--18",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--19",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--20",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--21",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--22",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--23",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--24",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--25",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--26",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--27",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--28",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--29",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--30",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--31",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--32",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--33",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--34",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--35",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--36",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--37",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--38",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--39",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Flights--41",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Google Search--8",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Google Search--14",
+      "reason": "names year 2020 (before 2026-12)"
+    },
+    {
+      "id": "Google Search--39",
+      "reason": "names year 2024 (before 2026-12)"
+    },
+    {
+      "id": "Huggingface--0",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Huggingface--20",
+      "reason": "names year 2022 (before 2026-12)"
+    },
+    {
+      "id": "Wolfram Alpha--9",
+      "reason": "names year 2010 (before 2026-12)"
+    },
+    {
+      "id": "Wolfram Alpha--10",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Wolfram Alpha--13",
+      "reason": "names year 1980 (before 2026-12)"
+    },
+    {
+      "id": "Wolfram Alpha--17",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Wolfram Alpha--23",
+      "reason": "names year 2020 (before 2026-12)"
+    },
+    {
+      "id": "Wolfram Alpha--33",
+      "reason": "names year 2023 (before 2026-12)"
+    },
+    {
+      "id": "Wolfram Alpha--37",
+      "reason": "names year 2024 (before 2026-12)"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "Allrecipes--30",
+      "site": "Allrecipes",
+      "split": "dev",
+      "ques": "Find a recipe for a vegan smoothie bowl on Allrecipes that includes bananas and leaves, has more than 20 reviews, and a rating of at least 4 stars. Provide a list of ingredients, preparation time, and a summary of the recipe steps.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Spinach and Banana Power Smoothie', 4.8 stars, 72 reviews, Ingredients: 1 cup plain soy milk, 3/4 cup packed fresh spinach leaves, 1 large banana, sliced; Prep Time: 10 mins; <steps>",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--29",
+      "site": "Allrecipes",
+      "split": "dev",
+      "ques": "Search for a Mediterranean-style grilled fish recipe on Allrecipes that includes ingredients like olives, has at least a 4-star rating, and more than 25 reviews. Detail the ingredients, cooking method, and total time required for preparation and cooking.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Branzino Mediterranean', 36 reviews, <Ingredients> include olive oil, <cooking method>, Prep Time: 15 mins, Cook Time: 25 mins, Total Time: 40 mins",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--11",
+      "site": "Allrecipes",
+      "split": "dev",
+      "ques": "Discover a suitable chocolate cupcake recipe on Allrecipes that has a preparation time of under 1 hour and at least 100 user reviews.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Chocolate Cupcake', 1261 reviews, prep time 15 mins",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--9",
+      "site": "Allrecipes",
+      "split": "dev",
+      "ques": "Find a high-rated recipe for vegetarian lasagna, list the key ingredients required, and include the total preparation and cook time stated on the recipe.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Spicy Vegetarian Lasagna', <Ingredients>, prep time 30 mis, cook time 1 hour 10 mins",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--12",
+      "site": "Allrecipes",
+      "split": "dev",
+      "ques": "Search for a popular cookie recipe on Allrecipes with more than 1000 reviews and a rating of 4.5 stars or better. Provide the list of ingredients needed.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Best Chocolate Chip Cookies', 4.6-star, 14493 reviews, <Ingredients>",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--2",
+      "site": "Allrecipes",
+      "split": "dev",
+      "ques": "Find a recipe for a vegetarian lasagna under 600 calories per serving that has a prep time of less than 1 hour.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Easy Vegetarian Red Beans Lasagna', 496 Calories, prep time 20 mins",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--10",
+      "site": "Allrecipes",
+      "split": "dev",
+      "ques": "Find The Most Popular Recipes of the 1960s, noting the recipe name, preparation time and total time of the second recipe in this collection.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Swedish Meatballs I', prep time 25 mins, total time 1 hour 25 mins",
+      "refType": "golden"
+    },
+    {
+      "id": "Allrecipes--8",
+      "site": "Allrecipes",
+      "split": "sealed",
+      "ques": "Search for a recipe for Beef Wellington on Allrecipes that has at least 200 reviews and an average rating of 4.5 stars or higher. List the main ingredients required for the dish.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Beef Wellington', <Ingredients>",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--37",
+      "site": "Allrecipes",
+      "split": "sealed",
+      "ques": "Search for a Greek salad recipe on Allrecipes that has a prep time of under 25 minutes and more than 15 reviews. Include the primary cheese used and the type of dressing recommended.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "'Greek Salad', 4.6 stars, 192 reviews, 1 cup crumbled feta cheese, ground black pepper to taste...",
+      "refType": "possible"
+    },
+    {
+      "id": "Allrecipes--41",
+      "site": "Allrecipes",
+      "split": "sealed",
+      "ques": "List 3 recommended dinner recipes in the Allrecipes Dinners section.",
+      "web": "https://www.allrecipes.com/",
+      "ref": "Ground Beef-Spinach Casserole; Mexican Ground Beef Casserole; Retro Ground Beef Casserole with Biscuits",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--15",
+      "site": "Amazon",
+      "split": "dev",
+      "ques": "Find a pair of mens running shoes in black, size 7, 4+ stars and under $50 and add them to my cart on Amazon.",
+      "web": "https://www.amazon.com/",
+      "ref": "Damyuan Men's Sport Gym Running Shoes Walking Shoes Casual Lace Up Lightweight; black, size 7, 4.0-star, $29.99",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--20",
+      "site": "Amazon",
+      "split": "dev",
+      "ques": "Search for a wireless ergonomic keyboard with backlighting and a rating of at least 4 stars. The price should be between $40 to $60. Save the product with the 500+ customer reviews.",
+      "web": "https://www.amazon.com/",
+      "ref": "Logitech Wave Keys Wireless Ergonomic Keyboard, $57.99, 4.6 stars, 26005 ratings",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--33",
+      "site": "Amazon",
+      "split": "dev",
+      "ques": "Search for a portable air conditioner on Amazon suitable for a room size of 300 sq ft, with energy efficiency rating, and compare the prices of the top three search results.",
+      "web": "https://www.amazon.com/",
+      "ref": "price compare: 1) Shinco 10,000 BTU Portable Air Conditioner, $314.99; 2) Renogy 8,000 BTU Portable Air Conditioners, $283.09; 3) SereneLife Compact Freestanding Portable Air Conditioner, $247.54",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--1",
+      "site": "Amazon",
+      "split": "dev",
+      "ques": "Search for women's golf polos in m size, priced between 50 to 75 dollars, and save the lowest priced among results.",
+      "web": "https://www.amazon.com/",
+      "ref": "PUMA Golf 2019 Men's Rotation Polo; $50.00",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--3",
+      "site": "Amazon",
+      "split": "dev",
+      "ques": "Find climbing gears and sort the results by price high to low. Answer the first 3 results after sorting.",
+      "web": "https://www.amazon.com/",
+      "ref": "First 3 results after sort",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--21",
+      "site": "Amazon",
+      "split": "dev",
+      "ques": "Find a stainless steel, 12-cup programmable coffee maker on Amazon. The price range should be between $100 to $200. Report the one with the 4+ customer rating.",
+      "web": "https://www.amazon.com/",
+      "ref": "Braun BrewSense 12-Cup Drip Coffee Maker, Stainless Steel, 4.3 stars, $129.95",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--25",
+      "site": "Amazon",
+      "split": "dev",
+      "ques": "Search for a queen-sized, hypoallergenic mattress topper on Amazon. It should have a memory foam material and be priced between $50 to $100.",
+      "web": "https://www.amazon.com/",
+      "ref": "2 Inch 7-Zone Memory Foam Mattress Topper Queen with 100% Bamboo Rayon Cover, Cooling Gel-Infused Swirl Egg Crate Memory Foam, $99.99",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--40",
+      "site": "Amazon",
+      "split": "sealed",
+      "ques": "Locate a women's yoga mat in purple, with a thickness of at least 5mm, rated 4+ stars, and priced under $30 on Amazon. Check how many colors are available in total, and what is the return and delivery policy.",
+      "web": "https://www.amazon.com/",
+      "ref": "ProsourceFit Extra Thick Yoga Pilates Exercise Mat, 1/2\", 4.6 stars, $21.99, 7 colors, FREE delivery Friday, March 1 on orders shipped by Amazon over $35",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--4",
+      "site": "Amazon",
+      "split": "sealed",
+      "ques": "Find the used Nintendo Switch Lite on Amazon then filter by 'Used - Good', tell me the cheapest one that is 'Used - Good'.",
+      "web": "https://www.amazon.com/",
+      "ref": "Nintendo Switch Lite - Blue; Used Good: $170",
+      "refType": "possible"
+    },
+    {
+      "id": "Amazon--32",
+      "site": "Amazon",
+      "split": "sealed",
+      "ques": "Search for an electric kettle on Amazon with a capacity of at least 1.5 liters, made of stainless steel, and with a customer rating of 4 stars or above.",
+      "web": "https://www.amazon.com/",
+      "ref": "COMFEE' Stainless Steel Electric Kettle, 1.7 Liter, 4.6 stars",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--18",
+      "site": "Apple",
+      "split": "dev",
+      "ques": "Check if there are trade-in offers for the latest model of iPhone.",
+      "web": "https://www.apple.com/",
+      "ref": "There are trade-in offers.",
+      "refType": "golden"
+    },
+    {
+      "id": "Apple--42",
+      "site": "Apple",
+      "split": "dev",
+      "ques": "Find updates for Apple Watch Series 7,8,9 on Apple's website.",
+      "web": "https://www.apple.com/",
+      "ref": "see https://www.apple.com/watch/compare/, <summary>",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--4",
+      "site": "Apple",
+      "split": "dev",
+      "ques": "How much does it cost to buy a Macbook pro, 16-inch, Apple M3 Max chip with 16-core CPU, 40-core GPU, 64GB unified memory, 1TB SSD.",
+      "web": "https://www.apple.com/",
+      "ref": "$4,199.00 or $349.91/mo.per month for 12 mo.*",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--7",
+      "site": "Apple",
+      "split": "dev",
+      "ques": "When and where the Apple Vision Pro will be released.",
+      "web": "https://www.apple.com/",
+      "ref": "Available early 2024 in the U.S.",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--20",
+      "site": "Apple",
+      "split": "dev",
+      "ques": "Check the price for an Apple iPhone 14 Plus with 256GB storage in Purple color.",
+      "web": "https://www.apple.com/",
+      "ref": "From $899 or $37.45/mo.per month for 24 mo.months",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--15",
+      "site": "Apple",
+      "split": "dev",
+      "ques": "On Apple's website, how many different types of keyboards are available when customizing your 14-inch MacBook Pro?",
+      "web": "https://www.apple.com/",
+      "ref": "16",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--13",
+      "site": "Apple",
+      "split": "dev",
+      "ques": "How many colors does the latest MacBook Air come in?",
+      "web": "https://www.apple.com/",
+      "ref": "4, Silver, Starlight, Space Gray, and Midnight",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--2",
+      "site": "Apple",
+      "split": "sealed",
+      "ques": "Compare the prices and chips for the iPhone 14 Pro and iPhone 15 Pro models directly from Apple's website.",
+      "web": "https://www.apple.com/",
+      "ref": "14 Pro: Available at authorized resellers, A16 Bionic chip, 6-core CPU, 5-core GPU, 16-core Neural Engine; 15 Pro: Starting at $999, A17 Pro chip, 6-core CPU, 6-core GPU, 16-core Neural Engine",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--14",
+      "site": "Apple",
+      "split": "sealed",
+      "ques": "Identify the upgrade options available for the cheapest base model of the MacBook Pro 14-inch with M3 chip, and calculate the total price difference from the base model to the maximum upgrade (no Pre-Installed Software) offered by Apple.",
+      "web": "https://www.apple.com/",
+      "ref": "Base model:$1599, difference: $1020",
+      "refType": "possible"
+    },
+    {
+      "id": "Apple--36",
+      "site": "Apple",
+      "split": "sealed",
+      "ques": "Browse Apple Music on the entertainment section of the Apple's website, and see which singers' names are included in the pictures on this page.",
+      "web": "https://www.apple.com/",
+      "ref": "Lauren Daigle, Megan Moroney, Olivia Rodrigo ...",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--8",
+      "site": "ArXiv",
+      "split": "dev",
+      "ques": "What is the latest news on ArXiv?",
+      "web": "https://arxiv.org/",
+      "ref": "'Accessibility update: arXiv now offers papers in HTML format' (December 21, 2023)",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--34",
+      "site": "ArXiv",
+      "split": "dev",
+      "ques": "Search for the most recent paper related to non-commutative geometry submitted by an author with the first name John. Provide the title and the abstract.",
+      "web": "https://arxiv.org/",
+      "ref": "Finite spectral triples for the fuzzy torus, Authors: John W. Barrett, James Gaunt, <abstract>",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--0",
+      "site": "ArXiv",
+      "split": "dev",
+      "ques": "Search for the latest preprints about 'quantum computing'.",
+      "web": "https://arxiv.org/",
+      "ref": "Any paper related to quantum computing (latest)",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--9",
+      "site": "ArXiv",
+      "split": "dev",
+      "ques": "Find the latest research paper about neural networks published on ArXiv which has been submitted within the last week.",
+      "web": "https://arxiv.org/",
+      "ref": "Latest paper related to neural networks",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--23",
+      "site": "ArXiv",
+      "split": "dev",
+      "ques": "Determine how many articles with the keyword 'autonomous vehicles' were published in the 'Electrical Engineering and Systems Science' section of ArXiv yesterday.",
+      "web": "https://arxiv.org/",
+      "ref": "eess.SY paper related to autonomous vehicles",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--32",
+      "site": "ArXiv",
+      "split": "dev",
+      "ques": "Locate the latest paper on ArXiv within the 'Nonlinear Sciences - Chaotic Dynamics' category, summarize the abstract and note the submission date.",
+      "web": "https://arxiv.org/",
+      "ref": "latest nlin.CD paper, <abstract>, <date>",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--24",
+      "site": "ArXiv",
+      "split": "dev",
+      "ques": "Identify the most recent paper related to 'graph neural networks' on ArXiv and determine the affiliation of the first author.",
+      "web": "https://arxiv.org/",
+      "ref": "paper related to graph neural networks",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--2",
+      "site": "ArXiv",
+      "split": "sealed",
+      "ques": "Look up the most recent papers related to 'cs.CL', select one and show its abstract.",
+      "web": "https://arxiv.org/",
+      "ref": "cs.CL paper, <abstract>",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--19",
+      "site": "ArXiv",
+      "split": "sealed",
+      "ques": "Which university maintains and manages ArXiv. Accessing the university's website from ArXiv, how many underegraduate students are currently at the university.",
+      "web": "https://arxiv.org/",
+      "ref": "Cornell University, 16071 UNDERGRADUATE STUDENTS",
+      "refType": "possible"
+    },
+    {
+      "id": "ArXiv--20",
+      "site": "ArXiv",
+      "split": "sealed",
+      "ques": "Find the latest paper on 'machine learning in the Statistics section of ArXiv and provide its abstract.",
+      "web": "https://arxiv.org/",
+      "ref": "stat.ML paper, <abstract>",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--12",
+      "site": "BBC News",
+      "split": "dev",
+      "ques": "Find a picture in the travel section that contains food, tell me what the food is called and what region it comes from.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "ramen, Tokyo",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--26",
+      "site": "BBC News",
+      "split": "dev",
+      "ques": "Locate the latest report on BBC News about the impact of recent natural disasters in Asia and summarize the key points and areas affected.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "Earth - Weather & Science, eg. Indonesia hit by some of strongest winds recorded",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--31",
+      "site": "BBC News",
+      "split": "dev",
+      "ques": "Check the Sports section for the result of the most recent Manchester United football match.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "Sunday 11th February, Aston Villa 1:2 Manchester United",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--23",
+      "site": "BBC News",
+      "split": "dev",
+      "ques": "Identify the latest health-related news on BBC News and summarize the main findings or recommendations.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "Innovation - Science & Health, <article>, <summary>",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--39",
+      "site": "BBC News",
+      "split": "dev",
+      "ques": "Check the Horse Racing results in Sport section, browse all the games that took place yesterday and see which one had the highest number of runners.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "eg, 2024-01-30: Chepstow Summer Sessions Handicap Chase, 13 runners",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--11",
+      "site": "BBC News",
+      "split": "dev",
+      "ques": "Find out how many teams are in the Scottish Premiership of the Football Tournament and when did the Hibernian team's most recent match start?",
+      "web": "https://www.bbc.com/news/",
+      "ref": "12 teams, 15:00, 2 Jan 2024",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--24",
+      "site": "BBC News",
+      "split": "dev",
+      "ques": "Search the latest article about space exploration on BBC News and summarize its key points.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "Search for space exploration, eg. SpaceX blasts private firm's lunar lander into orbit",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--13",
+      "site": "BBC News",
+      "split": "sealed",
+      "ques": "Search for recent news related to Trump and summarize the main points.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "<summary> (about Trump)",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--9",
+      "site": "BBC News",
+      "split": "sealed",
+      "ques": "Find out which musician made the headlines in Music News.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "Taylor Swift",
+      "refType": "possible"
+    },
+    {
+      "id": "BBC News--35",
+      "site": "BBC News",
+      "split": "sealed",
+      "ques": "In the Asia section, browse and identify the most recent report about technological advancements and summarize its content.",
+      "web": "https://www.bbc.com/news/",
+      "ref": "News - World - Asia, <article>, <summary>",
+      "refType": "possible"
+    },
+    {
+      "id": "Booking--43",
+      "site": "Booking",
+      "split": "dev",
+      "ques": "Search for properties in Los Angeles, browse the results page to see what filters are available, list some of them.",
+      "web": "https://www.booking.com/",
+      "ref": "Breakfast Included, Wonderful: 9+, Fitness center ...",
+      "refType": "possible"
+    },
+    {
+      "id": "Booking--35",
+      "site": "Booking",
+      "split": "dev",
+      "ques": "Browse the booking website to get inspiration for your next trip, and summarize at least three places mentioned in one of the travel articles.",
+      "web": "https://www.booking.com/",
+      "ref": "Ace Hotel, Downtown Los Angeles; The Hollywood Roosevelt; Hotel Indigo, an IHG Hotel",
+      "refType": "possible"
+    },
+    {
+      "id": "Booking--41",
+      "site": "Booking",
+      "split": "dev",
+      "ques": "Browse Booking's homepage to find out which company it belongs to.",
+      "web": "https://www.booking.com/",
+      "ref": "Booking Holdings Inc.",
+      "refType": "golden"
+    },
+    {
+      "id": "Booking--1",
+      "site": "Booking",
+      "split": "sealed",
+      "ques": "Find the cheapest available hotel room for a three night stay from 1st Jan in Jakarta. The room is for 2 adults, just answer the cheapest hotel room and the price.",
+      "web": "https://www.booking.com/",
+      "ref": "OYO 3755 Sweet Home, US$14",
+      "refType": "possible"
+    },
+    {
+      "id": "Booking--33",
+      "site": "Booking",
+      "split": "sealed",
+      "ques": "Find the Customer Service on the Booking website, browse the questions about cancellation, and tell me 'how do I know whether my booking has been cancelled'.",
+      "web": "https://www.booking.com/",
+      "ref": "After you cancel a booking with us, you should get an email confirming the cancellation. Make sure to check your inbox and spam/junk mail folders. If you don’t receive an email within 24 hours, contact the property to confirm they got your cancellation.",
+      "refType": "golden"
+    },
+    {
+      "id": "Cambridge Dictionary--22",
+      "site": "Cambridge Dictionary",
+      "split": "dev",
+      "ques": "Use the Cambridge Dictionary to find the definition, UK pronunciation, and an example sentence for the word \"quintessential.\"",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "UK: /ˌkwɪn.tɪˈsen.ʃəl/, US:/ˌkwɪn.tɪˈsen.ʃəl/; Def: being the most typical example or most important part of something; Sheep's milk cheese is the quintessential Corsican cheese.",
+      "refType": "possible"
+    },
+    {
+      "id": "Cambridge Dictionary--27",
+      "site": "Cambridge Dictionary",
+      "split": "dev",
+      "ques": "Look up the meaning, pronunciation, and an example sentence of the word \"solitude\" using the Cambridge Dictionary.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "UK: /ˈsɒl.ɪ.tʃuːd/, US: /ˈsɑː.lə.tuːd/; the situation of being alone without other people; After months of solitude at sea it felt strange to be in company.",
+      "refType": "possible"
+    },
+    {
+      "id": "Cambridge Dictionary--31",
+      "site": "Cambridge Dictionary",
+      "split": "dev",
+      "ques": "Look up the use of modal verbs in grammar section for expressing possibility (e.g., 'might', 'could', 'may') and find examples of their usage in sentences on the Cambridge Dictionary.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "She might sell her house; We could have lunch early; It may be possible for him to get home tonight.",
+      "refType": "possible"
+    },
+    {
+      "id": "Cambridge Dictionary--30",
+      "site": "Cambridge Dictionary",
+      "split": "dev",
+      "ques": "Find the grammar for present perfect simple uses in English, including examples of affirmative, negative, and interrogative sentences, on the Cambridge Dictionary website.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "Present perfect simple: uses;  I’ve been there a couple of times before; We haven’t met before, have we?; Have you ever tried to write your name and address with your left hand?",
+      "refType": "possible"
+    },
+    {
+      "id": "Cambridge Dictionary--25",
+      "site": "Cambridge Dictionary",
+      "split": "dev",
+      "ques": "Find two different meanings of the word \"harmony\" in the Cambridge Dictionary.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "Meaning 1: a pleasant musical sound made by different notes being played or sung at the same time; Meaning 2: a situation in which people are peaceful and agree with each other, or when things seem right or suitable together",
+      "refType": "possible"
+    },
+    {
+      "id": "Cambridge Dictionary--38",
+      "site": "Cambridge Dictionary",
+      "split": "dev",
+      "ques": "Go to the Plus section of Cambridge Dictionary, finish a recommended Grammar quiz without login and tell me your final score.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "Action: finish a recommended Grammar quiz",
+      "refType": "possible"
+    },
+    {
+      "id": "Cambridge Dictionary--1",
+      "site": "Cambridge Dictionary",
+      "split": "dev",
+      "ques": "Find the pronunciation, definition, and a sample sentence for the word 'serendipity'.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "UK: /ˌser.ənˈdɪp.ə.ti/, US: /ˌser.ənˈdɪp.ə.t̬i/; the fact of finding interesting or valuable things by chance; There is a real element of serendipity in archaeology.",
+      "refType": "possible"
+    },
+    {
+      "id": "Cambridge Dictionary--6",
+      "site": "Cambridge Dictionary",
+      "split": "sealed",
+      "ques": "Search for the word \"sustainability\" on the Cambridge Dictionary, what is the translation of sustainability into Chinese and French in the dictionary.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "可持续性; durabilité , viabilité",
+      "refType": "golden"
+    },
+    {
+      "id": "Cambridge Dictionary--21",
+      "site": "Cambridge Dictionary",
+      "split": "sealed",
+      "ques": "Search for the word \"ephemeral\" on Cambridge Dictionary and find its translation into Spanish.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "efímero",
+      "refType": "golden"
+    },
+    {
+      "id": "Cambridge Dictionary--23",
+      "site": "Cambridge Dictionary",
+      "split": "sealed",
+      "ques": "Find the US English pronunciation of the word \"meticulous\" using the Cambridge Dictionary and note the International Phonetic Alphabet (IPA) notation, then find one example sentence provided in the dictionary using this word.",
+      "web": "https://dictionary.cambridge.org/",
+      "ref": "US: /məˈtɪk.jə.ləs/; Many hours of meticulous preparation have gone into writing the book.",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--36",
+      "site": "Coursera",
+      "split": "dev",
+      "ques": "Browse Coursera, which universities offer Master of Advanced Study in Engineering degrees? Tell me what is the latest application deadline for this degree?",
+      "web": "https://www.coursera.org/",
+      "ref": "Master of Advanced Study in Engineering; UC Berkeley College of Engineering; Fall 2024; March 1, 2024: Fall 2024 Priority Application Deadline; April 1, 2024: Fall 2024 Final Application Deadline",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--13",
+      "site": "Coursera",
+      "split": "dev",
+      "ques": "Look for a Specialization on Coursera that teaches Python programming, and identify the skills you will learn by taking this Specialization.",
+      "web": "https://www.coursera.org/",
+      "ref": "Python 3 Programming, Specialization; Learn Python 3 basics, from the basics to more advanced concepts like lists and functions; Practice and become skilled at solving problems and fixing errors in your code; Gain the ability to write programs that fetch data from internet APIs and extract useful information.",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--2",
+      "site": "Coursera",
+      "split": "dev",
+      "ques": "Find a Beginner's Spanish Specialization on Coursera and show all the courses in this Specialization.",
+      "web": "https://www.coursera.org/",
+      "ref": "Learn Spanish: Basic Spanish Vocabulary, Specialization; Spanish Vocabulary: Meeting People; Spanish Vocabulary: Cultural Experience; Spanish Vocabulary: Sports, Travel, and the Home; Spanish Vocabulary: Careers and Social Events; Spanish Vocabulary Project",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--15",
+      "site": "Coursera",
+      "split": "dev",
+      "ques": "Find a course on Coursera named 'Introduction to Mathematical Thinking' offered by Stanford, what is the percentage (rounded) of 5 star ratings in reviews and which level has the least percentage?.",
+      "web": "https://www.coursera.org/",
+      "ref": "85%; 2-star",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--29",
+      "site": "Coursera",
+      "split": "dev",
+      "ques": "Browse the Coursera website and find the price required for one year of Coursera Plus. How much is the discount? Then list 3 companies that work with Coursera.",
+      "web": "https://www.coursera.org/",
+      "ref": "$399/year, discount: 59 / month * 12 - 399 = 309; Google, IBM, and Imperial College London ...",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--34",
+      "site": "Coursera",
+      "split": "dev",
+      "ques": "Find the course on Coursera named 'Essentials of Global Health'. Determine the instructor of this course and summarize his bio, note if there are any additional courses he offers on Coursera.",
+      "web": "https://www.coursera.org/",
+      "ref": "Instructor: Richard Skolnik; <summary> of bio; no other course",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--3",
+      "site": "Coursera",
+      "split": "dev",
+      "ques": "Identify a new course or Specialization on Coursera related to Python Data Science, sort the courses by newest, what the first course is and which institution offers it.",
+      "web": "https://www.coursera.org/",
+      "ref": "Data Science with NumPy, Sets, and Dictionaries; Duke University",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--8",
+      "site": "Coursera",
+      "split": "sealed",
+      "ques": "Find a free course related to 'R for Data Science' available on Coursera. Scroll to find a course with the Free tag. What language the course is taught in?",
+      "web": "https://www.coursera.org/",
+      "ref": "Introducción a Data Science: Programación Estadística con R; Taught in Spanish",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--14",
+      "site": "Coursera",
+      "split": "sealed",
+      "ques": "Find a course on Coursera related to Introductory Project Management that includes modules on Agile methodology.",
+      "web": "https://www.coursera.org/",
+      "ref": "Agile Project Management",
+      "refType": "possible"
+    },
+    {
+      "id": "Coursera--23",
+      "site": "Coursera",
+      "split": "sealed",
+      "ques": "Find a course on Coursera about 'Artificial Intelligence Ethics', which has a duration of less than 5 weeks and has been rated 4.5 stars or higher. Provide the course name and the instructor's name.",
+      "web": "https://www.coursera.org/",
+      "ref": "Artificial Intelligence: Ethics & Societal Challenges; Lund University; 4.6 stars; Instructors: Maria Hedlund, Lena Lindström, Erik Persson",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--5",
+      "site": "ESPN",
+      "split": "dev",
+      "ques": "Identify the top scorer in the NBA from the latest completed game and note down the points scored, the team they play for, and their position on the team.",
+      "web": "https://www.espn.com/",
+      "ref": "<player>; <PTS>; <team>; <position> (eg, James Harden; scored 35 points; LA Clippers; Shooting Guard (SG))",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--6",
+      "site": "ESPN",
+      "split": "dev",
+      "ques": "Find the result of the latest basketball game between the Los Angeles Lakers and the Boston Celtics, including the final score and top scorer from the match.",
+      "web": "https://www.espn.com/",
+      "ref": "Los Angeles Lakers vs Boston Celtics, 115 - 126; Kristaps Porzingis",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--4",
+      "site": "ESPN",
+      "split": "dev",
+      "ques": "Check ESPN for the final scores of NBA games that were played yesterday.",
+      "web": "https://www.espn.com/",
+      "ref": "<score> (yesterday)",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--14",
+      "site": "ESPN",
+      "split": "dev",
+      "ques": "Find the latest news about NBA trades or player movements on ESPN and report the most recent trade deal OR player acquisition.",
+      "web": "https://www.espn.com/",
+      "ref": "News about NBA trades",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--13",
+      "site": "ESPN",
+      "split": "dev",
+      "ques": "Identify today's top headline in the Basketball section of ESPN, and summarize the main points of that article.",
+      "web": "https://www.espn.com/",
+      "ref": "<headline>; <summary>",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--8",
+      "site": "ESPN",
+      "split": "dev",
+      "ques": "Find information on ESPN about the top three scoring leaders in the NBA as of the last day of the regular season, and note which teams they play for.",
+      "web": "https://www.espn.com/",
+      "ref": "Joel Embiid (PHI) with 34.4 PPG, Luka Doncic (DAL) with 32.9 PPG, and Giannis Antetokounmpo (MIL) with 31.4 PPG.",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--40",
+      "site": "ESPN",
+      "split": "dev",
+      "ques": "Browse the ESPN+ page from ESPN for a brief summary of what ESPN+ Tools is used for.",
+      "web": "https://www.espn.com/",
+      "ref": "Bracket Predictor, Bracket Analyzer, Custom Dollar Value Generator",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--22",
+      "site": "ESPN",
+      "split": "sealed",
+      "ques": "Find the latest Team transactions in the NBA within the past week.",
+      "web": "https://www.espn.com/",
+      "ref": "Team transaction: eg, February 1, TRANSACTION: Dallas Mavericks, Assigned F Olivier-Maxence Proster to the Texas Legends of the G League.",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--42",
+      "site": "ESPN",
+      "split": "sealed",
+      "ques": "Check out NCAAM standings on ESPN, what are the teams with equal wins and losses in the America East Conference currently?",
+      "web": "https://www.espn.com/",
+      "ref": "check America East Conference on https://www.espn.com/mens-college-basketball/standings",
+      "refType": "possible"
+    },
+    {
+      "id": "ESPN--39",
+      "site": "ESPN",
+      "split": "sealed",
+      "ques": "Check the New York Jets Depth Chart in the NFL section of ESPN and identify the players listed as injured in the 2ND position.",
+      "web": "https://www.espn.com/",
+      "ref": "check IR on https://www.espn.com/nfl/team/depth/_/name/nyj/new-york-jets",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--30",
+      "site": "GitHub",
+      "split": "dev",
+      "ques": "Search for an open-source project related to 'blockchain technology' on GitHub updated in the past 15 days and list the top five contributors.",
+      "web": "https://github.com/",
+      "ref": "eg, aptos-labs/aptos-core, contributors: davidiw, gregnazario, JoshLind, bmwill, rustielin",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--15",
+      "site": "GitHub",
+      "split": "dev",
+      "ques": "Locate a repository on GitHub related to 'quantum computing' that has been updated within the last week and has at least 50 stars. Provide a brief description of the project.",
+      "web": "https://github.com/",
+      "ref": "desireevl/awesome-quantum-computing",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--14",
+      "site": "GitHub",
+      "split": "dev",
+      "ques": "Locate the repository for the open-source project \"vscode\" and identify the top three contributors.",
+      "web": "https://github.com/",
+      "ref": "bpasero; jrieken; mjbvz",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--7",
+      "site": "GitHub",
+      "split": "dev",
+      "ques": "Find the official GitHub repository for ALBERT and show me what files the repo changed in the most recent commit.",
+      "web": "https://github.com/",
+      "ref": "classifier_utils.py and squad_utils.py",
+      "refType": "golden"
+    },
+    {
+      "id": "GitHub--39",
+      "site": "GitHub",
+      "split": "dev",
+      "ques": "Browse the GitHub Trending and find out which developer is currently ranked first this month and the corresponding repository.",
+      "web": "https://github.com/",
+      "ref": "find info on https://github.com/trending/developers",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--25",
+      "site": "GitHub",
+      "split": "dev",
+      "ques": "Search for a 'virtual reality' related repository on GitHub updated in the last 10 days with at least 200 stars and summarize its main objective.",
+      "web": "https://github.com/",
+      "ref": "<repo> (virtual reality stars:>=200), <summary>",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--5",
+      "site": "GitHub",
+      "split": "dev",
+      "ques": "Find a Python repository on GitHub that has been updated in the past 2 days and has at least 500 stars.",
+      "web": "https://github.com/",
+      "ref": "<repo> (stars:\"> 500\" language:Python), then choose recently undated",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--40",
+      "site": "GitHub",
+      "split": "sealed",
+      "ques": "Select Sign up on the GitHub homepage to see if email 'test123@gmail.com' already exists.",
+      "web": "https://github.com/",
+      "ref": "Perform Action. email 'test123@gmail.com' already exists",
+      "refType": "golden"
+    },
+    {
+      "id": "GitHub--33",
+      "site": "GitHub",
+      "split": "sealed",
+      "ques": "Find Customer Stories on the GitHub page and list the 2 stories that appear on the web page.",
+      "web": "https://github.com/",
+      "ref": "Philips builds and deploys digital health technology faster with innersource on GitHub. Shopify keeps pushing eCommerce forward with help from GitHub tools.",
+      "refType": "possible"
+    },
+    {
+      "id": "GitHub--37",
+      "site": "GitHub",
+      "split": "sealed",
+      "ques": "List the 3 features mentioned in GitHub's Copilot product page.",
+      "web": "https://github.com/",
+      "ref": "The AI coding assistant elevating developer workflows. Get AI-based suggestions in real time. Docs that feel tailored for you.",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Flights--40",
+      "site": "Google Flights",
+      "split": "dev",
+      "ques": "Browse destinations on the Google Flights homepage from Seattle, look at destinations on a map, and recommend some famous places to travel that are within a reasonable distance and price.",
+      "web": "https://www.google.com/travel/flights/",
+      "ref": "Seattle to Las Vegas $21, Seattle to Los Angeles $42",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Map--40",
+      "site": "Google Map",
+      "split": "dev",
+      "ques": "Find a restaurant in Boston that eats Boston lobster and asks for a rating of 4.6 or higher, and check out what a one-star review says.",
+      "web": "https://www.google.com/maps/",
+      "ref": "Boston Sail Loft, 4.6; one star review: Not sure about the rest of the seafood here since I left immediately after trying their AWFUL Chowder. I won't call it clam chowder since I didn't see a single piece of clam. This stuff was more like if you heated up half & Half then sprinkle dill and salt in it. It's too bad the tourist think this is how it's supposed to taste.",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Map--4",
+      "site": "Google Map",
+      "split": "dev",
+      "ques": "Plan a trip from Boston Logan Airport to North Station.",
+      "web": "https://www.google.com/maps/",
+      "ref": "Drive via MA-1A S and take about 10 mins (based on real-time traffic conditions)",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Map--8",
+      "site": "Google Map",
+      "split": "dev",
+      "ques": "Find a place to climb within 2 miles of zip code 90028.",
+      "web": "https://www.google.com/maps/",
+      "ref": "Hollywood Boulders",
+      "refType": "golden"
+    },
+    {
+      "id": "Google Map--18",
+      "site": "Google Map",
+      "split": "dev",
+      "ques": "Find a route between Chicago to Los Angeles, then print the route details.",
+      "web": "https://www.google.com/maps/",
+      "ref": "Drive via I-80 W, about 29 hours",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Map--3",
+      "site": "Google Map",
+      "split": "dev",
+      "ques": "The least amount of walking from Central Park Zoo to the Broadway Theater in New York.",
+      "web": "https://www.google.com/maps/",
+      "ref": "Approximately 20 min",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Map--26",
+      "site": "Google Map",
+      "split": "dev",
+      "ques": "Search for Los Angeles on Google Map, try to print the map as PDF and summarize the information on the map.",
+      "web": "https://www.google.com/maps/",
+      "ref": "<Action>, print PDF",
+      "refType": "golden"
+    },
+    {
+      "id": "Google Map--13",
+      "site": "Google Map",
+      "split": "dev",
+      "ques": "Find a parking lot in Gloucester and book a ride from there to North Plymouth, view the map to understand the route better.",
+      "web": "https://www.google.com/maps/",
+      "ref": "Drive via MA-3 N and I-93 N, about 1.5 hours (based on real-time traffic conditions).",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Map--1",
+      "site": "Google Map",
+      "split": "sealed",
+      "ques": "Tell me one bus stop that is nearest to the intersection of main street and Amherst street in Altavista.",
+      "web": "https://www.google.com/maps/",
+      "ref": "'Amherst and 7th' or 'Main Street Middle'",
+      "refType": "golden"
+    },
+    {
+      "id": "Google Map--16",
+      "site": "Google Map",
+      "split": "sealed",
+      "ques": "Find EV charging supported parking closest to Smithsonian museum.",
+      "web": "https://www.google.com/maps/",
+      "ref": "EVgo Charging Station",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Map--29",
+      "site": "Google Map",
+      "split": "sealed",
+      "ques": "Identify bus stops in Ypsilanti, MI, list three of them.",
+      "web": "https://www.google.com/maps/",
+      "ref": "Ypsilanti Transit Center; Ellsworth + Michigan; YTC - Stop 5",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Search--35",
+      "site": "Google Search",
+      "split": "dev",
+      "ques": "Look up the latest research paper related to black holes published in the journal \"Nature Astronomy\".",
+      "web": "https://www.google.com/",
+      "ref": "eg, 19 February 2024, The accretion of a solar mass per day by a 17-billion solar mass black hole",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Search--18",
+      "site": "Google Search",
+      "split": "dev",
+      "ques": "When and where the most recent World Cup was held, and which team was the winner?",
+      "web": "https://www.google.com/",
+      "ref": "Qatar; November 20 to December 18, 2022; Argentina",
+      "refType": "golden"
+    },
+    {
+      "id": "Google Search--41",
+      "site": "Google Search",
+      "split": "dev",
+      "ques": "Look up the current statistics of air pollution level in Los Angeles using Google Search.",
+      "web": "https://www.google.com/",
+      "ref": "current air pollution level in Los Angeles",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Search--42",
+      "site": "Google Search",
+      "split": "dev",
+      "ques": " Use Google Search to find an article that explains the major differences between American English and British English.",
+      "web": "https://www.google.com/",
+      "ref": "The main difference between British English and American English is in pronunciation. Some words are also different in each variety of English, and there are also a few differences in the way they use grammar. Here are five of the most common grammatical differences between British and American English. 1. Present perfect and past simple; 2. got and gotten; 3. Verb forms with collective nouns; 4. have and take; 5. shall",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Search--7",
+      "site": "Google Search",
+      "split": "dev",
+      "ques": "Find the software requirements for iPhones that support AirDrop's ability to continue transmitting over the web when out of range.",
+      "web": "https://www.google.com/",
+      "ref": "IOS 17.1",
+      "refType": "golden"
+    },
+    {
+      "id": "Google Search--10",
+      "site": "Google Search",
+      "split": "dev",
+      "ques": "Find the no. 1 weekly charts ranked artist based on Billboard and tell me 10 most played song by this artist until now.",
+      "web": "https://www.google.com/",
+      "ref": "Taylor Swift, 10 songs (different sources have different results)",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Search--37",
+      "site": "Google Search",
+      "split": "dev",
+      "ques": "Find the current top 3 super-earth planets and give a brief introduction to them.",
+      "web": "https://www.google.com/",
+      "ref": "Gliese 667Cc, Kepler-22b, Kepler-69c",
+      "refType": "possible"
+    },
+    {
+      "id": "Google Search--31",
+      "site": "Google Search",
+      "split": "sealed",
+      "ques": "Discover which year Cristiano Ronaldo scored the most goals in a single season.",
+      "web": "https://www.google.com/",
+      "ref": "2014-15 season",
+      "refType": "golden"
+    },
+    {
+      "id": "Google Search--19",
+      "site": "Google Search",
+      "split": "sealed",
+      "ques": "What are the first 7 bits of the SHA of the Bert's latest commit on GitHub, and what exactly was changed in that commit.",
+      "web": "https://www.google.com/",
+      "ref": "eedf571, Smaller BERT Models",
+      "refType": "golden"
+    },
+    {
+      "id": "Google Search--17",
+      "site": "Google Search",
+      "split": "sealed",
+      "ques": "Tell me the names of Trump's kids",
+      "web": "https://www.google.com/",
+      "ref": "Ivanka Trump, Barron Trump, Donald Trump Jr., Tiffany Trump, Eric Trump",
+      "refType": "golden"
+    },
+    {
+      "id": "Huggingface--8",
+      "site": "Huggingface",
+      "split": "dev",
+      "ques": "Retrieve an example of a pre-trained language model in natural language processing and identify the tasks it is specifically designed for, like translation or text summarization.",
+      "web": "https://huggingface.co/",
+      "ref": "microsoft/phi-2; Text generation",
+      "refType": "possible"
+    },
+    {
+      "id": "Huggingface--28",
+      "site": "Huggingface",
+      "split": "dev",
+      "ques": "Retrieve an example of a pre-trained model on Hugging Face that is optimized for question answering tasks and detail the languages it supports.",
+      "web": "https://huggingface.co/",
+      "ref": "eg, /roberta-base-squad2, language: English",
+      "refType": "possible"
+    },
+    {
+      "id": "Huggingface--7",
+      "site": "Huggingface",
+      "split": "dev",
+      "ques": "Which is the most downloaded audio related dataset on Hugging face currently.",
+      "web": "https://huggingface.co/",
+      "ref": "autumnjohnson/ceti_audio",
+      "refType": "golden"
+    },
+    {
+      "id": "Huggingface--4",
+      "site": "Huggingface",
+      "split": "dev",
+      "ques": "Locate an open-source conversational AI model on Hugging Face, trained in English and list its main features and applications.",
+      "web": "https://huggingface.co/",
+      "ref": "TinyLlama/TinyLlama-1.1B-Chat-v1.0; TinyLlama can be plugged and played in many open-source projects built upon Llama. Besides, TinyLlama is compact with only 1.1B parameters; Applications: cater to a multitude of applications demanding a restricted computation and memory footprint.",
+      "refType": "possible"
+    },
+    {
+      "id": "Huggingface--30",
+      "site": "Huggingface",
+      "split": "dev",
+      "ques": "Identify the most downloaded English-Chinese (en-zh) machine translation model on Huggingface and report its latest performance metrics and usage guidelines.",
+      "web": "https://huggingface.co/",
+      "ref": "Helsinki-NLP/opus-mt-en-zh; testset, BLEU, chr-F: Tatoeba-test.eng.zho, 31.4, 0.268",
+      "refType": "golden"
+    },
+    {
+      "id": "Huggingface--12",
+      "site": "Huggingface",
+      "split": "dev",
+      "ques": "Find the most recently updated machine learning model on Huggingface which focuses on Error Correction.",
+      "web": "https://huggingface.co/",
+      "ref": "Jaagup/errors_corrections_min3",
+      "refType": "possible"
+    },
+    {
+      "id": "Huggingface--6",
+      "site": "Huggingface",
+      "split": "dev",
+      "ques": "Find the model sentence-transformers/all-MiniLM-L6-v2 and use the Inference API on the webpage to get the similarity of the following two sentences: 'Tomorrow is Sunday', 'Eat a burger on Sunday'.",
+      "web": "https://huggingface.co/",
+      "ref": "0.550",
+      "refType": "golden"
+    },
+    {
+      "id": "Huggingface--24",
+      "site": "Huggingface",
+      "split": "sealed",
+      "ques": "Search for a model on Hugging Face with an Apache-2.0 license that has received the highest number of likes.",
+      "web": "https://huggingface.co/",
+      "ref": "mistralai/Mixtral-8x7B-Instruct-v0.1",
+      "refType": "golden"
+    },
+    {
+      "id": "Huggingface--16",
+      "site": "Huggingface",
+      "split": "sealed",
+      "ques": "Find information on the latest (as of today's date) pre-trained language model on Huggingface suitable for text classification and briefly describe its intended use case and architecture.",
+      "web": "https://huggingface.co/",
+      "ref": "<model> (today, text classification)",
+      "refType": "possible"
+    },
+    {
+      "id": "Huggingface--38",
+      "site": "Huggingface",
+      "split": "sealed",
+      "ques": "Investigate the 'transformers' library in the Hugging Face documentation, focusing on how to add new tokens to a tokenizer.",
+      "web": "https://huggingface.co/",
+      "ref": "use add_tokens method",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--34",
+      "site": "Wolfram Alpha",
+      "split": "dev",
+      "ques": "Calculate the mass of Jupiter compared to Earth using Wolfram Alpha. Also, find the length of one day on Jupiter.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "317.8 times that of Earth, and the length of one day on Jupiter is approximately 9.925 hours",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--32",
+      "site": "Wolfram Alpha",
+      "split": "dev",
+      "ques": "Print all prime numbers between 1000 and 1200 using Wolfram alpha.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "1009, 1013, 1019, 1021, 1031, 1033, 1039, 1049, 1051, 1061, 1063, 1069, 1087, 1091, 1093, 1097, 1103, 1109, 1117, 1123, 1129, 1151, 1153, 1163, 1171, 1181, 1187, 1193.",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--27",
+      "site": "Wolfram Alpha",
+      "split": "dev",
+      "ques": "Display the thermal conductivity of Copper (Cu) and Aluminum (Al) at 25 degrees Celsius.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "401.2 W/(m K); 236.9 W/(m K)",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--40",
+      "site": "Wolfram Alpha",
+      "split": "dev",
+      "ques": "Approximate amount of fat burned by a 28yo, 172cm tall, 70kg woman running for 30min at a pace of 6min/mile.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "around 0.078 kg",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--41",
+      "site": "Wolfram Alpha",
+      "split": "dev",
+      "ques": "What is the approximate Heart Rate Reserve of a 50 year old man who has a heart rate of 60bpm at rest.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "110 bpm",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--38",
+      "site": "Wolfram Alpha",
+      "split": "dev",
+      "ques": "Compute the length of a curve defined by y = 2x^3 - 3x^2 + 4x - 5 from x = 0 to x = 3.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "around 39.2",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--11",
+      "site": "Wolfram Alpha",
+      "split": "dev",
+      "ques": "Show the electrical resistivity of UNS A92024 and UNS G10800 at 20 degrees Celsius.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "UNS A92024: 4.9×10^-6 Ω cm (ohm centimeters) (at 20 °C); UNS G10800: 1.8×10^-5 Ω cm (ohm centimeters)",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--16",
+      "site": "Wolfram Alpha",
+      "split": "sealed",
+      "ques": "Weight lose for a male with current weight 90 kg, 40 year old, 175 cm. If he intakes 1500 calories every day, how long will it take to lose 17 kg.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "intake 1500 Cal/d for 3 months 12 days to lose 17 kg with a sedentary activity level",
+      "refType": "possible"
+    },
+    {
+      "id": "Wolfram Alpha--35",
+      "site": "Wolfram Alpha",
+      "split": "sealed",
+      "ques": "Calculate the determinant of a 6x6 Hilbert matrix.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "1/186313420339200000",
+      "refType": "golden"
+    },
+    {
+      "id": "Wolfram Alpha--6",
+      "site": "Wolfram Alpha",
+      "split": "sealed",
+      "ques": "Simplify x^5-20x^4+163x^3-676x^2+1424x-1209 so that it has fewer items.",
+      "web": "https://www.wolframalpha.com/",
+      "ref": "7 + 3 (-4 + x)^3 + (-4 + x)^5",
+      "refType": "golden"
+    }
+  ]
+}

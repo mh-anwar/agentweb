@@ -41,6 +41,17 @@ export const BIN = {
   playwrightCli: join(NM, '@playwright/cli/playwright-cli.js'),
 };
 
+/**
+ * browser-use 1.x MCP server (pinned). `uvx` caches the environment under ~/.cache/uv; nothing is
+ * installed system-wide. Tools: browser_exec, browser_screenshot, browser_login, browser_feedback.
+ * No LLM runs inside it. Needs no cloud login for a local browser; run-agent.ts attaches it to CHROME by CDP.
+ */
+export const BROWSER_USE = {
+  version: '1.0.2',
+  command: join(homedir(), '.local/bin/uvx'),
+  args: ['--from', 'browser-use[cli]==1.0.2', 'browser-use', '--cli-mcp'],
+};
+
 /** Directory holding `agent-browser` and `playwright-cli` shims, put first on PATH for CLI runs. */
 export const CLI_BIN_DIR = join(NM, '.bin');
 
@@ -201,6 +212,14 @@ export interface CliTool {
   /** Bash permission rule, e.g. Bash(agent-browser:*) */
   bashRule: string;
 }
+
+/**
+ * Read-only text filters a CLI agent may pipe the tool's output into. Claude Code checks every
+ * command of a pipeline against the allowlist, so without these `agent-browser snapshot | grep x`
+ * is denied. Intended for stdin filtering only; the system prompt says so. (GNU sed can write files
+ * or exec via -i / the `e` flag, so this is a convenience allowance, not a sandbox; the run's cwd is a throwaway dir.)
+ */
+export const CLI_PIPE_FILTERS = ['head', 'tail', 'grep', 'sed', 'jq', 'wc', 'sort', 'uniq', 'cut'].map((c) => `Bash(${c}:*)`);
 
 export const CLI_TOOLS: CliTool[] = [
   {

@@ -11,13 +11,17 @@
 // The stream-json transcript is parsed to count tool calls and the size of what tools returned.
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, accessSync, constants, createWriteStream } from 'node:fs';
+import { readdirSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, cpSync, accessSync, constants, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:net';
 import {
   BIN,
   CLI_TOOLS,
+  CHROME,
+  BROWSER_USE,
+  CLI_PIPE_FILTERS,
   AGENT_BROWSER_ENV,
   MCP_VARIANTS,
   OUT,
@@ -35,6 +39,7 @@ export type ToolId =
   | 'chrome-devtools-mcp-slim'
   | 'agent-browser-mcp'
   | 'agentweb'
+  | 'browser-use'
   | 'agent-browser'
   | 'playwright-cli';
 
@@ -112,6 +117,73 @@ interface Prepared {
   args: string[];
   env: Record<string, string>;
   cleanup: () => Promise<void>;
+  /** Awaited before claude starts (e.g. a browser the tool attaches to must be accepting connections). */
+  ready?: Promise<void>;
+}
+
+function freePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const s = createServer();
+    s.on('error', reject);
+    s.listen(0, '127.0.0.1', () => {
+      const p = (s.address() as { port: number }).port;
+      s.close(() => resolve(p));
+    });
+  });
+}
+
+/**
+ * browser-use 1.x ships `browser-use --cli-mcp`: browser_exec (Python over the browser-harness CDP
+ * helpers), browser_screenshot, and two account tools. None runs an LLM; the agent is the one model.
+ * It attaches to a Chrome by BU_CDP_URL, so give it the shared Chromium, headless, on a private port.
+ */
+async function prepareBrowserUse(common: string[], root: string): Promise<Prepared> {
+  const port = await freePort();
+  const chrome = spawn(
+    CHROME,
+    ['--headless=new', '--no-sandbox', '--disable-dev-shm-usage', `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1',
+     `--user-data-dir=${join(root, 'chrome-profile')}`, '--no-first-run', '--no-default-browser-check', 'about:blank'],
+    { stdio: 'ignore', detached: true },
+  );
+  const env = {
+    BU_CDP_URL: `http://127.0.0.1:${port}`,
+    BU_NAME: `aw-${randomUUID().slice(0, 8)}`,
+    BH_HOME: join(root, 'bh-home'),
+    BH_TELEMETRY: '0',
+    BROWSER_HARNESS_TELEMETRY: '0',
+    ANONYMIZED_TELEMETRY: 'false',
+    BROWSER_USE_LOGGING_LEVEL: 'result',
+  };
+  const cfgPath = join(root, 'mcp.json');
+  writeFileSync(cfgPath, JSON.stringify({ mcpServers: { 'browser-use': { type: 'stdio', command: BROWSER_USE.command, args: BROWSER_USE.args, env } } }, null, 2));
+  const ready = (async () => {
+    for (let i = 0; i < 100; i++) {
+      try {
+        if ((await fetch(`http://127.0.0.1:${port}/json/version`)).ok) return;
+      } catch {}
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error('chromium for browser-use did not start');
+  })();
+  return {
+    args: [...common, '--mcp-config', cfgPath, '--tools', '', '--allowedTools', 'mcp__browser-use'],
+    env: {},
+    ready,
+    cleanup: async () => {
+      try {
+        process.kill(-chrome.pid!, 'SIGKILL');
+      } catch {}
+      // The browser-harness daemon may outlive its MCP parent; stop it by the pid file in its private home.
+      try {
+        const dir = join(env.BH_HOME, 'runtime');
+        for (const f of readdirSync(dir)) {
+          if (!f.endsWith('.pid')) continue;
+          const pid = parseInt(readFileSync(join(dir, f), 'utf8').replace(/[^0-9]+/, ' ').trim(), 10);
+          if (pid > 1) process.kill(pid, 'SIGKILL');
+        }
+      } catch {}
+    },
+  };
 }
 
 function cliTool(id: string): CliTool | undefined {
@@ -125,14 +197,14 @@ function skillPrompt(t: CliTool, cwd: string): string {
     `The \`${t.bin}\` command is installed and on PATH. Its skill is installed at ${join(cwd, '.claude/skills', t.skillName)}/ and its SKILL.md follows.`,
     // Harness rule, stated so the agent is not surprised by denials (an MCP agent sees its tool
     // list; a shell agent otherwise cannot know which commands the permission rule admits).
-    `In this environment the Bash tool may run only \`${t.bin}\` commands, optionally piped into head/grep. Other programs (curl, python, node, ...), shell variable assignments and command substitution are denied.`,
+    `In this environment the Bash tool may run only \`${t.bin}\` commands, optionally piped into head, tail, grep, sed, jq, wc, sort, uniq or cut. Other programs (curl, python, node, ...), shell variable assignments and command substitution are denied.`,
     '',
     body,
   ].join('\n');
 }
 
 /** Build the claude argv/env for a tool. `root` is a private temp dir for helper files. */
-function prepare(input: AgentTaskInput, cwd: string, root: string): Prepared {
+async function prepare(input: AgentTaskInput, cwd: string, root: string): Promise<Prepared> {
   const common = [
     '--model',
     input.model ?? 'haiku',
@@ -155,6 +227,8 @@ function prepare(input: AgentTaskInput, cwd: string, root: string): Prepared {
   if (input.tool === 'none') {
     return { args: [...common, '--tools', ''], env, cleanup };
   }
+
+  if (input.tool === 'browser-use') return prepareBrowserUse(common, root);
 
   const v: McpVariant | undefined = MCP_VARIANTS.find((x) => x.id === input.tool);
   if (v) {
@@ -233,6 +307,7 @@ process.exit(result.status ?? 1);
       'Bash,Read',
       '--allowedTools',
       t.bashRule,
+      ...CLI_PIPE_FILTERS,
       'Read',
       '--append-system-prompt',
       skillPrompt(t, cwd),
@@ -357,8 +432,10 @@ export async function runAgentTask(input: AgentTaskInput): Promise<AgentTaskResu
 
   let prep: Prepared;
   try {
-    prep = prepare(input, cwd, root);
+    prep = await prepare(input, cwd, root);
+    await prep.ready;
   } catch (e) {
+    await (prep as Prepared | undefined)?.cleanup().catch(() => {});
     rmSync(root, { recursive: true, force: true });
     throw e;
   }
