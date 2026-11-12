@@ -42,7 +42,8 @@ export function formatReport(s: Summary, o: { verbose?: boolean } = {}): string 
     const f = t.failure!;
     out.push(`✗ ${t.name}  ${t.file}${f.line ? ':' + f.line : ''}${how(t)}`);
     if (f.step) out.push(`  step:  ${f.step}`);
-    out.push(`  error: ${f.message}`);
+    // a check that lists several things (overflow, audit, console) keeps one per line under the message
+    out.push(`  error: ${f.message.split('\n').join('\n         ')}`);
     if (f.excerpt.trim()) out.push('  page:', clip(f.excerpt));
   }
   if (o.verbose && s.resources) out.push(`resources: ${(s.resources.cpuMs / 1000).toFixed(1)} s CPU, ${s.resources.peakRssMb} MiB peak memory, up to ${s.resources.processes} processes (whole process tree, sampled)`);

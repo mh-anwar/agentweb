@@ -244,7 +244,22 @@ export type Action =
   | { do: 'dialog'; accept: boolean; text?: string }
   /** ask the person at the browser to do something in this tab, and wait until the page changes (or waitMs passes) */
   | { do: 'handoff'; message: string; waitMs: number }
-  | { do: 'shot'; full?: boolean; n?: number; pdf?: boolean; save?: boolean }
+  | {
+      do: 'shot';
+      full?: boolean;
+      n?: number;
+      pdf?: boolean;
+      save?: boolean;
+      /** a screenshot at this viewport width (src/checks): full size, layout given a moment, the width in the file name */
+      w?: number;
+      /** with save: keep the file and do not return the image */
+      quiet?: boolean;
+      /** draw these element numbers (live node id -> the number the text view shows) onto the picture */
+      labels?: { n: number; num: number }[];
+    }
+  /** page-side checks of src/checks: overflow, audit, problems (console/requests), imgdiff */
+  | { do: 'probe'; what: 'overflow' | 'audit' | 'problems' | 'imgdiff'; args?: Record<string, unknown> }
+  | { do: 'record'; op: 'start' | 'stop'; name?: string }
   | { do: 'upload'; n: number; files: { name: string; mime: string; data: string }[] }
   | { do: 'drop'; n: number; files: { name: string; mime: string; data: string }[] }
   | { do: 'har'; name: string };

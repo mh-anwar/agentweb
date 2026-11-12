@@ -609,7 +609,7 @@ function clipTokens(text: string, tokens: number): string {
 }
 
 /** Load the current page in the chrome engine when it is not already there (verbs that only a browser can do). */
-async function needChrome(rc: RunCtx, what: string, anyBrowser = false): Promise<void> {
+export async function needChrome(rc: RunCtx, what: string, anyBrowser = false): Promise<void> {
   const tier = rc.rec.page?.tier;
   if (rc.rec.page && rc.isLive() && (tier === 'chrome' || (anyBrowser && isBrowser(tier)))) return void (await rc.ensureLive());
   let target: Tier | undefined = 'chrome';
@@ -862,6 +862,12 @@ const VERBS: Record<string, VerbHandler> = {
     const url = o.url !== undefined ? String(o.url) : undefined;
     const title = o.title !== undefined ? String(o.title) : undefined;
     const nWant = o.n ?? o.count;
+    // expect(overflow=0, audit=0, console=0, requests=0): the page checks of src/checks
+    const checks = ['overflow', 'no_overflow', 'audit', 'console', 'requests'].some((k) => o[k] !== undefined) ? rc.rt.verbHandler('expect_checks') : undefined;
+    if (checks) {
+      await checks(rc, step);
+      if (!own && not === undefined && url === undefined && title === undefined) return;
+    }
     if (!own && not === undefined && url === undefined && title === undefined) throw new AwError('bad_request', "expect needs text: expect('Order placed') or expect(not='Error'), expect(url='/cart')");
     const timeoutMs = o.timeout === undefined ? EXPECT_TIMEOUT_MS : Math.min(Number(o.timeout) < 100 ? Number(o.timeout) * 1000 : Number(o.timeout), 60000);
     // on a script engine the page may still be rendering: look again until it holds or the time is up
@@ -1090,6 +1096,9 @@ const VERBS: Record<string, VerbHandler> = {
 
   /** shot() · shot(12) one element · shot(full=1) whole page · shot(pdf=1) · shot(save=1) also keep the file */
   async shot(rc, step) {
+    // shot(widths='375,768', save=1) and shot(annotate=1) are in src/checks
+    const more = step.opts.widths !== undefined || truthy(step.opts.annotate) ? rc.rt.verbHandler('shot_more') : undefined;
+    if (more) return more(rc, step);
     const n = typeof step.args[0] === 'number' || typeof step.args[0] === 'string';
     const pdf = truthy(step.opts.pdf);
     await needChrome(rc, 'screenshots', !pdf);

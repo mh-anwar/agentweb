@@ -10,6 +10,8 @@ import { AwError } from '../../types.ts';
 import { fileStem, urlMatcher } from '../../netcontrol.ts';
 import { hostMatcher, TRACKER_HOSTS } from './blocklist.ts';
 import { connect } from './cdp.ts';
+import { labelsOff, labelsOn, relayout, runCheck } from './checks.ts';
+import { recordStart, recordStop } from './record.ts';
 import { chordEvents, parseChord } from './keys.ts';
 import { findBrowser, type Browser } from './launch.ts';
 import { PageDriver, type DriverOptions } from './page.ts';
@@ -457,13 +459,15 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     return `${path} (${bytes.length} bytes)`;
   }
 
-  async function shot(d: PageDriver, a: { full?: boolean; n?: number; pdf?: boolean; save?: boolean }, out: Out): Promise<Loaded['image'] | undefined> {
+  async function shot(d: PageDriver, a: Extract<Action, { do: 'shot' }>, out: Out): Promise<Loaded['image'] | undefined> {
     if (a.pdf) {
       const r = await d.s.send<{ data: string }>('Page.printToPDF', { printBackground: true, preferCSSPageSize: true }, 30_000);
       out.value = 'saved PDF: ' + keep(d, Buffer.from(r.data, 'base64'), 'page', 'pdf');
       return undefined;
     }
     const MAX_W = 1024;
+    // a picture at a given viewport width (shot(widths=…)) is kept at full size: it is a file, not a message
+    if (a.w !== undefined) await relayout(d);
     let clipRect: { x: number; y: number; width: number; height: number; scale: number } | undefined;
     let beyond = false;
     if (a.n !== undefined) {
@@ -485,9 +489,17 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
       clipRect = { x: vv.pageX ?? 0, y: vv.pageY ?? 0, width: v.width, height: v.height, scale: Math.min(1, MAX_W / v.width) };
       beyond = true;
     }
-    const r = await d.s.send<{ data: string }>('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip: clipRect, captureBeyondViewport: beyond, optimizeForSpeed: true });
-    if (a.save) out.value = 'saved screenshot: ' + keep(d, Buffer.from(r.data, 'base64'), 'shot', 'jpg');
-    return { mime: 'image/jpeg', data: r.data };
+    if (a.w !== undefined) clipRect.scale = 1;
+    let r: { data: string };
+    try {
+      // element numbers are drawn for this picture only and taken off again before anything else happens
+      if (a.labels?.length) await labelsOn(d, a.labels, { x: clipRect.x, y: clipRect.y, w: clipRect.width, h: clipRect.height });
+      r = await d.s.send<{ data: string }>('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip: clipRect, captureBeyondViewport: beyond, optimizeForSpeed: true });
+    } finally {
+      if (a.labels?.length) await labelsOff(d);
+    }
+    if (a.save) out.value = 'saved screenshot: ' + keep(d, Buffer.from(r.data, 'base64'), a.w !== undefined ? `shot-w${a.w}` : 'shot', 'jpg');
+    return a.quiet && a.save ? undefined : { mime: 'image/jpeg', data: r.data };
   }
 
   async function perform(slot: Slot<PageDriver>, action: Action, deadline: number, out: Out): Promise<Loaded['image'] | undefined> {
@@ -586,6 +598,12 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         return;
       case 'shot':
         return shot(d, action, out);
+      case 'probe':
+        out.value = await runCheck(d, action);
+        return;
+      case 'record':
+        out.value = action.op === 'start' ? await recordStart(d, action.name) : await recordStop(d);
+        return;
       default:
         throw new AwError('bad_request', `unknown action "${(action as { do: string }).do}"`);
     }

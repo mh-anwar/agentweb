@@ -9,6 +9,7 @@ import { parseProgram, type Arg, type Step } from '../dsl.ts';
 import { liveId, SESSION_NS, type SessionRecord } from '../session.ts';
 import type { RuntimeImpl } from '../runtime.ts';
 import { baseName, parseTestFile, type TestCase, type TestStep } from './parse.ts';
+import { compareScreenshot, SCREENSHOT } from './screenshots.ts';
 
 export interface RunOptions {
   /** overrides every test's own `# base:` */
@@ -194,6 +195,8 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
   const tiers: string[] = [];
   const engine = o.engine ?? tc.engine;
   const steps: TestStep[] = [];
+  // `# console: clean` needs the browser's own console from the first page on
+  if (tc.console && !engine) steps.push({ line: tc.line, src: 'engine("chrome")' });
   if (engine && engine !== 'auto') steps.push({ line: tc.line, src: `engine(${JSON.stringify(engine)})` });
   if (tc.profile) steps.push({ line: tc.line, src: `profile(${JSON.stringify(tc.profile)})` });
   if (tc.viewport && rt.verbHandler('viewport')) steps.push({ line: tc.line, src: `viewport(${JSON.stringify(tc.viewport)})` });
@@ -201,7 +204,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
 
   const fail = async (st: TestStep, message: string, excerpt?: string) => {
     res.ok = false;
-    res.failure = { line: st.line, step: st.src, message: message.replace(/\s+/g, ' ').trim(), excerpt: excerpt ?? (await pageExcerpt(rt, sid, o.excerptTokens)) };
+    res.failure = { line: st.line, step: st.src, message: message.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n'), excerpt: excerpt ?? (await pageExcerpt(rt, sid, o.excerptTokens)) };
   };
 
   const hook = async (cmds: string[] | undefined, what: string): Promise<boolean> => {
@@ -248,6 +251,19 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
           }
           if (typeof ex.opts.as === 'string') vars[ex.opts.as] = r.out.trim();
           else Object.assign(vars, varsFrom(r.out));
+          continue;
+        }
+        if (SCREENSHOT.test(st.src)) {
+          // screenshot('name', widths='375,768', threshold=0.01): compared with a saved picture, like snapshot()
+          const sc = parseProgram(st.src)[0];
+          res.steps++;
+          const v = await compareScreenshot(rt, sid, tc, sc, o, deadline);
+          if (v.tier && tiers[tiers.length - 1] !== v.tier) tiers.push(v.tier);
+          if (v.wrote) (res.wrote ??= []).push(...v.wrote);
+          if (v.failure) {
+            await fail(st0, v.failure, '');
+            break;
+          }
           continue;
         }
         if (snap) step = { verb: 'view', args: [], opts: {}, src: st.src };
@@ -299,6 +315,15 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         break;
       }
     }
+    if (res.ok && tc.console) {
+      // `# console: clean`: no console errors (or, with warn, warnings) on any page this test visited
+      const allow = tc.console.allow ? `, allow=${JSON.stringify(tc.console.allow)}` : '';
+      const src = `expect(console=${tc.console.warn ? "'warn'" : 0}, all=1${allow})`;
+      const r = await rt.run(sid, src, { budget: o.excerptTokens, signal: deadline });
+      res.steps++;
+      if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
+      if (!r.ok) await fail({ line: tc.line, src: `# console: clean${tc.console.warn ? ', warn' : ''}${tc.console.allow ? ', allow=' + tc.console.allow : ''}` }, firstError(r.text, src), '');
+    }
   } finally {
     if (tc.teardown?.length) await hook(tc.teardown, 'teardown');
     if (tiers.length) res.engine = tiers[tiers.length - 1];
@@ -323,12 +348,19 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
 }
 
 /** "✗ <src> — message" is the first line of a failed run. */
-function firstError(text: string, src: string): string {
+export function firstError(text: string, src: string): string {
   const line = text.split('\n')[0] ?? '';
   const m = /^✗ (.*)$/.exec(line);
   if (!m) return line || 'step failed';
   const i = m[1].indexOf(' — ');
   const body = m[1].startsWith(src) && m[1].slice(src.length).startsWith(' — ') ? m[1].slice(src.length + 3) : i >= 0 ? m[1].slice(i + 3) : m[1];
+  // the checks of expect() (overflow, audit, console, requests) list what they found on indented lines
+  if (/^expect\(/.test(src)) {
+    const more: string[] = [];
+    const lines = text.split('\n');
+    for (let k = 1; k < lines.length && /^ {2}\S/.test(lines[k]); k++) more.push(lines[k].trim());
+    if (more.length) return body + '\n' + more.join('\n');
+  }
   return body;
 }
 

@@ -1,6 +1,6 @@
 // Test files. Plain text, one file may hold several tests:
 //
-//     # base: http://localhost:3000        file headers (also: profile, viewport, timeout, engine, setup, teardown)
+//     # base: http://localhost:3000        file headers (also: profile, viewport, timeout, engine, console, setup, teardown)
 //     # profile: parent
 //
 //     ## sign in works                     a test; its steps follow, one per line or ';'-separated
@@ -39,12 +39,33 @@ export interface TestCase {
   /** shell commands run once before the file's first test / after its last (`# setup:` / `# teardown:` at the top) */
   fileSetup?: string[];
   fileTeardown?: string[];
+  /** `# console: clean`: expect(console=0) is checked at the end of the test, over every page it visited */
+  console?: ConsoleRule;
   steps: TestStep[];
   /** line of the test's `## ` header (or 1) */
   line: number;
 }
 
-const HEADER = /^#\s*(name|base|profile|viewport|timeout|skip|engine|setup|teardown)\s*:\s*(.*?)\s*$/i;
+export interface ConsoleRule {
+  /** console='warn': warnings fail too */
+  warn?: boolean;
+  /** messages containing any of these are ignored */
+  allow?: string;
+}
+
+/** `clean` · `clean, warn` · `clean, allow=favicon,hot-update` · `off` (switches a file-level rule off for one test) */
+export function parseConsoleRule(value: string): ConsoleRule | undefined {
+  const m = /^clean\b(.*)$/i.exec(value.trim());
+  if (!m) return undefined;
+  const rule: ConsoleRule = {};
+  const allow = /(?:^|,)\s*allow\s*=\s*(.*)$/i.exec(m[1]);
+  const rest = allow ? m[1].slice(0, allow.index) : m[1];
+  if (/\bwarn/i.test(rest)) rule.warn = true;
+  if (allow?.[1].trim()) rule.allow = allow[1].trim();
+  return rule;
+}
+
+const HEADER = /^#\s*(name|base|profile|viewport|timeout|skip|engine|console|setup|teardown)\s*:\s*(.*?)\s*$/i;
 const COMMENT = /^(#|\/\/)/;
 
 interface Meta {
@@ -55,6 +76,7 @@ interface Meta {
   timeoutMs?: number;
   skip?: boolean;
   engine?: string;
+  console?: ConsoleRule | null;
   setup?: string[];
   teardown?: string[];
 }
@@ -68,6 +90,7 @@ function applyHeader(m: Meta, key: string, value: string) {
     case 'timeout': m.timeoutMs = (/ms$/i.test(value) ? parseFloat(value) : parseFloat(value) * 1000) || undefined; break;
     case 'skip': m.skip = !/^(0|false|no)$/i.test(value); break;
     case 'engine': m.engine = value.toLowerCase() || undefined; break;
+    case 'console': m.console = parseConsoleRule(value) ?? null; break;
     case 'setup': if (value) (m.setup ??= []).push(value); break;
     case 'teardown': if (value) (m.teardown ??= []).push(value); break;
   }
@@ -93,7 +116,7 @@ export function parseTestFile(text: string, file: string): TestCase[] {
       const m = { ...fileMeta, ...cur.meta };
       // a file without sections is one test: its headers are the file's, and its hooks run once either way
       const own = sections ? cur.meta : {};
-      cases.push({ file, name: cur.name ?? m.name ?? baseName(file), base: m.base, profile: m.profile, viewport: m.viewport, timeoutMs: m.timeoutMs, skip: m.skip, engine: m.engine, setup: own.setup, teardown: own.teardown, fileSetup: fileMeta.setup, fileTeardown: fileMeta.teardown, steps: cur.steps, line: cur.line });
+      cases.push({ file, name: cur.name ?? m.name ?? baseName(file), base: m.base, profile: m.profile, viewport: m.viewport, timeoutMs: m.timeoutMs, skip: m.skip, engine: m.engine, console: m.console ?? undefined, setup: own.setup, teardown: own.teardown, fileSetup: fileMeta.setup, fileTeardown: fileMeta.teardown, steps: cur.steps, line: cur.line });
     }
     cur = undefined;
   };
