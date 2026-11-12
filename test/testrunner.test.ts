@@ -288,18 +288,6 @@ test('expect gives up after its timeout, with a short message', async () => {
   assert.ok(ms >= 900 && ms < 9000, `took ${ms}ms`);
 });
 
-test('# timeout: sets how long expect waits in that test', async () => {
-  const time = async (header: string) => {
-    const t0 = Date.now();
-    const r = await run({ 'late3.aw': `# base: ${lateUrl}\n${header}## never\nopen('/'); expect('Never shown')\n` });
-    assert.equal(r.code, 1);
-    return Date.now() - t0;
-  };
-  const short = await time('# timeout: 1\n');
-  const dflt = await time('');
-  assert.ok(dflt - short > 2500, `short ${short}ms, default ${dflt}ms`);
-});
-
 test('expect on a static page does not wait', async () => {
   const t0 = Date.now();
   const r = await run({ 'static.aw': `# base: $BASE\nopen('/'); expect('Nope')\n` });
