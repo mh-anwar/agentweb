@@ -18,7 +18,7 @@ export interface PlaywrightEngineOptions {
   browser: BrowserName;
   /** browser binary to use instead of Playwright's own build (must be a Playwright-patched build) */
   executable?: string;
-  /** live contexts kept at most (default 8) */
+  /** live contexts kept at most (default 4: a Firefox page costs ~1.5x and a WebKit page ~2.5x a Chromium one) */
   maxContexts?: number;
   /** a context untouched for this long is disposed (default 10 minutes) */
   idleMs?: number;
@@ -102,7 +102,7 @@ interface Slot {
 export function createPlaywrightEngine(opts: PlaywrightEngineOptions): PlaywrightEngine {
   const name = opts.browser;
   const tier = name as Tier;
-  const maxContexts = Math.max(1, opts.maxContexts ?? 8);
+  const maxContexts = Math.max(1, opts.maxContexts ?? 4);
   const idleMs = Math.max(0, opts.idleMs ?? 600_000);
   const browserIdleMs = Math.max(0, opts.browserIdleMs ?? 120_000);
   const hosts = opts.blockHosts === false ? [] : [...TRACKER_HOSTS, ...(opts.blockHosts ?? [])];

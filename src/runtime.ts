@@ -279,7 +279,8 @@ export class RunCtx {
       page = await this.toPage(loaded, tier);
       const hollow = tier === 'ghost' && !loaded.escalate && hollowMain(page);
       // a real browser that is shown a bot wall: another browser engine may be let through
-      const wall = isBrowser(tier) && method === 'GET' && !this.rec.engine ? browserWall(loaded) : undefined;
+      // one retry only: a wall that two browser engines both get is not going to open for a third
+      const wall = isBrowser(tier) && method === 'GET' && !this.rec.engine && ![...tried].some((t) => t !== tier && isBrowser(t)) ? browserWall(loaded) : undefined;
       if (wall) {
         const alt = await this.otherBrowser(tried);
         this.rt.count('browser_walls');
