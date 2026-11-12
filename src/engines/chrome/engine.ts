@@ -11,6 +11,7 @@ import { fileStem, urlMatcher } from '../../netcontrol.ts';
 import { hostMatcher, TRACKER_HOSTS } from './blocklist.ts';
 import { connect } from './cdp.ts';
 import { labelsOff, labelsOn, relayout, runCheck } from './checks.ts';
+import { recordStart, recordStop } from './record.ts';
 import { chordEvents, parseChord } from './keys.ts';
 import { findBrowser, type Browser } from './launch.ts';
 import { PageDriver, type DriverOptions } from './page.ts';
@@ -599,6 +600,9 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         return shot(d, action, out);
       case 'probe':
         out.value = await runCheck(d, action);
+        return;
+      case 'record':
+        out.value = action.op === 'start' ? await recordStart(d, action.name) : await recordStop(d);
         return;
       default:
         throw new AwError('bad_request', `unknown action "${(action as { do: string }).do}"`);

@@ -8,7 +8,9 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
 import { createAgentweb } from '../src/index.ts';
+import { decodePng, encodeGif } from '../src/checks/gif.ts';
 import { imageSize, parseWidths } from '../src/checks/shots.ts';
 import { parseRules, auditLines, overflowLines } from '../src/checks/report.ts';
 import { axeLines, problemLines } from '../src/checks/index.ts';
@@ -56,6 +58,7 @@ const SITE: Record<string, string> = {
   '/quiet': page('Quiet', `<main><h1>Quiet</h1></main><script>console.log('only a log');fetch('/api/items')</script><script src="https://www.google-analytics.com/analytics.js"></script>`),
   '/warnonly': page('Warn', `<main><h1>Warn</h1></main><script>console.warn('deprecated thing')</script>`),
   '/hot': page('Hot', `<main><h1>Hot</h1></main><script>fetch('/static/x.hot-update.json').catch(()=>{});console.error('favicon trouble')</script>`),
+  '/anim': page('Anim', `<main><h1>Anim</h1><div id="b" style="width:300px;height:200px;background:#e22"></div></main><script>let i=0;setInterval(()=>{document.getElementById('b').style.background=['#e22','#2a2','#22e','#ee2'][++i%4]},120)</script>`),
   '/ok': page('OK', '<main><h1>OK</h1></main>'),
   '/tall': page('Tall', `<main><h1>Tall</h1><div style="height:1500px;background:#ccf">tall</div><div id="w" style="width:50%;background:#fcc">half</div></main>`),
 };
@@ -338,5 +341,128 @@ describe('shot(annotate=1)', { concurrency: false }, () => {
     assert.match(r.text, /(^|\n)0\n/, 'the labels are removed again');
     const plain = await run('an1', 'shot()');
     assert.notEqual(r.images![0].data, plain.images![0].data, 'the annotated picture differs');
+  });
+});
+
+/** a PNG of w x h whose pixel (x, y) is fn(x, y) = [r, g, b] */
+function png(w: number, h: number, fn: (x: number, y: number) => number[]): Buffer {
+  const raw = Buffer.alloc((w * 3 + 1) * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw.set(fn(x, y), y * (w * 3 + 1) + 1 + x * 3);
+  const chunk = (t: string, d: Buffer) => {
+    const b = Buffer.alloc(12 + d.length);
+    b.writeUInt32BE(d.length, 0);
+    b.write(t, 4, 'latin1');
+    d.copy(b, 8);
+    return b; // the checksum is not checked by the decoder
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(w, 0);
+  ihdr.writeUInt32BE(h, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+/** a reference GIF decoder (frames composited onto a canvas), to check the encoder against */
+function readGif(g: Buffer): { w: number; h: number; frames: { rgb: number[][]; delayCs: number }[] } {
+  const w = g.readUInt16LE(6);
+  const h = g.readUInt16LE(8);
+  const pal = g.subarray(13, 13 + 768);
+  let i = 13 + 768;
+  const canvas = new Array<number[]>(w * h).fill([0, 0, 0]);
+  const frames: { rgb: number[][]; delayCs: number }[] = [];
+  let delayCs = 0;
+  while (g[i] !== 0x3b) {
+    if (g[i] === 0x21) {
+      if (g[i + 1] === 0xf9) delayCs = g.readUInt16LE(i + 4);
+      i += 2;
+      while (g[i]) i += g[i] + 1;
+      i++;
+    } else if (g[i] === 0x2c) {
+      const x0 = g.readUInt16LE(i + 1), y0 = g.readUInt16LE(i + 3), fw = g.readUInt16LE(i + 5), fh = g.readUInt16LE(i + 7);
+      i += 10;
+      const min = g[i++];
+      const data: number[] = [];
+      while (g[i]) {
+        for (let k = 1; k <= g[i]; k++) data.push(g[i + k]);
+        i += g[i] + 1;
+      }
+      i++;
+      // LZW decode
+      const out: number[] = [];
+      let size = min + 1, next = (1 << min) + 2, bits = 0, nb = 0, prev: number[] | undefined;
+      let dict: number[][] = [];
+      const reset = () => { dict = []; for (let c = 0; c < 1 << min; c++) dict[c] = [c]; dict[1 << min] = []; dict[(1 << min) + 1] = []; size = min + 1; next = (1 << min) + 2; prev = undefined; };
+      reset();
+      for (const byte of data) {
+        bits |= byte << nb; nb += 8;
+        while (nb >= size) {
+          const code = bits & ((1 << size) - 1);
+          bits >>>= size; nb -= size;
+          if (code === 1 << min) { reset(); continue; }
+          if (code === (1 << min) + 1) { nb = -1e9; break; }
+          const entry = dict[code] ?? (prev ? [...prev, prev[0]] : []);
+          out.push(...entry);
+          if (prev) dict[next++] = [...prev, entry[0]];
+          prev = entry;
+          if (next === 1 << size && size < 12) size++;
+        }
+      }
+      assert.equal(out.length, fw * fh, 'every pixel of the frame decodes');
+      for (let y = 0; y < fh; y++) for (let x = 0; x < fw; x++) { const c = out[y * fw + x]; canvas[(y0 + y) * w + x0 + x] = [pal[c * 3], pal[c * 3 + 1], pal[c * 3 + 2]]; }
+      frames.push({ rgb: canvas.slice(), delayCs });
+    } else assert.fail('unexpected GIF block ' + g[i]);
+  }
+  return { w, h, frames };
+}
+
+describe('GIF encoder', () => {
+  it('decodes PNG and writes a GIF that a reference decoder reads back exactly', () => {
+    const a = png(40, 30, (x, y) => (x < 20 ? [200, 30, 30] : [30, 30, 200 - y]));
+    const b = png(40, 30, (x, y) => (x < 20 ? [200, 30, 30] : y < 10 && x > 30 ? [250, 250, 0] : [30, 30, 200 - y]));
+    assert.deepEqual([...decodePng(a).px.slice(0, 4)], [200, 30, 30, 255]);
+    const r = encodeGif([{ png: a, ms: 100 }, { png: a, ms: 100 }, { png: b, ms: 300 }]);
+    assert.equal(r.frames, 2, 'a repeated frame adds to the delay of the one before');
+    assert.equal(r.skipped, 1);
+    assert.equal(r.gif.toString('latin1', 0, 6), 'GIF89a');
+    const g = readGif(r.gif);
+    assert.deepEqual([g.w, g.h], [40, 30]);
+    assert.equal(g.frames[0].delayCs, 20);
+    assert.equal(g.frames[1].delayCs, 30);
+    const want = (img: Buffer, x: number, y: number) => [...decodePng(img).px.slice((y * 40 + x) * 4, (y * 40 + x) * 4 + 3)];
+    for (const [k, img] of [a, b].entries()) for (let y = 0; y < 30; y++) for (let x = 0; x < 40; x++) assert.deepEqual(g.frames[k].rgb[y * 40 + x].map((v, c) => Math.abs(v - want(img, x, y)[c]) <= 4), [true, true, true], `frame ${k} pixel ${x},${y}`);
+  });
+
+  it('handles a photo-like frame with thousands of colours (LZW table resets)', () => {
+    let seed = 7;
+    const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const noisy = png(120, 90, () => [Math.floor(rnd() * 256), Math.floor(rnd() * 256), Math.floor(rnd() * 256)]);
+    const r = encodeGif([{ png: noisy, ms: 50 }]);
+    const g = readGif(r.gif);
+    assert.equal(g.frames.length, 1);
+    assert.equal(g.frames[0].rgb.length, 120 * 90);
+  });
+});
+
+describe('record()', { concurrency: false }, () => {
+  it('records the page as a GIF in the downloads folder and reports path, frames, seconds and size', async () => {
+    const r = await at('/anim', 'rc1', "record('demo'); wait(1500); record(stop=1)");
+    assert.equal(r.ok, true, r.text);
+    const m = /^saved recording: (\S+demo-\d+\.gif) \((\d+) frames, ([\d.]+) s, (\d+) KB, (\d+)x(\d+) px\)$/m.exec(r.text);
+    assert.ok(m, r.text);
+    assert.ok(m[1].startsWith(dir));
+    assert.ok(Number(m[2]) >= 3, `frames: ${m[2]}`);
+    assert.ok(Number(m[3]) >= 1.4 && Number(m[3]) < 8, m[3]);
+    assert.equal(Number(m[5]), 800);
+    const gif = readFileSync(m[1]);
+    assert.equal(gif.toString('latin1', 0, 6), 'GIF89a');
+    assert.equal(readGif(gif).frames.length, Number(m[2]));
+  });
+
+  it('stopping without starting, or recording a page that never changes, says what to do', async () => {
+    const none = await at('/ok', 'rc2', 'record(stop=1)');
+    assert.equal(none.ok, false);
+    assert.match(none.text, /no recording is running on this page/);
+    const still = await run('rc2', "record('x'); record(stop=1)");
+    assert.equal(still.ok, true, still.text);
   });
 });
