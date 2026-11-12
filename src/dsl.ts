@@ -24,7 +24,7 @@ export interface Step {
 const ALIAS: Record<string, string> = {
   goto: 'open', navigate: 'open', visit: 'open', go: 'open', load: 'open', get: 'open', browse: 'open', nav: 'open',
   type: 'fill', enter: 'fill', input: 'fill', set: 'fill', write: 'fill', settext: 'fill', presssequentially: 'fill', setvalue: 'fill',
-  tap: 'click', dblclick: 'click', press_button: 'click', clickon: 'click', follow: 'click',
+  tap: 'click', press_button: 'click', clickon: 'click', follow: 'click',
   choose: 'select', pick: 'select', selectoption: 'select', option: 'select',
   tick: 'check', setchecked: 'check', untick: 'uncheck',
   grep: 'find', locate: 'find', lookup: 'find', query: 'find', findtext: 'find',
@@ -42,6 +42,15 @@ const ALIAS: Record<string, string> = {
   scrollto: 'scroll', scrollintoview: 'scroll',
   use: 'engine', tier: 'engine',
   setinputfiles: 'upload', attach: 'upload',
+  eval: 'js', evaluate: 'js', evaluatescript: 'js', runjs: 'js', executescript: 'js', runcode: 'js', javascript: 'js', script: 'js',
+  consolelogs: 'console', consolemessages: 'console', listconsolemessages: 'console', logs: 'console', consoleerrors: 'console',
+  requests: 'network', networkrequests: 'network', listnetworkrequests: 'network', har: 'network',
+  handledialog: 'dialog', acceptdialog: 'dialog', dialogs: 'dialog',
+  resize: 'emulate', viewport: 'emulate', setviewportsize: 'emulate', setviewport: 'emulate', device: 'emulate', resizepage: 'emulate', geolocation: 'emulate', setgeolocation: 'emulate', timezone: 'emulate', locale: 'emulate', emulatemedia: 'emulate', setdevice: 'emulate',
+  forward: 'forward', goforward: 'forward', go_forward: 'forward',
+  dragto: 'drag', draganddrop: 'drag', dragndrop: 'drag',
+  dblclick: 'click', doubleclick: 'click', rightclick: 'click', contextclick: 'click', contextmenu: 'click',
+  pdf: 'shot', savepdf: 'shot', screencast: 'shot',
   storagestate: 'profile', loadstate: 'profile', usestate: 'profile', usesession: 'profile', signin_as: 'profile', signinas: 'profile', loginas: 'profile',
 };
 
@@ -49,7 +58,7 @@ export const VERBS = new Set([
   'open', 'back', 'reload', 'search',
   'view', 'read', 'find', 'links', 'outline', 'shot',
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
-  'expect', 'engine', 'confirm',
+  'expect', 'engine', 'confirm', 'js', 'console', 'network', 'dialog', 'emulate', 'forward', 'drag',
   'extract', 'each', 'fork', 'watch', 'cookies', 'profile',
 ]);
 
@@ -346,9 +355,11 @@ function parseStatement(src: string): Step | undefined {
   if (!callStyle) {
     // shell style: verb arg rest-of-line
     p.i = 1;
-    const verb = canonical(first.v.split('.').pop() ?? first.v);
+    const raw = first.v.split('.').pop() ?? first.v;
+    const verb = canonical(raw);
+    if (verb === 'js') return jsStep(src);
     const { args, opts } = p.args(null);
-    return shape(verb, joinShell(verb, args), opts, src);
+    return shape(verb, joinShell(verb, args), opts, src, raw);
   }
 
   const chain = p.chain().filter((c) => !(NOISE_PREFIX.has(c.name.toLowerCase()) && !c.args.length));
@@ -367,6 +378,7 @@ function parseStatement(src: string): Step | undefined {
   }
   const action = chain[actionIx];
   const verb = canonical(action.name);
+  if (verb === 'js' && actionIx === 0) return jsStep(src);
   const before = chain.slice(0, actionIx).filter((c) => LOCATORS.has(c.name.toLowerCase()) || c.args.length);
   const target = before.length ? carried(before) : undefined;
   const args = [...action.args];
@@ -375,7 +387,7 @@ function parseStatement(src: string): Step | undefined {
   // expect(locator).toHaveText('x'): the matcher's argument is what must be present
   const after = chain.slice(actionIx + 1);
   if (verb === 'expect') for (const c of after) if (c.args.length && typeof c.args[0] === 'string') args.push(c.args[0]);
-  return shape(verb, args, opts, src);
+  return shape(verb, args, opts, src, action.name);
 }
 
 const ONE_ARG = new Set(['open', 'find', 'read', 'search', 'expect', 'links', 'view', 'wait', 'engine', 'confirm', 'scroll', 'check', 'uncheck', 'submit', 'hover']);
@@ -391,9 +403,50 @@ function joinShell(verb: string, args: Arg[]): Arg[] {
 
 const TARGETED = new Set(['click', 'fill', 'select', 'check', 'uncheck', 'hover', 'submit', 'upload']);
 
-function shape(verb: string, args: Arg[], opts: Record<string, Arg>, src: string): Step {
+/**
+ * js('code'): the code is kept as written. The general tokenizer would eat the backslashes of a
+ * regex and split on quotes, so this one reads the first quoted string (or the whole rest of the
+ * step, for the shell form) and unescapes only the quote that delimits it.
+ */
+function jsStep(src: string): Step {
+  const m = /^\s*(?:await\s+)?[\w.$]+\s*(?:\(\s*)?/.exec(src);
+  let rest = src.slice(m ? m[0].length : 0);
+  const paren = !!m && m[0].includes('(');
+  if (paren) rest = rest.replace(/\)\s*$/, '');
+  const q = rest[0];
+  let code = rest;
+  if (q === '"' || q === "'" || q === '`') {
+    let j = 1;
+    let out = '';
+    while (j < rest.length && rest[j] !== q) {
+      if (rest[j] === '\\' && rest[j + 1] === q) {
+        out += q;
+        j += 2;
+      } else out += rest[j++];
+    }
+    code = j >= rest.length ? rest.slice(1) : out;
+  }
+  code = code.trim();
+  if (!code) throw new AwError('bad_request', "js needs code: js('document.title')");
+  return { verb: 'js', args: [code], opts: {}, src };
+}
+
+function shape(verb: string, args: Arg[], opts: Record<string, Arg>, src: string, raw = ''): Step {
   if (!VERBS.has(verb)) throw new AwError('bad_request', `unknown verb '${verb}'`, hintFor(verb));
+  const r = raw.toLowerCase().replace(/[^a-z]/g, '');
+  if (verb === 'click') {
+    if (r === 'dblclick' || r === 'doubleclick') opts.double = 1;
+    else if (r === 'rightclick' || r === 'contextclick' || r === 'contextmenu') opts.button = 'right';
+  } else if (verb === 'shot' && (r === 'pdf' || r === 'savepdf')) opts.pdf = 1;
+  else if (verb === 'emulate') {
+    // viewport(390, 844) / device('iPhone 15') / timezone('Europe/Paris') / locale('fr-FR') / geolocation(48.8, 2.3)
+    if (r === 'timezone' && typeof args[0] === 'string') (opts.tz = args.shift()!);
+    else if (r === 'locale' && typeof args[0] === 'string') (opts.locale = args.shift()!);
+    else if ((r === 'geolocation' || r === 'setgeolocation') && args.length >= 2 && typeof args[0] === 'number') opts.geo = `${args.shift()},${args.shift()}`;
+  }
   if (TARGETED.has(verb) && args.length) args[0] = toRef(args[0]);
+  if (verb === 'drag') args = args.slice(0, 2).map(toRef);
+  if (verb === 'shot' && typeof args[0] === 'string' && /^\d+$/.test(args[0])) args[0] = Number(args[0]);
   if (verb === 'press' && args.length > 1) {
     const KEY = /^(enter|return|tab|escape|esc|space|backspace|delete|arrow|page|home|end|f\d|control|ctrl|shift|alt|meta|cmd)/i;
     const isKey = (a: Arg) => typeof a === 'string' && KEY.test(a);

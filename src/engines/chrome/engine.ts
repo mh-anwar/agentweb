@@ -2,8 +2,8 @@
 // cheaper tiers cannot handle a page. One browser serves every session; a session's context can be
 // thrown away at any moment because its cookies and localStorage live in the session record.
 
-import { accessSync, constants, mkdtempSync, statSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { accessSync, constants, mkdirSync, mkdtempSync, statSync, writeFileSync } from 'node:fs';
+import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { Action, Engine, Loaded, NavRequest, SessionCtx } from '../../types.ts';
 import { AwError } from '../../types.ts';
@@ -24,6 +24,8 @@ export interface ChromeEngineOptions extends PoolOptions {
   netQuietMs?: number;
   domQuietMs?: number;
   settleCapMs?: number;
+  /** where files the page downloads are kept (default ~/.agentweb/downloads); false refuses downloads */
+  downloadDir?: string | false;
 }
 
 export interface ChromeEngine extends Engine {
@@ -42,7 +44,11 @@ const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + '…'
 const HTML_MIME = /^(text\/html|application\/xhtml\+xml)$/;
 
 /** actions that only edit a field: the page reacts within a frame or two, so a short settle is enough */
-const LIGHT: Record<string, true> = { fill: true, check: true, select: true, hover: true, shot: true };
+interface Out {
+  value?: string;
+}
+
+const LIGHT: Record<string, true> = { fill: true, check: true, select: true, hover: true, shot: true, log: true, dialog: true };
 
 export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine {
   const hosts = opts.blockHosts === false ? [] : [...TRACKER_HOSTS, ...(opts.blockHosts ?? [])];
@@ -55,6 +61,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     domQuietMs: opts.domQuietMs ?? 200,
     settleCapMs: opts.settleCapMs ?? 3000,
     defaultUserAgent: '',
+    downloadDir: opts.downloadDir === false ? false : opts.downloadDir ?? join(process.env.AGENTWEB_HOME ?? join(homedir(), '.agentweb'), 'downloads'),
   };
   const n = { opens: 0, acts: 0, snapshots: 0, rehydrations: 0 };
 
@@ -123,7 +130,8 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
   /** leave room after settling to read the page and sync state */
   const settleBy = (deadline: number) => deadline - Math.min(1500, Math.max(200, (deadline - Date.now()) * 0.15));
 
-  async function finish(d: PageDriver, ctx: SessionCtx, t0: number, bytes0: number, deadline: number, image?: Loaded['image']): Promise<Loaded> {
+  async function finish(d: PageDriver, ctx: SessionCtx, t0: number, bytes0: number, deadline: number, image?: Loaded['image'], value?: string): Promise<Loaded> {
+    await d.finishDownloads(deadline);
     if (d.policy) throw new AwError('policy', d.policy.reason);
     const mime = d.doc.mime || 'text/html';
     const out: Loaded = {
@@ -159,6 +167,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     if (late) throw new AwError('policy', late);
     if (Object.keys(d.doc.headers).length) out.headers = d.doc.headers;
     if (image) out.image = image;
+    if (value !== undefined) out.value = value;
     const events = d.takeEvents();
     if (events.length) out.events = events;
     out.bytes = Math.max(0, Math.round(d.bytes - bytes0));
@@ -168,14 +177,49 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
 
   // ───────────────────────────── actions ─────────────────────────────
 
-  async function mouseClick(d: PageDriver, x: number, y: number): Promise<void> {
+  async function mouseClick(d: PageDriver, x: number, y: number, o: { count?: number; button?: 'left' | 'right' | 'middle' } = {}): Promise<void> {
+    const button = o.button ?? 'left';
+    const mask = button === 'left' ? 1 : button === 'right' ? 2 : 4;
     await d.s.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', buttons: 0, pointerType: 'mouse' });
-    await d.s.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1, pointerType: 'mouse' });
-    await d.s.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1, pointerType: 'mouse' });
+    for (let i = 1; i <= (o.count ?? 1); i++) {
+      await d.s.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button, buttons: mask, clickCount: i, pointerType: 'mouse' });
+      await d.s.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button, buttons: 0, clickCount: i, pointerType: 'mouse' });
+    }
+  }
+
+  /** Press on one element, move in steps, release on the other. HTML5 drag and drop needs the browser's drag events replayed. */
+  async function drag(d: PageDriver, from: number, to: number): Promise<void> {
+    const a = await d.call<any>('aim', from, false);
+    const b = await d.call<any>('aim', to, false);
+    if (!a.ok || !b.ok) throw new AwError('bad_request', 'cannot drag: the source or the destination is hidden or covered by something else');
+    let data: any;
+    const off = d.s.on('Input.dragIntercepted', (p) => {
+      data = p.data;
+    });
+    await d.s.send('Input.setInterceptDrags', { enabled: true });
+    try {
+      const mv = (x: number, y: number) => d.s.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'left', buttons: 1, pointerType: 'mouse' });
+      await d.s.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: a.x, y: a.y, button: 'none', buttons: 0, pointerType: 'mouse' });
+      await d.s.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: a.x, y: a.y, button: 'left', buttons: 1, clickCount: 1, pointerType: 'mouse' });
+      const steps = 8;
+      for (let i = 1; i <= steps; i++) {
+        await mv(a.x + ((b.x - a.x) * i) / steps, a.y + ((b.y - a.y) * i) / steps);
+        if (i === 2) await sleep(30); // let the page see the drag begin
+      }
+      if (data) {
+        await d.s.send('Input.dispatchDragEvent', { type: 'dragEnter', x: b.x, y: b.y, data });
+        await d.s.send('Input.dispatchDragEvent', { type: 'dragOver', x: b.x, y: b.y, data });
+        await d.s.send('Input.dispatchDragEvent', { type: 'drop', x: b.x, y: b.y, data });
+      }
+      await d.s.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: b.x, y: b.y, button: 'left', buttons: 0, clickCount: 1, pointerType: 'mouse' });
+    } finally {
+      off();
+      await d.s.send('Input.setInterceptDrags', { enabled: false }).catch(() => {});
+    }
   }
 
   /** Real mouse events at the element's centre; a scripted click when something is in the way. */
-  async function click(d: PageDriver, id: number, viaLabel = false): Promise<void> {
+  async function click(d: PageDriver, id: number, viaLabel = false, o: { count?: number; button?: 'left' | 'right' | 'middle' } = {}): Promise<void> {
     const a = await d.call<any>('aim', id, viaLabel);
     if (a.option) {
       const r = await d.call<any>('pickOption', id);
@@ -190,7 +234,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     }
     if (a.ariaDisabled) d.note('that control is marked disabled (aria-disabled)');
     if (a.ok) {
-      await mouseClick(d, a.x, a.y);
+      await mouseClick(d, a.x, a.y, o);
       return;
     }
     await d.run(`__awh.scriptClick(${JSON.stringify(id)})`, { gesture: true }).then((r: any) => {
@@ -309,6 +353,13 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     await d.s.send('Page.navigateToHistoryEntry', { entryId: h.entries[i].id });
   }
 
+  async function forward(d: PageDriver): Promise<void> {
+    const h = await d.s.send<{ currentIndex: number; entries: { id: number; url: string }[] }>('Page.getNavigationHistory');
+    const e = h.entries[h.currentIndex + 1];
+    if (!e) throw new AwError('bad_request', 'there is no later page in this tab', 'forward() only follows back()');
+    await d.s.send('Page.navigateToHistoryEntry', { entryId: e.id });
+  }
+
   async function upload(d: PageDriver, id: number, files: { name: string; mime: string; data: string }[]): Promise<void> {
     if (!Array.isArray(files) || !files.length) throw new AwError('bad_request', 'upload needs at least one file');
     let total = 0;
@@ -346,7 +397,21 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
     await d.s.send('DOM.setFileInputFiles', { files: ch.mode === 'selectMultiple' ? paths : paths.slice(0, 1), backendNodeId: ch.backendNodeId });
   }
 
-  async function shot(d: PageDriver, a: { full?: boolean; n?: number }): Promise<NonNullable<Loaded['image']>> {
+  /** Write a file the agent asked to keep next to the session's downloads and say where it is. */
+  function keep(d: PageDriver, bytes: Buffer, stem: string, ext: string): string {
+    const dir = d.downloadDir || mkdtempSync(join(tmpdir(), 'agentweb-files-'));
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, `${stem}-${new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14)}.${ext}`);
+    writeFileSync(path, bytes);
+    return `${path} (${bytes.length} bytes)`;
+  }
+
+  async function shot(d: PageDriver, a: { full?: boolean; n?: number; pdf?: boolean; save?: boolean }, out: Out): Promise<Loaded['image'] | undefined> {
+    if (a.pdf) {
+      const r = await d.s.send<{ data: string }>('Page.printToPDF', { printBackground: true, preferCSSPageSize: true }, 30_000);
+      out.value = 'saved PDF: ' + keep(d, Buffer.from(r.data, 'base64'), 'page', 'pdf');
+      return undefined;
+    }
     const MAX_W = 1024;
     let clipRect: { x: number; y: number; width: number; height: number; scale: number } | undefined;
     let beyond = false;
@@ -363,22 +428,41 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
       clipRect = { x: 0, y: 0, width: size.width, height, scale: Math.min(1, MAX_W / size.width) };
       beyond = true;
     } else {
-      const v = d.opts.viewport;
+      const v = d.viewport;
       const m = await d.s.send<any>('Page.getLayoutMetrics');
       const vv = m.cssVisualViewport ?? m.visualViewport ?? { pageX: 0, pageY: 0 };
       clipRect = { x: vv.pageX ?? 0, y: vv.pageY ?? 0, width: v.width, height: v.height, scale: Math.min(1, MAX_W / v.width) };
       beyond = true;
     }
     const r = await d.s.send<{ data: string }>('Page.captureScreenshot', { format: 'jpeg', quality: 60, clip: clipRect, captureBeyondViewport: beyond, optimizeForSpeed: true });
+    if (a.save) out.value = 'saved screenshot: ' + keep(d, Buffer.from(r.data, 'base64'), 'shot', 'jpg');
     return { mime: 'image/jpeg', data: r.data };
   }
 
-  async function perform(slot: Slot<PageDriver>, action: Action, deadline: number): Promise<Loaded['image'] | undefined> {
+  async function perform(slot: Slot<PageDriver>, action: Action, deadline: number, out: Out): Promise<Loaded['image'] | undefined> {
     const d = slot.data;
     switch (action.do) {
       case 'click':
         slot.committed = true;
-        await click(d, action.n);
+        await click(d, action.n, false, { count: action.count, button: action.button });
+        return;
+      case 'drag':
+        slot.committed = true;
+        await drag(d, action.n, action.to);
+        return;
+      case 'js':
+        slot.committed = true;
+        out.value = await d.evalJs(action.code);
+        return;
+      case 'log':
+        out.value = await d.readLog(action);
+        return;
+      case 'dialog':
+        d.dialogAnswer = { accept: action.accept, text: action.text ?? '' };
+        return;
+      case 'forward':
+        slot.committed = true;
+        await forward(d);
         return;
       case 'fill':
         slot.committed = true;
@@ -417,7 +501,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         await upload(d, action.n, action.files);
         return;
       case 'shot':
-        return shot(d, action);
+        return shot(d, action, out);
       default:
         throw new AwError('bad_request', `unknown action "${(action as { do: string }).do}"`);
     }
@@ -496,7 +580,8 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
         }
         d.setActing(true);
         const since = Date.now();
-        const image = await perform(slot, action, deadline);
+        const out: Out = {};
+        const image = await perform(slot, action, deadline, out);
         const light = LIGHT[action.do];
         await d.settle({
           deadline: settleBy(deadline),
@@ -505,7 +590,7 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
           domQuietMs: light ? Math.min(100, driverOpts.domQuietMs) : undefined,
         });
         d.setActing(false);
-        return finish(d, ctx, t0, bytes0, deadline, image);
+        return finish(d, ctx, t0, bytes0, deadline, image, out.value);
       });
     },
 

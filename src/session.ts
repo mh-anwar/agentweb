@@ -36,6 +36,10 @@ export interface SessionRecord {
   lastField?: string;
   /** values filled on the current wire-tier page: fingerprint -> value, replayed if the page moves to a script engine */
   dirty?: Record<string, string>;
+  /** viewport, device, locale, timezone, location the agent asked for with emulate() */
+  emulate?: import('./types.ts').Emulation;
+  /** pages left by back(), most recent last, for forward() */
+  forward?: string[];
   /** At most four bounded semantic collection baselines, private to this session. */
   collections?: [string, import('./extract/compare.ts').CollectionSnapshot][];
 }

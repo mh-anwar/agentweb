@@ -15,7 +15,9 @@ read() - full text from where the view stopped; read('Section name'); read(url)
 click(target) · fill(target, 'text') · select(target, 'option') · check(target) · uncheck(target) · submit() · press('Enter')
 expect('text') - stop here unless the page contains it
 wait('text') - wait until the page shows it (content that appears late)
-view() - the whole page again · links('words') - URLs · shot() - screenshot
+view() - the whole page again · links('words') - URLs · shot() - screenshot (full=1, pdf=1)
+js('code') - run JavaScript · console() · network('words', failed=1) - page log
+click(t, double=1) · drag(a, b) · forward() · dialog('dismiss') · emulate('iPhone 15') or emulate(locale='fr-FR', geo='lat,lon', dark=1)
 profile('name') - use a saved sign-in (Playwright storageState file); profile('name', save=1) saves the current one
 
 A target is a number shown on the page or its visible text: click(12), click('Sign in'), click('Add to cart', near='USB hub').

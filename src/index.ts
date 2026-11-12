@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { createRuntime, type RuntimeImpl, type RuntimeOptions } from './runtime.ts';
+import { findDevice } from './devices.ts';
 import { createJar, createWireEngine, encodeForm } from './net/index.ts';
 import { createGuard, isPublicAddress, loadPolicy, scoreInjection, type Policy } from './guard/index.ts';
 import { openStore } from './store/index.ts';
@@ -25,6 +26,12 @@ export interface AgentwebConfig extends RuntimeOptions {
   atlas?: boolean;
   /** remote Chromium DevTools endpoint instead of launching one (ws://… or http://host:port) */
   cdp?: string;
+  /** proxy for all traffic: http://[user:pass@]host:port (all engines) or socks5://host:port (chrome only) */
+  proxy?: string;
+  /** browser window size, default 1280x800 */
+  viewport?: { width: number; height: number };
+  /** accept invalid TLS certificates in the browser */
+  ignoreHttpsErrors?: boolean;
   env?: Record<string, string | undefined>;
 }
 
@@ -50,7 +57,10 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
     }
   }
 
+  const proxy = config.proxy ?? env.AGENTWEB_PROXY ?? undefined;
+  const socks = !!proxy && /^socks/i.test(proxy);
   const wire = createWireEngine({
+    proxy: proxy && !socks ? proxy : undefined,
     checkAddress: policy.allowPrivate ? undefined : (ip: string) => isPublicAddress(ip),
     cache: config.cache === false ? undefined : store,
   });
@@ -69,7 +79,15 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
   if (want(config.chrome, 'AGENTWEB_CHROME_ENGINE')) {
     try {
       const mod = await import('./engines/chrome/index.ts');
-      engines.chrome = mod.createChromeEngine({ endpoint: config.cdp ?? env.AGENTWEB_CDP });
+      const vp = /^(\d{3,4})\s*[x,]\s*(\d{3,4})$/.exec(env.AGENTWEB_VIEWPORT ?? '');
+      const dl = env.AGENTWEB_DOWNLOADS;
+      engines.chrome = mod.createChromeEngine({
+        endpoint: config.cdp ?? env.AGENTWEB_CDP,
+        proxy: proxy ? proxy.replace(/\/\/[^@/]*@/, '//') : undefined,
+        viewport: config.viewport ?? (vp ? { width: Number(vp[1]), height: Number(vp[2]) } : undefined),
+        args: config.ignoreHttpsErrors || /^(1|true|yes|on)$/i.test(env.AGENTWEB_IGNORE_HTTPS_ERRORS ?? '') ? ['--ignore-certificate-errors'] : undefined,
+        downloadDir: dl === 'off' || dl === '0' ? false : dl || undefined,
+      });
     } catch {
       // no chrome engine in this build
     }
@@ -102,6 +120,8 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       timeoutMs: config.timeoutMs,
       runTimeoutMs: config.runTimeoutMs,
       userAgent: config.userAgent ?? env.AGENTWEB_USER_AGENT,
+      defaultEngine: socks ? 'chrome' : undefined,
+      emulate: env.AGENTWEB_DEVICE ? findDevice(env.AGENTWEB_DEVICE)?.emu : undefined,
       sessionTtlSec: config.sessionTtlSec,
       secretNames: policy.secrets.map((x) => x.name),
     },

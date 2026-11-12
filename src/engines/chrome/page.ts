@@ -2,10 +2,11 @@
 // are in flight, the isolated world the extractor runs in, the policy decisions made for it, and
 // what happened that the agent should hear about.
 
-import { rmSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { join } from 'node:path';
 import { extractPage, nodeById, type Extracted } from '../../inpage/extract.ts';
 import { hash } from '../../tree.ts';
-import { AwError, type CookieData, type ErrCode, type SessionCtx, type Verdict } from '../../types.ts';
+import { AwError, type CookieData, type Emulation, type ErrCode, type SessionCtx, type Verdict } from '../../types.ts';
 import { isContextLost, type Cdp, type CdpSession } from './cdp.ts';
 import { installHelpers, listenerProbe, seedStorage } from './inpage.ts';
 
@@ -22,6 +23,10 @@ export interface DriverOptions {
   /** after the page has loaded, wait at most this long for it to go quiet */
   settleCapMs: number;
   defaultUserAgent: string;
+  /** where downloads are kept (one folder per session); false refuses them */
+  downloadDir?: string | false;
+  /** how a dialog is answered until the agent says otherwise */
+  maxDownloadBytes?: number;
 }
 
 export interface SettleOptions {
@@ -156,6 +161,20 @@ export class PageDriver {
   private blockedOrigins = new Set<string>();
   chooser: ((p: any) => void) | undefined;
 
+  // what the page said and did, for console() and network(): reset when a new document loads
+  private consoleLog: { type: string; text: string }[] = [];
+  private netLog = new Map<string, { method: string; url: string; type: string; status: number; failed: string }>();
+  /** how JS dialogs are answered (the agent changes it with dialog()) */
+  dialogAnswer: { accept: boolean; text: string } = { accept: true, text: '' };
+  private downloads = new Map<string, { name: string; url: string; state: 'running' | 'done' | 'failed'; path: string; bytes: number }>();
+  private downloadWaiters: (() => void)[] = [];
+  private offDownloads: (() => void) | undefined;
+  private downloadPath = '';
+  private emuSig = '{}';
+  private langSig = '';
+  /** the viewport in effect (the default, or what emulate() set) */
+  viewport: { width: number; height: number };
+
   // state mirrored from the session
   private cookieState: Map<string, { sig: string; c: CookieData }> | undefined;
   /** jar cookies the browser would not take (key -> signature), so they are not retried on every call */
@@ -175,6 +194,7 @@ export class PageDriver {
     this.targetId = targetId;
     this.mainFrame = targetId;
     this.opts = opts;
+    this.viewport = opts.viewport;
     this.probeName = 'aw' + Math.random().toString(36).slice(2) + Date.now().toString(36);
     // Node ids start at a random multiple of a million in every document, so an id from an earlier
     // page (or from before an eviction) can never resolve to an element of this one.
@@ -203,6 +223,7 @@ export class PageDriver {
       s.send('Emulation.setFocusEmulationEnabled', { enabled: true }),
       s.send('Page.setInterceptFileChooserDialog', { enabled: true }).catch(noop),
       s.send('Page.addScriptToEvaluateOnNewDocument', { source: this.boot, worldName: WORLD }),
+      s.send('Log.enable').catch(noop),
       this.cdp.send('Browser.setDownloadBehavior', { behavior: 'deny', browserContextId: this.contextId, eventsEnabled: true }).catch(noop),
     ];
     if (this.opts.probe) {
@@ -218,6 +239,8 @@ export class PageDriver {
       } catch {}
     }
     this.chooser = undefined;
+    this.offDownloads?.();
+    this.offDownloads = undefined;
   }
 
   private wire(): void {
@@ -240,6 +263,8 @@ export class PageDriver {
       this.mainFrame = f.id;
       this.url = String(f.url ?? '') + String(f.urlFragment ?? '');
       this.docSeq++;
+      this.consoleLog = [];
+      for (const [id, r] of this.netLog) if (r.type !== 'Document' || id !== f.loaderId) this.netLog.delete(id);
       this.isoCtx = 0;
       this.dclAt = 0;
       this.loadAt = 0;
@@ -274,12 +299,13 @@ export class PageDriver {
     });
     s.on('Page.javascriptDialogOpening', (p) => {
       const type = String(p.type ?? 'alert');
-      // Nobody is there to read a dialog. Answer it the way that lets the page carry on.
-      void s.send('Page.handleJavaScriptDialog', { accept: true, promptText: '' }).catch(noop);
+      // Nobody is there to read a dialog. Answer it the way the agent asked (default: the way that lets the page carry on).
+      const { accept, text } = this.dialogAnswer;
+      void s.send('Page.handleJavaScriptDialog', { accept, promptText: type === 'prompt' ? (text || String(p.defaultPrompt ?? '')) : '' }).catch(noop);
       const msg = clip(oneLine(p.message), 200);
-      if (type === 'beforeunload') this.note('the page asked to confirm leaving; accepted');
-      else if (type === 'prompt') this.note(`prompt "${msg}" answered with an empty string`);
-      else if (type === 'confirm') this.note(`confirm "${msg}" accepted`);
+      if (type === 'beforeunload') this.note(`the page asked to confirm leaving; ${accept ? 'accepted' : 'dismissed'}`);
+      else if (type === 'prompt') this.note(accept ? `prompt "${msg}" answered with ${text ? `"${clip(text, 60)}"` : 'an empty string'}` : `prompt "${msg}" dismissed`);
+      else if (type === 'confirm') this.note(`confirm "${msg}" ${accept ? 'accepted' : 'dismissed'}`);
       else this.note(`alert "${msg}"`);
     });
     s.on('Page.windowOpen', (p) => {
@@ -292,7 +318,8 @@ export class PageDriver {
     s.on('Page.downloadWillBegin', (p) => {
       const name = clip(oneLine(p.suggestedFilename) || 'file', 80);
       this.download = { url: String(p.url ?? ''), name };
-      this.note(`download blocked: ${name} (${clip(String(p.url ?? ''), 160)})`);
+      if (!this.downloadPath) this.note(`download blocked: ${name} (${clip(String(p.url ?? ''), 160)})`);
+      else this.downloads.set(String(p.guid ?? name), { name, url: String(p.url ?? ''), state: 'running', path: '', bytes: 0 });
     });
     s.on('Page.fileChooserOpened', (p) => {
       const waiter = this.chooser;
@@ -311,7 +338,21 @@ export class PageDriver {
     s.on('Runtime.executionContextsCleared', () => {
       this.isoCtx = 0;
     });
+    s.on('Runtime.consoleAPICalled', (p) => {
+      const args: any[] = Array.isArray(p.args) ? p.args : [];
+      const text = args.map((a) => (a.value !== undefined ? (typeof a.value === 'string' ? a.value : JSON.stringify(a.value)) : String(a.unserializableValue ?? a.description ?? a.type))).join(' ');
+      this.pushConsole(String(p.type ?? 'log'), text);
+    });
+    s.on('Log.entryAdded', (p) => {
+      const e = p.entry ?? {};
+      if (e.source === 'javascript') return; // already seen as console or exception
+      this.pushConsole(String(e.level ?? 'info') === 'warning' ? 'warning' : String(e.level ?? 'info'), `${oneLine(e.text)}${e.url ? ` (${clip(String(e.url), 100)})` : ''}`);
+    });
     s.on('Runtime.exceptionThrown', (p) => {
+      {
+        const d = p.exceptionDetails ?? {};
+        this.pushConsole('error', oneLine(d.exception?.description ?? d.text ?? 'error').split('\n')[0]);
+      }
       if (this.pageErrors >= 5) return;
       const d = p.exceptionDetails ?? {};
       const text = oneLine(d.exception?.description ?? d.text ?? 'error').split(' at ')[0];
@@ -337,6 +378,7 @@ export class PageDriver {
       this.counters.requests++;
       const type = String(p.type ?? 'Other');
       this.inflight.set(p.requestId, { t: now, type, loader: String(p.loaderId ?? '') });
+      if (this.netLog.size < 400 && !p.redirectResponse) this.netLog.set(p.requestId, { method: String(p.request?.method ?? 'GET'), url: String(p.request?.url ?? ''), type, status: 0, failed: '' });
       if (type === 'Document' && p.frameId === this.mainFrame && p.requestId === p.loaderId) {
         this.docMethods.set(p.requestId, p.request?.method === 'POST' ? 'POST' : 'GET');
         if (p.redirectResponse) this.forcedPost.delete(p.requestId); // a redirect after our POST is followed with whatever the browser chose
@@ -344,6 +386,8 @@ export class PageDriver {
     });
     s.on('Network.responseReceived', (p) => {
       const type = String(p.type ?? '');
+      const rec = this.netLog.get(p.requestId);
+      if (rec) rec.status = Number(p.response?.status) || 0;
       if (type === 'EventSource') this.inflight.delete(p.requestId);
       if (type === 'Document' && p.frameId === this.mainFrame && p.requestId === p.loaderId) {
         const r = p.response ?? {};
@@ -358,6 +402,8 @@ export class PageDriver {
       this.bytes += Number(p.encodedDataLength) || 0;
     });
     s.on('Network.loadingFailed', (p) => {
+      const rec = this.netLog.get(p.requestId);
+      if (rec && !p.canceled) rec.failed = String(p.blockedReason ? 'blocked' : p.errorText ?? 'failed').replace(/^net::/, '');
       this.inflight.delete(p.requestId);
       this.lastNet = Date.now();
       if (p.type === 'Document' && !p.canceled && p.errorText && this.docMethods.has(p.requestId)) this.navError = String(p.errorText);
@@ -475,11 +521,187 @@ export class PageDriver {
     this.navError = '';
     this.popupUrl = '';
     this.pageErrors = 0;
+    const lang = ctx.emulate?.locale ? `${ctx.emulate.locale},${ctx.emulate.locale.split('-')[0]};q=0.9` : 'en-US,en;q=0.9';
     const ua = consistentUa(ctx.userAgent, this.opts.defaultUserAgent);
-    if (ua && ua !== this.userAgent) {
+    if (ua && (ua !== this.userAgent || lang !== this.langSig)) {
       this.userAgent = ua;
-      await this.s.send('Emulation.setUserAgentOverride', { userAgent: ua, acceptLanguage: 'en-US,en;q=0.9' });
+      this.langSig = lang;
+      await this.s.send('Emulation.setUserAgentOverride', { userAgent: ua, acceptLanguage: lang });
     }
+    await this.emulate(ctx.emulate ?? {});
+    await this.allowDownloads(ctx.id);
+  }
+
+  /** Put the session's emulation (viewport, device, locale, timezone, location, dark mode, offline) on this page. */
+  private async emulate(e: Emulation): Promise<void> {
+    const sig = JSON.stringify(e);
+    if (sig === this.emuSig) return;
+    const s = this.s;
+    const w = e.width ?? this.opts.viewport.width;
+    const h = e.height ?? this.opts.viewport.height;
+    const bad = (what: string, v: string) => (err: unknown) => {
+      if (err instanceof AwError && /invalid|unknown|not supported|Invalid/i.test(err.message)) throw new AwError('bad_request', `unknown ${what} '${v}'`);
+      throw err;
+    };
+    await Promise.all([
+      s.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: e.dpr ?? 1, mobile: !!e.mobile }),
+      s.send('Emulation.setTouchEmulationEnabled', { enabled: !!e.mobile }),
+      s.send('Emulation.setLocaleOverride', e.locale ? { locale: e.locale } : {}).catch(e.locale ? bad('locale', e.locale) : noop),
+      s.send('Emulation.setTimezoneOverride', { timezoneId: e.tz ?? '' }).catch(bad('timezone', e.tz ?? '')),
+      s.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: e.dark ? 'dark' : '' }] }).catch(noop),
+      s.send('Network.emulateNetworkConditions', { offline: !!e.offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1 }).catch(noop),
+      e.geo
+        ? Promise.all([
+            s.send('Emulation.setGeolocationOverride', { latitude: e.geo.lat, longitude: e.geo.lon, accuracy: 50 }),
+            this.cdp.send('Browser.grantPermissions', { permissions: ['geolocation'], browserContextId: this.contextId }).catch(noop),
+          ])
+        : s.send('Emulation.setGeolocationOverride', {}).catch(noop),
+    ]);
+    this.viewport = { width: w, height: h };
+    this.emuSig = sig;
+  }
+
+  // ───────────────────────────── downloads, logs, scripts ─────────────────────────────
+
+  /** Files the page saves land in a folder of this session instead of being refused. */
+  private async allowDownloads(session: string): Promise<void> {
+    const root = this.opts.downloadDir;
+    if (!root || this.downloadPath) return;
+    const dir = join(root, session.replace(/[^\w.-]+/g, '_').slice(0, 64) || 'session');
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch {
+      return;
+    }
+    this.downloadPath = dir;
+    await this.cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: dir, browserContextId: this.contextId, eventsEnabled: true }).catch(() => {
+      this.downloadPath = '';
+    });
+    this.offDownloads = this.cdp.on('Browser.downloadProgress', (p) => {
+      const d = this.downloads.get(String(p.guid));
+      if (!d) return;
+      d.bytes = Number(p.receivedBytes) || d.bytes;
+      const cap = this.opts.maxDownloadBytes ?? 250 * 1024 * 1024;
+      if (p.state === 'inProgress' && d.bytes > cap) {
+        void this.cdp.send('Browser.cancelDownload', { guid: p.guid, browserContextId: this.contextId }).catch(noop);
+        return;
+      }
+      if (p.state === 'completed') {
+        d.state = 'done';
+        d.path = typeof p.filePath === 'string' && p.filePath ? p.filePath : this.guessPath(d.name);
+        try {
+          d.bytes = statSync(d.path).size;
+        } catch {}
+      } else if (p.state === 'canceled') d.state = 'failed';
+      if (d.state !== 'running') for (const w of this.downloadWaiters.splice(0)) w();
+    });
+  }
+
+  private guessPath(name: string): string {
+    const base = join(this.downloadPath, name);
+    try {
+      statSync(base);
+      return base;
+    } catch {}
+    try {
+      const m = readdirSync(this.downloadPath).filter((f) => f.startsWith(name.replace(/\.[^.]*$/, '')));
+      if (m.length) return join(this.downloadPath, m[m.length - 1]);
+    } catch {}
+    return base;
+  }
+
+  /** Wait (briefly) for downloads this call started, and tell the agent where the files are. */
+  async finishDownloads(deadline: number): Promise<void> {
+    if (!this.downloads.size) return;
+    const end = Math.min(deadline, Date.now() + 20_000);
+    while ([...this.downloads.values()].some((d) => d.state === 'running') && Date.now() < end) {
+      await new Promise<void>((r) => {
+        this.downloadWaiters.push(r);
+        setTimeout(r, 200);
+      });
+    }
+    for (const d of this.downloads.values()) {
+      if (d.state === 'done') this.note(`downloaded ${clip(d.name, 60)}: ${d.path} (${d.bytes} bytes)`);
+      else if (d.state === 'failed') this.note(`download of ${clip(d.name, 60)} failed or was cancelled`);
+      else this.note(`download of ${clip(d.name, 60)} is still running`);
+    }
+    for (const [k, d] of this.downloads) if (d.state !== 'running') this.downloads.delete(k);
+  }
+
+  get downloadDir(): string {
+    return this.downloadPath;
+  }
+
+  private pushConsole(type: string, text: string): void {
+    if (this.consoleLog.length >= 200) this.consoleLog.shift();
+    this.consoleLog.push({ type, text: clip(oneLine(text), 400) });
+  }
+
+  /** console() and network() */
+  async readLog(a: { kind: 'console' | 'network'; match?: string; failed?: boolean; body?: boolean; n?: number }): Promise<string> {
+    const n = Math.min(Math.max(a.n ?? 30, 1), 200);
+    const needle = (a.match ?? '').toLowerCase();
+    if (a.kind === 'console') {
+      let rows = this.consoleLog;
+      if (a.failed) rows = rows.filter((r) => r.type === 'error' || r.type === 'warning' || r.type === 'assert');
+      if (needle) rows = rows.filter((r) => r.text.toLowerCase().includes(needle));
+      if (!rows.length) return `(console: nothing logged${a.failed ? ' as an error or warning' : ''}${needle ? ` matching '${a.match}'` : ''} since this page loaded)`;
+      const shown = rows.slice(-n);
+      return `console, ${rows.length} message${rows.length === 1 ? '' : 's'}${rows.length > shown.length ? ` (last ${shown.length})` : ''}:\n` + shown.map((r) => `${r.type === 'log' ? 'log' : r.type}: ${r.text}`).join('\n');
+    }
+    let rows = [...this.netLog.entries()].map(([id, r]) => ({ id, ...r }));
+    if (a.failed) rows = rows.filter((r) => r.failed || r.status >= 400);
+    if (needle) rows = rows.filter((r) => (r.method + ' ' + r.url).toLowerCase().includes(needle));
+    if (!rows.length) return `(network: no requests${a.failed ? ' that failed' : ''}${needle ? ` matching '${a.match}'` : ''} since this page loaded)`;
+    if (a.body) {
+      const r = rows[rows.length - 1];
+      let text = '';
+      try {
+        const b = await this.s.send<{ body: string; base64Encoded: boolean }>('Network.getResponseBody', { requestId: r.id });
+        text = b.base64Encoded ? `(binary, ${Math.round((b.body.length * 3) / 4)} bytes)` : b.body;
+      } catch {
+        text = '(the browser no longer has this response body)';
+      }
+      return `${r.method} ${r.status || r.failed} ${clip(r.url, 160)}\n${text}`;
+    }
+    const shown = rows.slice(-n);
+    return `network, ${rows.length} request${rows.length === 1 ? '' : 's'}${rows.length > shown.length ? ` (last ${shown.length})` : ''}:\n` + shown.map((r) => `${r.method} ${r.failed ? 'FAILED ' + r.failed : r.status || '...'} ${r.type.toLowerCase()} ${clip(r.url, 140)}`).join('\n');
+  }
+
+  /**
+   * Run JavaScript in the page's own world. An expression gives its value; statements give the last
+   * value (REPL rules); a body with `return` is run as a function; an arrow function is called.
+   */
+  async evalJs(code: string): Promise<string> {
+    const send = (expression: string, repl = true) =>
+      this.s.send<any>('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: false, objectGroup: 'aw-eval', userGesture: true, replMode: repl, timeout: 15_000, allowUnsafeEvalBlockedByCSP: true }, 20_000);
+    let r = await send(code);
+    if (r.exceptionDetails && /^SyntaxError/.test(String(r.exceptionDetails.exception?.description ?? ''))) {
+      const r2 = await send(`(async()=>{\n${code}\n})()`, false);
+      if (!r2.exceptionDetails || !/^SyntaxError/.test(String(r2.exceptionDetails.exception?.description ?? ''))) r = r2;
+    }
+    if (!r.exceptionDetails && r.result?.type === 'function') r = await send(`(${code.replace(/;\s*$/, '')})()`);
+    if (r.exceptionDetails) {
+      const d = r.exceptionDetails;
+      const msg = oneLine(d.exception?.description ?? d.exception?.value ?? d.text ?? 'error').split(' at ')[0];
+      throw new AwError('bad_request', `the script failed: ${clip(msg, 300)}`);
+    }
+    const res = r.result ?? {};
+    if (res.objectId) {
+      try {
+        const o = await this.s.send<any>('Runtime.callFunctionOn', {
+          objectId: res.objectId,
+          returnByValue: true,
+          functionDeclaration: `function(){try{if(this&&this.nodeType)return this.nodeType===1?this.outerHTML.slice(0,600):String(this.textContent).slice(0,600);var seen=new WeakSet();var j=JSON.stringify(this,function(k,v){if(typeof v==='object'&&v){if(seen.has(v))return '[circular]';seen.add(v)}if(typeof v==='function')return '[function]';if(typeof v==='bigint')return v+'n';return v});return j===undefined?String(this):j}catch(e){return String(this)}}`,
+        });
+        return String(o.result?.value ?? res.description ?? res.type);
+      } finally {
+        void this.s.send('Runtime.releaseObjectGroup', { objectGroup: 'aw-eval' }).catch(noop);
+      }
+    }
+    if (res.type === 'undefined') return 'undefined';
+    if (res.unserializableValue !== undefined) return String(res.unserializableValue);
+    return JSON.stringify(res.value) ?? String(res.description ?? res.type);
   }
 
   /** reason of the main-frame navigation the guard refused during this call, if any */

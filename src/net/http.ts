@@ -12,7 +12,7 @@ import net from 'node:net';
 import { pipeline } from 'node:stream/promises';
 import { Transform, type Readable } from 'node:stream';
 import zlib from 'node:zlib';
-import { Agent, buildConnector } from 'undici';
+import { Agent, ProxyAgent, buildConnector } from 'undici';
 import { parseHtml } from '../parse.ts';
 import { hash } from '../tree.ts';
 import type { Engine, Loaded, NavRequest, SessionCtx, Store } from '../types.ts';
@@ -49,6 +49,8 @@ export interface WireOptions {
   tls?: { ca?: string | Buffer; rejectUnauthorized?: boolean };
   /** default timeout when ctx.timeoutMs is 0 / missing (default 30 s) */
   defaultTimeoutMs?: number;
+  /** send every request through this HTTP(S) proxy (the proxy resolves host names, so the DNS check does not apply) */
+  proxy?: string;
 }
 
 export const ACCEPT_READ = 'text/markdown, text/html;q=0.9, application/json;q=0.8, */*;q=0.5';
@@ -160,7 +162,9 @@ export function createWireEngine(opts: WireOptions = {}): WireEngine {
     }
     return baseConnect(o, cb);
   };
-  const agent = new Agent({ connect, keepAliveTimeout: opts.keepAliveMs ?? 10_000, keepAliveMaxTimeout: 60_000, pipelining: 1 } as any);
+  const agent = (opts.proxy
+    ? new ProxyAgent({ uri: opts.proxy, keepAliveTimeout: opts.keepAliveMs ?? 10_000, keepAliveMaxTimeout: 60_000 } as any)
+    : new Agent({ connect, keepAliveTimeout: opts.keepAliveMs ?? 10_000, keepAliveMaxTimeout: 60_000, pipelining: 1 } as any)) as unknown as Agent;
 
   // ── one origin request (with the Retry-After retry) ──
   async function originRequest(ctx: SessionCtx, url: URL, method: string, headers: Record<string, string>, body: string | Uint8Array | undefined, signal: AbortSignal): Promise<RawHop> {

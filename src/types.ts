@@ -154,10 +154,29 @@ export interface Loaded {
   image?: { mime: string; data: string };
   /** response headers the runtime may care about (lower-case names) */
   headers?: Record<string, string>;
+  /** text answer of an action that reads rather than changes (js, console, network) */
+  value?: string;
+}
+
+/** What a session pretends to be: persisted in the session record, applied by browser engines. */
+export interface Emulation {
+  width?: number;
+  height?: number;
+  dpr?: number;
+  mobile?: boolean;
+  /** user agent (also used by the HTTP tiers) */
+  ua?: string;
+  locale?: string;
+  tz?: string;
+  geo?: { lat: number; lon: number };
+  dark?: boolean;
+  offline?: boolean;
+  /** shown back to the agent */
+  label?: string;
 }
 
 export type Action =
-  | { do: 'click'; n: number }
+  | { do: 'click'; n: number; count?: number; button?: 'left' | 'right' | 'middle' }
   | { do: 'fill'; n: number; value: string }
   | { do: 'select'; n: number; value: string }
   | { do: 'check'; n: number; on: boolean }
@@ -166,7 +185,12 @@ export type Action =
   | { do: 'scroll'; to: 'bottom' | 'top' | number }
   | { do: 'wait'; ms?: number; text?: string }
   | { do: 'back' }
-  | { do: 'shot'; full?: boolean; n?: number }
+  | { do: 'forward' }
+  | { do: 'drag'; n: number; to: number }
+  | { do: 'js'; code: string }
+  | { do: 'log'; kind: 'console' | 'network'; match?: string; failed?: boolean; body?: boolean; n?: number }
+  | { do: 'dialog'; accept: boolean; text?: string }
+  | { do: 'shot'; full?: boolean; n?: number; pdf?: boolean; save?: boolean }
   | { do: 'upload'; n: number; files: { name: string; mime: string; data: string }[] };
 
 export interface CookieData {
@@ -208,6 +232,7 @@ export interface SessionCtx {
   signal?: AbortSignal;
   /** URL the session is on, so a stateful engine can rehydrate after eviction */
   url?: string;
+  emulate?: Emulation;
 }
 
 export interface Engine {

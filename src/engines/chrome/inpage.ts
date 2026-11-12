@@ -674,7 +674,7 @@ export function listenerProbe(win: any, eventName: string): void {
     const ET = win.EventTarget && win.EventTarget.prototype;
     if (!ET || !ET.addEventListener || typeof win.Proxy !== 'function') return;
     const marked = new win.WeakSet();
-    const TYPES: Record<string, 1> = { click: 1, mousedown: 1, mouseup: 1, pointerdown: 1, pointerup: 1, touchstart: 1, touchend: 1, dblclick: 1 };
+    const TYPES: Record<string, 1> = { click: 1, mousedown: 1, mouseup: 1, pointerdown: 1, pointerup: 1, touchstart: 1, touchend: 1, dblclick: 1, dragstart: 1, drop: 1 };
     const add = ET.addEventListener;
     const reflectApply = win.Reflect.apply;
     const wsAdd = win.WeakSet.prototype.add;

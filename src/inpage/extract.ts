@@ -50,7 +50,7 @@ export function extractPage(win: any, opts?: ExtractOptions): Extracted {
   for (const k of ('href src alt title name value type placeholder action method enctype for id role aria-label ' +
     'aria-labelledby aria-checked aria-selected aria-expanded aria-current aria-disabled aria-pressed checked ' +
     'selected disabled readonly multiple colspan label open onclick contenteditable class target data-testid ' +
-    'required maxlength form formaction formmethod tabindex datetime min max pattern').split(' ')) ATTRS[k] = 1;
+    'required maxlength form formaction formmethod tabindex datetime min max pattern draggable ondrop').split(' ')) ATTRS[k] = 1;
   const SKIP: Record<string, 1> = { script: 1, style: 1, noscript: 1, template: 1, link: 1, meta: 1, head: 1, object: 1, embed: 1, param: 1, source: 1, track: 1 };
   const NATIVE: Record<string, 1> = { a: 1, button: 1, input: 1, select: 1, textarea: 1, option: 1, label: 1, summary: 1 };
   const URL_ATTR: Record<string, 1> = { src: 1, action: 1, formaction: 1 };
@@ -305,9 +305,10 @@ export function extractPage(win: any, opts?: ExtractOptions): Extracted {
         if (type !== 'password' && type !== 'file') node.v = String(el.value ?? '').slice(0, 20000);
         else if (type === 'password') node.v = el.value ? '••••' : '';
       } catch {}
-    } else if (NATIVE[tag] || (a && (role || a.onclick || a.tabindex || a.contenteditable))) {
+    } else if (NATIVE[tag] || (a && (role || a.onclick || a.tabindex || a.contenteditable || a.draggable === 'true' || a.ondrop !== undefined))) {
       node.n = idOf(el);
     }
+    if (a && !NATIVE[tag] && (a.draggable === 'true' || a.ondrop !== undefined)) node.p = 1;
     let down = flags;
     if (NATIVE[tag] && tag !== 'option') down |= F_NATIVE;
     if (tag === 'pre' || (cs && typeof cs.whiteSpace === 'string' && cs.whiteSpace.slice(0, 3) === 'pre')) down |= F_PRE;

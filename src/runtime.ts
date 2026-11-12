@@ -13,6 +13,7 @@
 import { searchTemplate } from './atlas/index.ts';
 import { blockText } from './blocks.ts';
 import { compile, TRUNCATED } from './compile.ts';
+import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
@@ -28,6 +29,7 @@ import {
   type CookieData,
   type CookieJar,
   type Doc,
+  type Emulation,
   type Engine,
   type Fetcher,
   type Field,
@@ -75,6 +77,10 @@ export interface RuntimeOptions {
   /** whole run */
   runTimeoutMs?: number;
   userAgent?: string;
+  /** engine used for new pages unless the agent picked one (a SOCKS proxy only works in the browser) */
+  defaultEngine?: Tier;
+  /** what every session emulates until it says otherwise */
+  emulate?: Emulation;
   sessionTtlSec?: number;
   /** names of configured secrets, mentioned in the tool description */
   secretNames?: string[];
@@ -139,7 +145,8 @@ export class RunCtx {
       id: rec.id,
       jar: this.jar,
       storage: rec.storage,
-      userAgent: rt.opts.userAgent,
+      userAgent: rec.emulate?.ua ?? rt.opts.emulate?.ua ?? rt.opts.userAgent,
+      emulate: rec.emulate ?? rt.opts.emulate,
       guard: this.guard,
       timeoutMs: rt.opts.timeoutMs,
       signal,
@@ -203,6 +210,7 @@ export class RunCtx {
     if (o?.push !== false && old && old.method === 'GET' && old.url !== page.url) {
       this.rec.history.push(old.url);
       if (this.rec.history.length > 30) this.rec.history.shift();
+      this.rec.forward = undefined;
     }
     // secrets typed into script-engine pages come back in extracted values: never keep them
     for (const b of page.blocks) for (const x of b.i) if (typeof x !== 'string' && x.val) x.val = this.guard.redact(x.val);
@@ -216,7 +224,8 @@ export class RunCtx {
   }
 
   async pickTier(url: string): Promise<Tier> {
-    if (this.rec.engine && (await this.rt.available(this.rec.engine))) return this.rec.engine;
+    const forced = this.rec.engine ?? this.rt.opts.defaultEngine;
+    if (forced && (await this.rt.available(forced))) return forced;
     // this session already needed scripts on this site: start there
     const known = this.rec.tiers?.[originOf(url)];
     if (known && (await this.rt.available(known))) return known;
@@ -248,7 +257,7 @@ export class RunCtx {
         loaded = await this.engine(tier).open(this.ctx, req);
       } catch (e) {
         // the light script engine ran out of time on a heavy page: a real browser is the next try
-        const up = tier === 'ghost' && method === 'GET' && !pinned && e instanceof AwError && e.code === 'timeout' && !this.ctx.signal?.aborted ? await this.nextTier(tier) : undefined;
+        const up = tier === 'ghost' && method === 'GET' && !pinned && e instanceof AwError && (e.code === 'timeout' || e.code === 'too_large') && !this.ctx.signal?.aborted ? await this.nextTier(tier) : undefined;
         if (!up) throw e;
         this.rt.count('escalations');
         this.note(`${(e as AwError).message}; opened in ${up} instead`);
@@ -448,6 +457,51 @@ function fieldOf(page: Page, a: Act): Field | undefined {
   return a.form !== undefined && a.fi !== undefined ? page.forms[a.form]?.fields[a.fi] : undefined;
 }
 
+
+const truthy = (v: Arg | undefined) => v !== undefined && v !== false && v !== 0 && !/^(0|no|false|off)$/i.test(String(v));
+
+function describeEmulation(e: Emulation): string {
+  const bits: string[] = [];
+  if (e.label) bits.push(e.label);
+  if (e.width) bits.push(`${e.width}x${e.height}${e.mobile ? ' mobile' : ''}`);
+  if (e.locale) bits.push(e.locale);
+  if (e.tz) bits.push(e.tz);
+  if (e.geo) bits.push(`at ${e.geo.lat},${e.geo.lon}`);
+  if (e.dark) bits.push('dark');
+  if (e.offline) bits.push('offline');
+  if (e.ua && !e.label) bits.push('custom user agent');
+  return bits.join(', ') || 'defaults';
+}
+
+/** keep a long value within about `tokens` tokens, cutting at the end */
+function clipTokens(text: string, tokens: number): string {
+  const max = Math.max(200, tokens * 3);
+  return text.length <= max ? text : text.slice(0, max) + `… [${text.length - max} more characters]`;
+}
+
+/** Load the current page in the chrome engine when it is not already there (verbs that only a browser can do). */
+async function needChrome(rc: RunCtx, what: string): Promise<void> {
+  if (rc.rec.page && rc.isLive() && rc.rec.page.tier === 'chrome') return void (await rc.ensureLive());
+  if (!(await rc.rt.available('chrome'))) throw new AwError('unsupported', `${what} need the chrome engine, which is not available`, 'install Chrome or set AGENTWEB_CHROME');
+  const p = rc.page;
+  if (p.method !== 'GET') throw new AwError('unsupported', 'this page is the result of a form POST and cannot be re-opened in a browser');
+  await rc.navigate({ url: p.url }, { tier: 'chrome', push: false });
+  await rc.ensureLive();
+}
+
+async function readLog(rc: RunCtx, step: Step, kind: 'console' | 'network'): Promise<void> {
+  const p = rc.rec.page;
+  if (!p || p.tier !== 'chrome' || !rc.isLive()) {
+    rc.emit(`(no ${kind} log: only pages loaded by the chrome engine keep one; engine('chrome') reloads this page there)`);
+    return;
+  }
+  await rc.ensureLive();
+  const match = step.args.length ? str(step.args[0]) : undefined;
+  const failed = truthy(step.opts.failed) || truthy(step.opts.errors);
+  const res = await rc.live({ do: 'log', kind, match, failed, body: truthy(step.opts.body), n: typeof step.opts.n === 'number' ? step.opts.n : undefined });
+  rc.emit(clipTokens(res.value ?? '', rc.remaining));
+}
+
 const VERBS: Record<string, VerbHandler> = {
   async open(rc, step) {
     const url = normalizeUrl(str(step.args[0]), rc.rec.page?.url);
@@ -456,12 +510,24 @@ const VERBS: Record<string, VerbHandler> = {
     await rc.navigate({ url });
   },
 
+  async forward(rc) {
+    if (rc.isLive()) return void (await rc.ensureLive(), await rc.live({ do: 'forward' }));
+    const fwd = rc.rec.forward ?? [];
+    const url = fwd.pop();
+    if (!url) throw new AwError('bad_request', 'there is no later page: forward() only follows back()');
+    await rc.navigate({ url });
+    rc.rec.forward = fwd;
+  },
+
   async back(rc) {
     if (rc.isLive()) return void (await rc.ensureLive(), await rc.live({ do: 'back' }));
     const url = rc.rec.history.pop();
     if (!url) throw new AwError('bad_request', 'there is no earlier page in this session');
+    if (rc.rec.page && rc.rec.page.method === 'GET' && /^https?:/.test(rc.rec.page.url)) (rc.rec.forward ??= []).push(rc.rec.page.url);
+    const keep = rc.rec.forward;
     if (url.startsWith('search:')) return VERBS.search(rc, { verb: 'search', args: [url.slice(7)], opts: {}, src: 'back()' });
     await rc.navigate({ url }, { push: false });
+    rc.rec.forward = keep;
   },
 
   async reload(rc) {
@@ -586,6 +652,12 @@ const VERBS: Record<string, VerbHandler> = {
   },
 
   async click(rc, step) {
+    const count = truthy(step.opts.double) ? 2 : undefined;
+    const button = /^(right|context|secondary)/i.test(str(step.opts.button)) ? 'right' : /^middle/i.test(str(step.opts.button)) ? 'middle' : undefined;
+    if (count || button) {
+      await rc.escalate(count ? 'double-click needs a script engine' : 'right-click needs a script engine');
+      return rc.liveOn(step, (n) => ({ do: 'click', n, count, button }));
+    }
     if (rc.isLive()) return rc.liveOn(step, (n) => ({ do: 'click', n }));
     const r = rc.resolve(step);
     if ('portable' in r) {
@@ -777,16 +849,20 @@ const VERBS: Record<string, VerbHandler> = {
     await rc.navigate({ url: p.url }, { tier: 'wire', push: false });
   },
 
-  async shot(rc) {
-    if (!rc.isLive() || rc.page.tier !== 'chrome') {
-      if (!(await rc.rt.available('chrome'))) throw new AwError('unsupported', 'screenshots need the chrome engine, which is not available', 'install Chrome or set AGENTWEB_CHROME');
-      const p = rc.page;
-      if (p.method !== 'GET') throw new AwError('unsupported', 'this page is the result of a form POST and cannot be re-opened for a screenshot');
-      await rc.navigate({ url: p.url }, { tier: 'chrome', push: false });
+  /** shot() · shot(12) one element · shot(full=1) whole page · shot(pdf=1) · shot(save=1) also keep the file */
+  async shot(rc, step) {
+    const n = typeof step.args[0] === 'number' || typeof step.args[0] === 'string';
+    const pdf = truthy(step.opts.pdf);
+    await needChrome(rc, 'screenshots');
+    let target: number | undefined;
+    if (n) {
+      const r = rc.resolve(step);
+      if ('portable' in r) throw new AwError('bad_request', `${r.n} is from an earlier page`);
+      target = r.act.n;
     }
-    await rc.ensureLive();
-    await rc.live({ do: 'shot' });
-    rc.note('screenshot attached');
+    const res = await rc.live({ do: 'shot', full: truthy(step.opts.full), n: target, pdf, save: truthy(step.opts.save) });
+    if (res.value) rc.note(res.value);
+    if (!pdf) rc.note('screenshot attached');
   },
 
   async upload(rc, step) {
@@ -794,6 +870,119 @@ const VERBS: Record<string, VerbHandler> = {
     const name = str(step.args[1]) || 'file.txt';
     const data = Buffer.from(str(step.opts.text ?? step.args[2] ?? ''), 'utf8').toString('base64');
     await rc.liveOn(step, (n) => ({ do: 'upload', n, files: [{ name, mime: str(step.opts.mime) || 'text/plain', data }] }));
+  },
+
+  /** js('code'): run JavaScript in the page and show the result as JSON (an expression, statements, or an arrow function) */
+  async js(rc, step) {
+    const code = str(step.args[0]);
+    if (!code.trim()) throw new AwError('bad_request', "js needs code: js('document.title')");
+    const p = rc.rec.page;
+    const v = await rc.guard.checkStep({ verb: 'js', origin: p ? originOf(p.url) : undefined, text: code });
+    if (!v.ok) throw new AwError('policy', v.reason);
+    await needChrome(rc, 'js() runs in a real browser page');
+    const res = await rc.live({ do: 'js', code });
+    rc.emit(clipTokens(res.value ?? 'undefined', rc.remaining));
+    rc.stale = true; // the script may have changed the page: show what changed
+  },
+
+  /** console() · console('words', errors=1): what the page logged since it loaded */
+  async console(rc, step) {
+    return readLog(rc, step, 'console');
+  },
+
+  /** network() · network('words', failed=1, n=40) · network('api/items', body=1): requests the page made since it loaded */
+  async network(rc, step) {
+    return readLog(rc, step, 'network');
+  },
+
+  /** dialog('dismiss') · dialog('accept', 'text for a prompt'): how alert/confirm/prompt boxes are answered from now on (default: accept, empty text) */
+  async dialog(rc, step) {
+    const a = lc(str(step.args[0]));
+    const accept = !/^(dismiss|cancel|no|false|0|deny|reject)/.test(a);
+    const text = step.args[1] !== undefined ? str(step.args[1]) : step.opts.text !== undefined ? str(step.opts.text) : undefined;
+    if (!rc.isLive() || rc.page.tier !== 'chrome') throw new AwError('unsupported', 'dialogs are answered by the chrome engine; open the page with engine(\'chrome\') first');
+    await rc.ensureLive();
+    await rc.live({ do: 'dialog', accept, text });
+    rc.note(`dialogs will be ${accept ? 'accepted' : 'dismissed'}${text !== undefined ? ` with "${text}"` : ''}`);
+  },
+
+  /**
+   * emulate('iPhone 15') · emulate(390, 844) · emulate(locale='fr-FR', tz='Europe/Paris', geo='48.85,2.35', dark=1, offline=1, ua='…')
+   * Changes add to what is set; emulate('reset') or emulate() clears it. Kept with the session.
+   */
+  async emulate(rc, step) {
+    const o = step.opts;
+    const cur: Emulation = { ...(rc.rec.emulate ?? {}) };
+    let next: Emulation = { ...cur };
+    const nums = step.args.filter((a): a is number => typeof a === 'number');
+    const words = step.args.filter((a): a is string => typeof a === 'string');
+    const bare = !step.args.length && !Object.keys(o).length;
+    if (bare || words.some((w) => /^(reset|clear|off|none)$/i.test(w))) next = {};
+    const dev = str(o.device) || words.find((w) => !/^(reset|clear|off|none)$/i.test(w) && !/^\d+\s*[x×,]\s*\d+$/.test(w) && !/^[a-z]{2,3}([-_][A-Za-z]{2,4})?$/.test(w));
+    if (dev) {
+      const d = findDevice(dev);
+      if (!d) throw new AwError('bad_request', `unknown device '${dev}'`, `devices: ${Object.keys(DEVICES).join(', ')}; or emulate(width=…, height=…, mobile=1)`);
+      next = { ...next, ...d.emu, label: d.name };
+    }
+    const wh = words.map((w) => /^(\d+)\s*[x×,]\s*(\d+)$/.exec(w)).find(Boolean);
+    if (wh) next = { ...next, width: Number(wh[1]), height: Number(wh[2]) };
+    if (nums.length >= 2) next = { ...next, width: nums[0], height: nums[1] };
+    else if (nums.length === 1) next = { ...next, width: nums[0] };
+    if (o.width !== undefined) next.width = Number(o.width);
+    if (o.height !== undefined) next.height = Number(o.height);
+    if (o.dpr !== undefined || o.scale !== undefined) next.dpr = Number(o.dpr ?? o.scale);
+    if (o.mobile !== undefined) next.mobile = truthy(o.mobile);
+    if (o.ua !== undefined || o.useragent !== undefined) next.ua = str(o.ua ?? o.useragent) || undefined;
+    const loc = o.locale ?? words.find((w) => /^[a-z]{2,3}[-_][A-Za-z]{2,4}$/.test(w));
+    if (loc !== undefined) next.locale = str(loc).replace('_', '-') || undefined;
+    const tz = o.tz ?? o.timezone ?? words.find((w) => /^[A-Za-z]+\/[A-Za-z_\/+-]+$/.test(w));
+    if (tz !== undefined) next.tz = str(tz) || undefined;
+    if (o.geo !== undefined || o.lat !== undefined) {
+      const g = o.lat !== undefined ? [Number(o.lat), Number(o.lon ?? o.lng)] : str(o.geo).split(/[,\s]+/).map(Number);
+      if (g.length < 2 || !g.every(Number.isFinite) || Math.abs(g[0]) > 90 || Math.abs(g[1]) > 180) throw new AwError('bad_request', "geo needs latitude and longitude: emulate(geo='48.85,2.35')");
+      next.geo = { lat: g[0], lon: g[1] };
+    }
+    if (o.dark !== undefined) next.dark = truthy(o.dark);
+    if (o.colorscheme !== undefined || o.scheme !== undefined) next.dark = /dark/i.test(str(o.colorscheme ?? o.scheme));
+    if (o.offline !== undefined) next.offline = truthy(o.offline);
+    for (const k of Object.keys(next) as (keyof Emulation)[]) if (next[k] === undefined || next[k] === false && k !== 'mobile') delete next[k];
+    if (next.width && !next.height) next.height = Math.round(next.width * 0.625);
+    if (next.height && !next.width) next.width = Math.round(next.height * 1.6);
+    if (next.width !== undefined && (next.width < 100 || next.width > 4000 || (next.height ?? 0) < 100 || (next.height ?? 0) > 4000)) throw new AwError('bad_request', 'the viewport must be between 100 and 4000 pixels each way');
+    const same = JSON.stringify(next) === JSON.stringify(cur);
+    const empty = !Object.keys(next).length;
+    rc.rec.emulate = empty ? undefined : next;
+    rc.ctx.emulate = rc.rec.emulate;
+    // the HTTP tiers cannot show any of it except the user agent
+    const browserOnly = Object.keys(next).some((k) => k !== 'ua' && k !== 'label');
+    if (browserOnly && !(await rc.rt.available('chrome'))) throw new AwError('unsupported', 'viewport, locale, timezone, location and dark mode need the chrome engine, which is not available', 'install Chrome or set AGENTWEB_CHROME');
+    if (rc.ctx.userAgent !== (next.ua ?? rc.rt.opts.userAgent)) rc.ctx.userAgent = next.ua ?? rc.rt.opts.userAgent;
+    const p = rc.rec.page;
+    const reopen = !!p && p.method === 'GET' && /^https?:/.test(p.url);
+    if (browserOnly && rc.rec.engine !== 'chrome') {
+      rc.rec.engine = 'chrome';
+    }
+    if (reopen && !same) {
+      const live = p.tier === 'chrome' && rc.isLive();
+      const uaChanged = (cur.ua ?? '') !== (next.ua ?? '') || (cur.locale ?? '') !== (next.locale ?? '') || !!cur.mobile !== !!next.mobile;
+      if (live && !uaChanged) {
+        await rc.ensureLive();
+        await rc.live({ do: 'wait', ms: 0 }); // applies it to the open page
+      } else await rc.navigate({ url: p.url }, { tier: browserOnly ? 'chrome' : p.tier, push: false });
+    }
+    rc.note(empty ? 'emulation cleared' : 'emulating ' + describeEmulation(next) + (reopen || same ? '' : '; open a page to use it'));
+  },
+
+  /** drag(from, to): press on one element, move, release on the other (also HTML5 drag and drop) */
+  async drag(rc, step) {
+    if (step.args.length < 2) throw new AwError('bad_request', "drag needs two targets: drag('item', 'Done column')");
+    await rc.escalate('dragging needs a script engine');
+    const toStep: Step = { ...step, verb: 'drag', args: [step.args[1]], opts: {} };
+    await rc.liveOn({ ...step, args: [step.args[0]] }, (n) => {
+      const r = rc.resolve(toStep);
+      if ('portable' in r || r.act.n === undefined) throw new AwError('stale', 'the drop target is not on the live page');
+      return { do: 'drag', n, to: r.act.n };
+    });
   },
 
   /** profile('name') loads a saved sign-in (Playwright storageState file); save=1 writes the current one */
@@ -875,7 +1064,7 @@ function setChecked(rc: RunCtx, act: Act, block: Block, on: boolean) {
 
 export class RuntimeImpl implements Runtime {
   deps: RuntimeDeps;
-  opts: Required<RuntimeOptions>;
+  opts: Required<Omit<RuntimeOptions, 'defaultEngine' | 'emulate'>> & Pick<RuntimeOptions, 'defaultEngine' | 'emulate'>;
   private verbs: Record<string, VerbHandler> = { ...VERBS };
   private locks = new Map<string, Promise<unknown>>();
   private subs = new Set<(e: RunEvent) => void>();
@@ -892,6 +1081,8 @@ export class RuntimeImpl implements Runtime {
       userAgent: o.userAgent ?? DEFAULT_UA,
       sessionTtlSec: o.sessionTtlSec ?? 86400,
       secretNames: o.secretNames ?? [],
+      defaultEngine: o.defaultEngine,
+      emulate: o.emulate,
     };
   }
 
