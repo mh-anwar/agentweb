@@ -58,6 +58,7 @@ const HELP = `agentweb ${VERSION} - a browser for agents
         --workers N              processes (default 1)
         --keys k1=tenant1,k2=…   bearer API keys (also AGENTWEB_KEYS)
   agentweb test [paths] [--base URL] [--json] [--update] [--record out.aw "program"]   end-to-end tests (agentweb test --help)
+  agentweb program list|show|save|run|delete   saved programs you can run again (agentweb program --help)
   agentweb extension             where the browser extension is and how to load it (lets agents use your own Chrome)
   agentweb bridge                run the extension bridge by itself and show who is connected
   agentweb tool [--format mcp|openai|anthropic]
@@ -93,6 +94,12 @@ async function main() {
   if (cmd === 'test') {
     const { testCommand } = await import('./test/cli.ts');
     process.exitCode = await testCommand(argv.slice(argv.indexOf('test') + 1));
+    return;
+  }
+
+  if (cmd === 'program') {
+    const { programCommand } = await import('./programs/cli.ts');
+    process.exitCode = await programCommand(argv.slice(argv.indexOf('program') + 1));
     return;
   }
 

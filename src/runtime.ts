@@ -1365,6 +1365,33 @@ export class RuntimeImpl implements Runtime {
     return this.lock(session, () => this.runLocked(session, program, opts ?? {}));
   }
 
+  /** One step of a program, with the run loop's rules (confirm tokens, one escalation retry). Stored programs use it too. */
+  async execStep(rc: RunCtx, step: Step): Promise<void> {
+    const handler = this.verbs[step.verb];
+    if (!handler) throw new AwError('unsupported', `${step.verb}() is not available in this build`);
+    // submit(confirm='token') is how agents naturally write it: approve, then run the step
+    if (step.verb !== 'confirm') {
+      let tok = step.opts.confirm;
+      // submit('confirm 1a2b3c4d') too: the refusal text read as an argument
+      const i = step.args.findIndex((a) => typeof a === 'string' && /^confirm\s+[0-9a-f]{6,}$/i.test(a.trim()));
+      if (tok === undefined && i >= 0) [tok] = step.args.splice(i, 1);
+      if (tok !== undefined) {
+        await VERBS.confirm(rc, { verb: 'confirm', args: [tok], opts: {}, src: step.src });
+        delete step.opts.confirm;
+      }
+    }
+    try {
+      await handler(rc, step);
+    } catch (e) {
+      // a control the plain-HTTP view does not have (rendered by script, in a shadow root):
+      // move the page to a script engine and try the step once more
+      const p = rc.rec.page;
+      if (!(e instanceof AwError) || e.code !== 'bad_request' || !MISSING_TARGET.test(e.message) || !p || p.tier !== 'wire' || !p.stats.scripts || p.method !== 'GET' || !(await rc.nextTier('wire'))) throw e;
+      await rc.escalate(`${step.src} was not found without the page's scripts`);
+      await handler(rc, step);
+    }
+  }
+
   private async runLocked(session: string, program: string, opts: RunOptions): Promise<RunResult> {
     const t0 = performance.now();
     const budget = Math.min(Math.max(opts.budget ?? this.opts.budget, 200), 30000);
@@ -1392,30 +1419,8 @@ export class RuntimeImpl implements Runtime {
         failed = { step, err: new AwError('timeout', 'the run was cancelled or timed out') };
         break;
       }
-      const handler = this.verbs[step.verb];
       try {
-        if (!handler) throw new AwError('unsupported', `${step.verb}() is not available in this build`);
-        // submit(confirm='token') is how agents naturally write it: approve, then run the step
-        if (step.verb !== 'confirm') {
-          let tok = step.opts.confirm;
-          // submit('confirm 1a2b3c4d') too: the refusal text read as an argument
-          const i = step.args.findIndex((a) => typeof a === 'string' && /^confirm\s+[0-9a-f]{6,}$/i.test(a.trim()));
-          if (tok === undefined && i >= 0) [tok] = step.args.splice(i, 1);
-          if (tok !== undefined) {
-            await VERBS.confirm(rc, { verb: 'confirm', args: [tok], opts: {}, src: step.src });
-            delete step.opts.confirm;
-          }
-        }
-        try {
-          await handler(rc, step);
-        } catch (e) {
-          // a control the plain-HTTP view does not have (rendered by script, in a shadow root):
-          // move the page to a script engine and try the step once more
-          const p = rc.rec.page;
-          if (!(e instanceof AwError) || e.code !== 'bad_request' || !MISSING_TARGET.test(e.message) || !p || p.tier !== 'wire' || !p.stats.scripts || p.method !== 'GET' || !(await rc.nextTier('wire'))) throw e;
-          await rc.escalate(`${step.src} was not found without the page's scripts`);
-          await handler(rc, step);
-        }
+        await this.execStep(rc, step);
         done++;
       } catch (e) {
         const err = e instanceof AwError ? e : new AwError('internal', shortError(e));
