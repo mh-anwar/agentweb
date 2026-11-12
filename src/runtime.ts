@@ -517,7 +517,22 @@ export class RunCtx {
       const r = actByFp(this.page, step.opts._fp);
       if (r) return r;
     }
-    return resolveTarget(this.page, this.refs, step.args.length ? step.args[0] : testid!, { verb: verb ?? step.verb, near, nth, testid: step.args.length ? undefined : testid });
+    const o = { verb: verb ?? step.verb, near, nth, testid: step.args.length ? undefined : testid };
+    if (step.opts._quoted && typeof step.args[0] === 'number') {
+      // quoted digits: a control that reads exactly that ("2" in a row of page links) is what was written
+      const label = String(step.args[0]);
+      const numbered = this.refs.get(step.args[0]);
+      if (numbered?.l.trim() !== label && allActs(this.page).some((r) => r.act.l.trim() === label)) {
+        try {
+          const r = resolveTarget(this.page, this.refs, label, o);
+          if (numbered && actByFp(this.page, numbered.f)) this.note(`'${label}' was taken as the control that reads "${label}"; ${step.verb}(${label}) without quotes is number ${label}, [${numbered.l}]`);
+          return r;
+        } catch {
+          // no single control reads that: the number stands
+        }
+      }
+    }
+    return resolveTarget(this.page, this.refs, step.args.length ? step.args[0] : testid!, o);
   }
 
   /**

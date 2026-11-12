@@ -671,8 +671,19 @@ export function rank(page: Page, query: string): Hit[] {
 }
 
 export function renderFind(page: Page, st: ViewState, refs: Refs, query: string, budget: number): Rendered & { partial?: boolean; miss?: boolean } {
-  const hits = rank(page, query);
+  let hits = rank(page, query);
   const blocks = page.blocks;
+  // Lines that hold the query word for word answer it; with any of those, lines that merely share words with it
+  // (132 "timeout_ms" lines around one "dispatcher.audit.idle_timeout_ms") are left out and counted.
+  let looser = 0;
+  const phrase = query.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (phrase.length > 3 && terms(query).length >= 2) {
+    const exact = hits.filter((h) => blockText(blocks[h.index]).toLowerCase().includes(phrase));
+    if (exact.length && exact.length < hits.length) {
+      looser = hits.length - exact.length;
+      hits = exact;
+    }
+  }
   if (!hits.length) {
     const heads = blocks.filter((b) => b.k === 'h').slice(0, 8).map((b) => blockText(b));
     let text = `no match for '${query}' on this page` + (heads.length ? '. Sections: ' + heads.join(' · ') : '');
@@ -733,11 +744,11 @@ export function renderFind(page: Page, st: ViewState, refs: Refs, query: string,
   // A short query that no line holds whole (a product name, say) is a miss, however close the closest lines look:
   // "1 match" over a different product has sent agents after the wrong thing.
   const nq = new Set(terms(query)).size;
-  const partial = nq >= 2 && nq <= 4 && !hits.some((h) => h.all);
+  const partial = !looser && nq >= 2 && nq <= 4 && !hits.some((h) => h.all);
   const out: string[] = [
     partial
       ? `no line on this page has all of '${query}'; closest${taken < hits.length ? ` ${taken} of ${hits.length}` : ''}:`
-      : `${hits.length} ${hits.length === 1 ? 'match' : 'matches'} for '${query}'` + (taken < hits.length ? `, best ${taken} shown` : '') + ':',
+      : `${hits.length} ${hits.length === 1 ? 'match' : 'matches'} for '${query}'` + (taken < hits.length ? `, best ${taken} shown` : '') + (looser ? ` (word for word; ${looser} looser ${looser === 1 ? 'match' : 'matches'} left out)` : '') + ':',
   ];
   let lastI = -2;
   for (const i of order) {

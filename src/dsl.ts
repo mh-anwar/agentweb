@@ -457,6 +457,8 @@ function shape(verb: string, args: Arg[], opts: Record<string, Arg>, src: string
     else if (r === 'locale' && typeof args[0] === 'string') (opts.locale = args.shift()!);
     else if ((r === 'geolocation' || r === 'setgeolocation') && args.length >= 2 && typeof args[0] === 'number') opts.geo = `${args.shift()},${args.shift()}`;
   }
+  // click('2') may mean the control numbered 2 or the one that reads "2" (a page link): the quotes are remembered
+  if (TARGETED.has(verb) && typeof args[0] === 'string' && /^\d{1,6}$/.test(args[0].trim())) opts._quoted = true;
   if (TARGETED.has(verb) && args.length) args[0] = toRef(args[0]);
   if (verb === 'drag') args = args.slice(0, 2).map(toRef);
   if (verb === 'shot' && typeof args[0] === 'string' && /^\d+$/.test(args[0])) args[0] = Number(args[0]);

@@ -69,3 +69,16 @@ test("a button's number still works from another page: the session goes back to 
   assert.match(r.text, new RegExp(`note: ${num} \\(\\[Add to cart\\]\\) is on .*q=Kestrel\\+Flux\\+310: went back to that page for it`));
   assert.match((await rt.run(s, `open('${farm.url}/shop/cart'); read()`)).text, /Kestrel Flux 310 Camera \| \$1,325\.99 \| 1/);
 });
+
+test("click('2') is the control that reads 2 (a page link), not whatever happens to be numbered 2", async () => {
+  const s = 'f' + ++n;
+  const first = (await rt.run(s, `open('${farm.url}/shop/'); search('Auberon'); view()`)).text;
+  assert.match(first, /\[Accept all\]2 /, 'number 2 in this session is another control');
+  const r = await rt.run(s, "click('2'); find('products ·')");
+  assert.match(r.text, /page 2 of 2/, r.text);
+  assert.match(r.text, /note: '2' was taken as the control that reads "2"/);
+  // unquoted, it is the number
+  const t = 'f' + ++n;
+  await rt.run(t, `open('${farm.url}/shop/'); search('Auberon'); view()`);
+  assert.match((await rt.run(t, "click(2); find('products ·')")).text, /Accept all/);
+});

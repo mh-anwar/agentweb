@@ -55,3 +55,15 @@ test('unsupported numeric notation is rejected as a whole token', () => {
     assert.ok(row.errors?.amount, price);
   }
 });
+
+test('number: the figure the field is named after, not every number on the row', () => {
+  const card = textBlock('Ostrava Mosaic 791 Camera | $1,386.99 | 3.3 (3 reviews) | In stock');
+  const row = extractRow(page, card, { price: 'money', rating: 'number', reviews: 'number' });
+  assert.deepEqual(row.values, { price: 1386.99, rating: 3.3, reviews: 3 });
+  const detail = extractRow(page, textBlock('★★★☆☆ 3.4 out of 5 (9 reviews) · Rating: 3.4'), { rating: 'number', reviews: 'number' });
+  assert.deepEqual(detail.values, { rating: 3.4, reviews: 9 });
+  // nothing says which: still an error, never a guess
+  assert.equal(extractRow(page, textBlock('12 in stock, 4 on order'), { count: 'number' }).errors?.count, 'ambiguous');
+  // a row whose only number is its price
+  assert.equal(extractRow(page, textBlock('Widget $5'), { cost: 'number' }).values.cost, 5);
+});

@@ -1,6 +1,7 @@
 // Deterministic, evidence-carrying collection. No model calls, inferred fields, or hidden retries.
 import { compareCollection, type CollectionChanges, type CollectionSnapshot } from './compare.ts';
-import { blockText } from '../blocks.ts';
+import { actText, blockText } from '../blocks.ts';
+import { squash } from '../tree.ts';
 import { TRUNCATED } from '../compile.ts';
 import type { Step } from '../dsl.ts';
 import type { RunCtx } from '../runtime.ts';
@@ -56,6 +57,9 @@ export function extractRow(page: Page, block: Block, fields: Record<string, Sele
   const links = block.i.filter((x): x is Act => typeof x !== 'string' && x.k === 'link' && !!x.href);
   for (const [name, selector] of Object.entries(fields)) {
     let choices: { value: string | number; quote: string; currency?: string }[] = [];
+    const plain: typeof choices = [];
+    const named: typeof choices = [];
+    const amounts: typeof choices = [];
     if (selector === 'text' && text) choices = [{ value: text, quote: text }];
     if (selector === 'link' || selector === 'url') {
       choices = links.map(a => ({ value: selector === 'url' ? a.href! : a.l, quote: a.l }));
@@ -64,8 +68,35 @@ export function extractRow(page: Page, block: Block, fields: Record<string, Sele
       const re = selector === 'money'
         ? /(?<![\p{L}\p{N}])(?<before>[+−-]?)\s*(?<currency>[A-Z]{1,3}\$|[$£€]|USD|GBP|EUR|CAD|AUD|NZD|HKD|SGD)\s*(?<after>[+−-]?)\s*(?<amount>\d[\d., \u00a0\u202f]*)/gu
         : /-?\d[\d.,]*/g;
-      for (const m of text.matchAll(re)) {
+      // a number in a link's label is part of a name ("Kite 902 Camera"), not a figure about the item
+      const hay = selector === 'number' ? squash(block.i.map((x) => (typeof x === 'string' ? x : x.k === 'link' ? ' · ' : ' ' + actText(x) + ' ')).join('')) : text;
+      for (const m of hay.matchAll(re)) {
         const quote = m[0].trim();
+        if (selector === 'number') {
+          const pre = hay.slice(0, m.index);
+          const post = hay.slice(m.index! + m[0].length);
+          // an amount of money, or the "5" of "4.2 out of 5", is not the figure asked for
+          const money = /(?:[$£€]|\b(?:USD|GBP|EUR|CAD|AUD|NZD|HKD|SGD))\s*$/.test(pre);
+          if (/(?:out of|\/)\s*$/i.test(pre)) continue;
+          const raw = quote.replace(/[.,]+$/, '');
+          if (!/^-?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?$/.test(raw)) { choices = []; plain.length = 0; named.length = 0; amounts.length = 0; break; }
+          const value = Number(raw.replaceAll(',', ''));
+          if (!Number.isFinite(value) || Math.abs(value) > Number.MAX_SAFE_INTEGER || decimalIdentity(raw.replaceAll(',', '')) !== decimalIdentity(String(value))) { choices = []; plain.length = 0; named.length = 0; amounts.length = 0; break; }
+          const choice = { value, quote: raw };
+          if (money) {
+            amounts.push(choice);
+            continue;
+          }
+          // "3 reviews", "Rating: 4.5": the word on a number says what it counts
+          const unit = /^\s*([\p{L}]{3,})/u.exec(post)?.[1]?.toLowerCase();
+          const label = /([\p{L}]{3,})\s*:?\s*$/u.exec(pre)?.[1]?.toLowerCase();
+          const key = name.toLowerCase();
+          const same = (w?: string) => !!w && (w.startsWith(key.slice(0, 4)) || key.startsWith(w.slice(0, 4)));
+          if (same(unit) || same(label)) named.push(choice);
+          else if (!unit) plain.push(choice);
+          choices.push(choice);
+          continue;
+        }
         const currency = m.groups?.currency;
         const before = m.groups?.before ?? '';
         const after = m.groups?.after ?? '';
@@ -89,6 +120,9 @@ export function extractRow(page: Page, block: Block, fields: Record<string, Sele
         choices.push({ value, quote, currency });
       }
     }
+    // several numbers on the row: the one the field's name is written on wins, then the one that counts nothing else
+    if (selector === 'number' && choices.length > 1) choices = named.length ? named : plain.length ? plain : choices;
+    if (selector === 'number' && !choices.length) choices = amounts;
     const unique = [...new Map(choices.map(c => [JSON.stringify([c.value, c.currency]), c])).values()];
     if (unique.length === 1) {
       row.values[name] = unique[0].value;
