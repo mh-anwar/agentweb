@@ -13,6 +13,8 @@ export interface RefEntry {
   l: string;
   /** links keep their target, so a ref from an earlier page can still be followed */
   href?: string;
+  /** buttons keep the page they were on (an index into the session's refPages), so their number can be used from another page */
+  p?: number;
 }
 
 export interface SessionRecord {
@@ -24,6 +26,8 @@ export interface SessionRecord {
   cookies: CookieData[];
   storage: Record<string, Record<string, string>>;
   refs: RefEntry[];
+  /** URLs of the GET pages that buttons were numbered on (RefEntry.p) */
+  refPages?: string[];
   view: ViewState;
   /** URLs to return to with back() (GET pages only) */
   history: string[];
@@ -102,15 +106,31 @@ export async function saveSession(store: Store, rec: SessionRecord, ttlSec: numb
 export class SessionRefs implements Refs {
   entries: RefEntry[];
   private ix = new Map<string, number>();
-  constructor(entries: RefEntry[]) {
+  /** the URL of the page being shown, when it can be opened again with a plain GET */
+  here: () => string | undefined = () => undefined;
+  readonly pages: string[];
+  constructor(entries: RefEntry[], pages: string[] = []) {
     this.entries = entries;
+    this.pages = pages;
     entries.forEach((e, i) => this.ix.set(e.f, i + 1));
+  }
+  /** Where a button's number was given, if that page can be opened again. */
+  pageOf(e: RefEntry): string | undefined {
+    return e.p === undefined ? undefined : this.pages[e.p];
   }
   of(a: Act): number {
     let n = this.ix.get(a.f);
     if (n === undefined) {
       const e: RefEntry = { f: a.f, k: a.k, l: a.l };
       if (a.k === 'link' && a.href) e.href = a.href;
+      else if (a.k === 'button' || a.k === 'click') {
+        const url = this.here();
+        if (url) {
+          let p = this.pages.lastIndexOf(url);
+          if (p < 0) p = this.pages.push(url) - 1;
+          e.p = p;
+        }
+      }
       this.entries.push(e);
       n = this.entries.length;
       this.ix.set(a.f, n);
@@ -206,6 +226,16 @@ function context(r: Resolved, a: Act): string {
   return t;
 }
 
+/** The words just before a control on its line, up to the control before it: what a reader takes for its label. */
+function captionOf(r: Resolved): string {
+  let text = '';
+  for (const x of r.block.i) {
+    if (x === r.act) break;
+    text = typeof x === 'string' ? text + x : '';
+  }
+  return norm(text.replace(/[|:*]+/g, ' '));
+}
+
 export interface ResolveOpts {
   verb: string;
   near?: string;
@@ -247,6 +277,12 @@ export function resolveTarget(page: Page, refs: SessionRefs, target: Arg, o: Res
     if (r.act.dis) s -= 20;
     scored.push({ r, s });
     if (s > best) best = s;
+  }
+  if (!scored.length && !o.testid && (o.verb === 'fill' || o.verb === 'select')) {
+    // A field named only by the text beside it ("username: | {acct}", a table-layout form): that text is its label
+    const by = pool.filter((r) => captionOf(r) === want);
+    const near = by.length ? by : pool.filter((r) => captionOf(r).includes(want));
+    if (near.length === 1) return near[0];
   }
   if (!scored.length) {
     const sugg = suggestions(pool, want, refs);

@@ -183,7 +183,11 @@ export class RunCtx {
   constructor(rt: RuntimeImpl, rec: SessionRecord, budget: number, signal?: AbortSignal) {
     this.rt = rt;
     this.rec = rec;
-    this.refs = new SessionRefs(rec.refs);
+    this.refs = new SessionRefs(rec.refs, (rec.refPages ??= []));
+    this.refs.here = () => {
+      const p = this.rec.page;
+      return p && p.method === 'GET' && /^https?:/.test(p.url) ? p.url : undefined;
+    };
     this.jar = rt.deps.createJar(rec.cookies);
     this.guard = rt.deps.createGuard(rec.guard, rec.id);
     this.budget = budget;
@@ -959,6 +963,16 @@ const VERBS: Record<string, VerbHandler> = {
     if (count || button) {
       await rc.escalate(count ? 'double-click needs a script engine' : 'right-click needs a script engine');
       return rc.liveOn(step, (n) => ({ do: 'click', n, count, button }));
+    }
+    // A button's number from an earlier page: numbers hold for the whole session, so go back to its page for it
+    if (typeof step.args[0] === 'number' && rc.rec.page) {
+      const e = rc.refs.get(step.args[0]);
+      const was = e && !e.href ? rc.refs.pageOf(e) : undefined;
+      if (e && was && was !== rc.page.url && !actByFp(rc.page, e.f)) {
+        await rc.navigate({ url: was });
+        if (!actByFp(rc.page, e.f)) throw new AwError('bad_request', `${step.args[0]} ([${e.l}]) was on ${was} and is not there any more`, 'that page is open now: use the visible text');
+        rc.note(`${step.args[0]} ([${e.l}]) is on ${was}: went back to that page for it`);
+      }
     }
     if (rc.isLive()) return liveClick(rc, step);
     const r = rc.resolve(step);

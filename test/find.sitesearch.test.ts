@@ -51,3 +51,21 @@ test('words the site search does not have either: the answer is about this page,
 test('one-word and long queries keep the plain count', async () => {
   assert.match(await run("open('$U/shop/'); find('Keyboard')"), /\d+ match(es)? for 'Keyboard'/);
 });
+
+test('a field with no label of its own answers to the words beside it', async () => {
+  const s = 'f' + ++n;
+  const r = await rt.run(s, `open('${farm.url}/news/login?goto=news'); fill('username', 'someone'); fill('password', 'pw'); view()`);
+  assert.equal(r.ok, true, r.text);
+  assert.match(r.text, /\{acct="someone"\}/);
+});
+
+test("a button's number still works from another page: the session goes back to the button's page", async () => {
+  const s = 'f' + ++n;
+  const first = (await rt.run(s, `open('${farm.url}/shop/search?q=Kestrel+Flux+310')`)).text;
+  const num = Number(/\[Kestrel Flux 310 Camera\]\d+ \|.*?\[Add to cart\](\d+)/.exec(first)![1]);
+  await rt.run(s, `open('${farm.url}/shop/search?q=Lumos')`);
+  const r = await rt.run(s, `click(${num})`);
+  assert.equal(r.ok, true, r.text);
+  assert.match(r.text, new RegExp(`note: ${num} \\(\\[Add to cart\\]\\) is on .*q=Kestrel\\+Flux\\+310: went back to that page for it`));
+  assert.match((await rt.run(s, `open('${farm.url}/shop/cart'); read()`)).text, /Kestrel Flux 310 Camera \| \$1,325\.99 \| 1/);
+});
