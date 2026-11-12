@@ -186,6 +186,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
   (await import('./extract/index.ts')).register(rt);
   (await import('./programs/index.ts')).register(rt, env);
   (await import('./schedule/index.ts')).register(rt, env);
+  (await import('./sitemap/index.ts')).register(rt);
   return rt;
 }
 
