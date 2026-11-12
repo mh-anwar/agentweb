@@ -291,7 +291,10 @@ describe('expect(console=0) and expect(requests=0)', { concurrency: false }, () 
     assert.equal(r.ok, true, 'the last page is clean');
     const all = await run('co7', 'expect(console=0, all=1)');
     assert.equal(all.ok, false);
-    assert.match(all.text, /in this test:\n  error: Failed to load resource[^\n]*\[\/noisy\]\n  error: boom one \(×2\) \[\/noisy\]/, all.text);
+    // the page's own errors and its failed loads arrive in either order
+    assert.match(all.text, /in this test:\n/, all.text);
+    assert.match(all.text, /\n  error: Failed to load resource[^\n]*\[\/noisy\]\n/, all.text);
+    assert.match(all.text, /\n  error: boom one \(×2\) \[\/noisy\]\n/, all.text);
   });
 
   it('combines with a text check', async () => {
