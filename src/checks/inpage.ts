@@ -478,9 +478,14 @@ export function pageChecks(win: any): any {
         if (r.width <= 1 && r.height <= 1) continue; // skip links and visually hidden controls
         if (r.right < 0 || r.bottom < 0) continue;
         const ty = low(el.getAttribute('type'));
-        if ((ty === 'checkbox' || ty === 'radio') && el.labels && el.labels.length) {
-          // a hidden or tiny box is fine when its label is the thing people tap
-          const lr = Array.prototype.map.call(el.labels, (l: any) => l.getBoundingClientRect()).find((b: any) => b.width >= 24 && b.height >= 24);
+        void ty;
+        if (r.width < 23.5 || r.height < 23.5) {
+          // a small control is fine when a label of at least 24 px is the thing people tap: its own label (a checkbox,
+          // a radio, a switch) or the label it sits in
+          const own: any[] = el.labels && el.labels.length ? Array.prototype.slice.call(el.labels) : [];
+          const around = el.closest ? el.closest('label') : null;
+          if (around && own.indexOf(around) < 0) own.push(around);
+          const lr = own.map((l: any) => l.getBoundingClientRect()).find((b: any) => b.width >= 24 && b.height >= 24);
           if (lr) r = lr;
         }
         boxes.push({ el, r, small: r.width < 23.5 || r.height < 23.5 });

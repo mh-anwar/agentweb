@@ -953,6 +953,13 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
   };
 
   function handle(n: LNode, tag: string, a: Record<string, string>) {
+    // <div role="heading" aria-level="1">: a heading by ARIA is a heading (level 2 when none is given)
+    if (a.role === 'heading' && !/^h[1-6]$/.test(tag) && !flat) {
+      const lv = Math.min(6, Math.max(1, Math.round(Number(a['aria-level'])) || 2));
+      boundary();
+      walkChildren(n);
+      return flush('h', { lv });
+    }
     switch (tag) {
       case 'a':
         return doLink(n, a);
@@ -1015,7 +1022,7 @@ export function compile(doc: Doc, pageUrl: string, o: CompileOptions): Page {
         boundary();
         walkChildren(n);
         if (flat) boundary();
-        else flush('h', { lv: tag.charCodeAt(1) - 48 });
+        else flush('h', { lv: Math.min(6, Math.max(1, Math.round(Number(a['aria-level'])) || tag.charCodeAt(1) - 48)) });
         return;
       }
       case 'blockquote': {

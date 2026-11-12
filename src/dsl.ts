@@ -440,6 +440,10 @@ function jsStep(src: string, verb = 'js'): Step {
       if (rest[j] === '\\' && rest[j + 1] === q) {
         out += q;
         j += 2;
+      } else if (rest[j] === '\\' && rest[j + 1] === '\\' && rest[j + 2] === '\\' && rest[j + 3] === q) {
+        // \\\" in the step is \" in the code: a quote escaped inside a string of the code (JSON pasted into js("…"))
+        out += '\\' + q;
+        j += 4;
       } else out += rest[j++];
     }
     code = j >= rest.length ? rest.slice(1) : out;

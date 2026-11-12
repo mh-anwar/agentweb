@@ -28,6 +28,9 @@ export interface RunOptions {
   engine?: string;
   /** false: `# setup:`, `# teardown:` and exec() are refused (--no-exec) */
   exec?: boolean;
+  /** --setup / --teardown: shell commands run once for the whole run; what setup prints as name=value is `${name}` in every test */
+  runSetup?: string[];
+  runTeardown?: string[];
   /** --report dir: a full-page screenshot of where each test ended is saved there (tests that ran in a real browser) */
   report?: string;
 }
@@ -62,6 +65,8 @@ export interface TestResult {
   warnings?: string[];
   /** --report: file name of the screenshot of where the test ended */
   shot?: string;
+  /** expect(same=…) of this test: what it saw, compared with the other tests when the run ends */
+  same?: { name: string; text: string; line: number; step: string }[];
   /** --report: screenshots the test asked for with shot(attach='label') */
   shots?: { label: string; file: string }[];
 }
@@ -115,7 +120,7 @@ export function varsFrom(out: string): Record<string, string> {
 }
 
 function substitute(src: string, vars: Record<string, string>): string {
-  return src.replace(/\$\{([A-Za-z_]\w*)\}/g, (_m, name: string) => {
+  return src.replace(/\$\{([A-Za-z_][\w.]*)\}/g, (_m, name: string) => {
     if (!(name in vars)) throw new Error(`\${${name}} is not set: a "# setup:" command prints ${name}=value, or exec('command', as='${name}') sets it`);
     return vars[name];
   });
@@ -270,6 +275,20 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
           else Object.assign(vars, varsFrom(r.out));
           continue;
         }
+        if (/^\s*(?:await\s+)?mail\s*\(/.test(st.src)) {
+          // mail(to='${email}', wait=30): the newest message for that address from a local Mailpit; ${mail.subject},
+          // ${mail.link}, ${mail.code}, ${mail.text} are then set (as='name' changes the prefix)
+          const ml = parseProgram(st.src.replace(/^\s*(?:await\s+)?mail\s*\(/, 'find('))[0];
+          res.steps++;
+          const got = await readMail({ to: String(ml.opts.to ?? ml.args[0] ?? ''), subject: ml.opts.subject !== undefined ? String(ml.opts.subject) : undefined, waitMs: Math.min(120, Math.max(0, Number(ml.opts.wait ?? 15))) * 1000, api: ml.opts.api !== undefined ? String(ml.opts.api) : process.env.AGENTWEB_MAILPIT, signal: deadline });
+          if ('failure' in got) {
+            await fail(st0, got.failure, '');
+            break;
+          }
+          const as = typeof ml.opts.as === 'string' ? ml.opts.as : 'mail';
+          for (const [k, v] of Object.entries(got)) vars[`${as}.${k}`] = v;
+          continue;
+        }
         if (SCREENSHOT.test(st.src)) {
           // screenshot('name', widths='375,768', threshold=0.01): compared with a saved picture, like snapshot()
           const sc = parseProgram(st.src)[0];
@@ -320,8 +339,9 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       if (step.verb === 'expect' && step.opts.same !== undefined) {
         // expect(same='menu', of='nav a'): the text of those elements is the same in every test of this run that says so
         res.steps++;
-        const v = await sameAcross(rt, sid, tc, step, deadline);
+        const v = await sameAcross(rt, sid, step, deadline);
         if (v.tier && tiers[tiers.length - 1] !== v.tier) tiers.push(v.tier);
+        if (v.text !== undefined) (res.same ??= []).push({ name: String(step.opts.same), text: v.text, line: st.line, step: st.src });
         if (v.failure) {
           if (isSoft) soft.push({ st, message: v.failure });
           else {
@@ -418,6 +438,37 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
   return res;
 }
 
+/**
+ * The newest message to an address in a local Mailpit (the mailbox Supabase and many dev stacks run): its subject,
+ * text, first link and first 4 to 8 digit code. Waits for it to arrive. Test runner only.
+ */
+export async function readMail(o: { to: string; subject?: string; waitMs: number; api?: string; signal?: AbortSignal }): Promise<Record<string, string> | { failure: string }> {
+  if (!o.to) return { failure: "mail needs an address: mail(to='user@example.com', wait=30)" };
+  if (!o.api) return { failure: 'no mailbox is configured: set AGENTWEB_MAILPIT=http://127.0.0.1:54324 (a Mailpit address), or mail(…, api=\'http://…\')' };
+  const api = o.api.replace(/\/+$/, '');
+  const query = `to:${o.to}` + (o.subject ? ` subject:"${o.subject.replace(/"/g, '')}"` : '');
+  const until = Date.now() + o.waitMs;
+  let last = 'no message arrived';
+  for (;;) {
+    try {
+      const list = (await (await fetch(`${api}/api/v1/search?query=${encodeURIComponent(query)}&limit=1`, { signal: AbortSignal.timeout(5000) })).json()) as { messages?: { ID: string }[] };
+      const id = list.messages?.[0]?.ID;
+      if (id) {
+        const m = (await (await fetch(`${api}/api/v1/message/${encodeURIComponent(id)}`, { signal: AbortSignal.timeout(5000) })).json()) as { Subject?: string; Text?: string; HTML?: string };
+        const text = String(m.Text ?? '');
+        const html = String(m.HTML ?? '');
+        const links = [...new Set([...html.matchAll(/href="(https?:[^"]+)"/g)].map((x) => x[1].replace(/&amp;/g, '&')).concat([...text.matchAll(/https?:\/\/[^\s<>")\]]+/g)].map((x) => x[0])))];
+        const out: Record<string, string> = { subject: String(m.Subject ?? ''), text: text.replace(/\s+/g, ' ').trim().slice(0, 2000), link: links[0] ?? '', links: links.slice(0, 10).join(' '), code: /(?<![\d\w])\d{4,8}(?![\d\w])/.exec(text || html.replace(/<[^>]+>/g, ' '))?.[0] ?? '' };
+        return out;
+      }
+    } catch (e) {
+      last = `the mailbox at ${api} did not answer (${(e as Error).message.split('\n')[0]})`;
+    }
+    if (Date.now() >= until || o.signal?.aborted) return { failure: `${last} for ${o.to} within ${Math.round(o.waitMs / 1000)} s` };
+    await new Promise((done) => setTimeout(done, 500));
+  }
+}
+
 let shotCounter = 0;
 
 /** Move a saved screenshot into the report folder under a name that says which test it is from. */
@@ -429,16 +480,13 @@ function saveShot(dir: string, from: string, label: string): string {
   return name;
 }
 
-/** What one name stood for the first time a test of this run reached it: runtime -> name -> { text, by }. */
-const SAME = new WeakMap<RuntimeImpl, Map<string, { text: string; by: string }>>();
-
 /** expect(same='menu', of='css selector'): the visible text of the matching elements, compared with the first test that recorded that name. */
-async function sameAcross(rt: RuntimeImpl, sid: string, tc: TestCase, step: Step, signal: AbortSignal): Promise<{ failure?: string; tier?: string }> {
-  const name = String(step.opts.same);
+async function sameAcross(rt: RuntimeImpl, sid: string, step: Step, signal: AbortSignal): Promise<{ failure?: string; tier?: string; text?: string }> {
   const of = step.opts.of !== undefined ? String(step.opts.of) : undefined;
   if (!of) return { failure: "expect(same='name', of='css selector') needs of=: which elements to compare" };
-  const code = `JSON.stringify([...document.querySelectorAll(${JSON.stringify(of)})].filter(e=>e.getClientRects().length).map(e=>(e.innerText||e.textContent||'').replace(/\\s+/g,' ').trim()).filter(Boolean))`;
-  const r = await rt.run(sid, `js(${JSON.stringify(code)})`, { budget: 4000, signal });
+  // the selector travels percent-encoded: whatever quotes and backslashes it has, none of them meet the script's own
+  const code = `JSON.stringify([...document.querySelectorAll(decodeURIComponent("${encodeURIComponent(of).replace(/'/g, '%27')}"))].filter(e=>e.getClientRects().length).map(e=>(e.innerText||e.textContent||"").replace(/\\s+/g," ").trim()).filter(Boolean))`;
+  const r = await rt.run(sid, `js('${code}')`, { budget: 4000, signal });
   if (!r.ok) return { failure: firstError(r.text, step.src), tier: r.stats.tier };
   let items: string[] = [];
   try {
@@ -449,16 +497,38 @@ async function sameAcross(rt: RuntimeImpl, sid: string, tc: TestCase, step: Step
     return { failure: `could not read the elements matching ${of}`, tier: r.stats.tier };
   }
   if (!items.length) return { failure: `nothing visible matches ${of}`, tier: r.stats.tier };
-  const text = items.join('\n');
-  let store = SAME.get(rt);
-  if (!store) SAME.set(rt, (store = new Map()));
-  const first = store.get(name);
-  if (!first) {
-    store.set(name, { text, by: tc.name });
-    return { tier: r.stats.tier };
+  return { tier: r.stats.tier, text: items.join('\n') };
+}
+
+/**
+ * expect(same='name', …) is settled when the run ends: for each name, what most tests saw is the reference and the
+ * tests that saw something else fail, each with its difference. The order tests happened to run in does not matter.
+ */
+export function settleSame(results: TestResult[]): void {
+  const byName = new Map<string, { r: TestResult; text: string; line: number; step: string }[]>();
+  for (const r of results) {
+    for (const x of r?.same ?? []) {
+      let list = byName.get(x.name);
+      if (!list) byName.set(x.name, (list = []));
+      list.push({ r, ...x });
+    }
+    if (r) delete r.same;
   }
-  if (first.text === text) return { tier: r.stats.tier };
-  return { failure: `'${name}' differs from the test "${first.by}" (- there, + here)\n${lineDiff(first.text, text)}`, tier: r.stats.tier };
+  for (const [name, seen] of byName) {
+    const groups = new Map<string, number>();
+    for (const x of seen) groups.set(x.text, (groups.get(x.text) ?? 0) + 1);
+    if (groups.size < 2) continue;
+    // the most common view; on a tie, the one seen first in file order
+    const [most] = [...groups].sort((a, b) => b[1] - a[1])[0];
+    const odd = seen.filter((x) => x.text !== most);
+    for (const x of odd) {
+      const message = `'${name}' is different here: ${odd.length} of ${seen.length} tests differ from the other ${seen.length - odd.length} (- the others, + here)\n${lineDiff(most, x.text)}`;
+      if (x.r.ok) {
+        x.r.ok = false;
+        x.r.failure = { line: x.line, step: x.step, message, excerpt: '' };
+      } else if (x.r.failure) x.r.failure.message += `\nalso line ${x.line}: ${x.step} — ${message}`;
+    }
+  }
 }
 
 /** "✗ <src> — message" is the first line of a failed run. */
@@ -508,7 +578,7 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
         const vars: Record<string, string> = {};
         for (const cmd of tc.fileSetup ?? []) {
           if (o.exec === false) return { ok: false, vars, message: 'setup commands are switched off (--no-exec)' };
-          const r = await runShell(cmd, hookEnv(tc, o.base ?? tc.base, vars), 300_000);
+          const r = await runShell(cmd, hookEnv(tc, o.base ?? tc.base, { ...world, ...vars }), 300_000);
           if (!r.ok) return { ok: false, vars, message: `setup failed (${cmd}): ${tail(r.err || r.out) || 'no output'}` };
           Object.assign(vars, varsFrom(r.out));
         }
@@ -525,7 +595,21 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
     const vars = (await setups.get(tc.file))?.vars ?? {};
     for (const cmd of tc.fileTeardown) await runShell(cmd, hookEnv(tc, o.base ?? tc.base, vars), 300_000);
   };
-  const worker = async () => {
+  // --setup: once for the whole run, before any test; what it prints is shared by every file
+  const world: Record<string, string> = {};
+  const runEnv = { ...process.env, AGENTWEB_BASE: o.base ?? '', AW_WORKERS: String(Math.max(1, Math.min(o.workers, cases.length || 1))) };
+  for (const cmd of o.runSetup ?? []) {
+    const r = o.exec === false ? { ok: false, out: '', err: 'setup commands are switched off (--no-exec)' } : await runShell(cmd, runEnv, 600_000);
+    if (!r.ok) {
+      const message = `run setup failed (${cmd}): ${tail(r.err || r.out) || 'no output'}`;
+      for (const cmd2 of o.runTeardown ?? []) if (o.exec !== false) await runShell(cmd2, { ...runEnv, ...Object.fromEntries(Object.entries(world).map(([k, v]) => ['AW_' + k.toUpperCase(), v])) }, 600_000);
+      return cases.map((c) => ({ file: c.file, name: c.name, line: c.line, ok: !!c.skip, skipped: c.skip || undefined, ms: 0, steps: 0, failure: c.skip ? undefined : { line: 1, step: '', message, excerpt: '' } }));
+    }
+    Object.assign(world, varsFrom(r.out));
+  }
+  const worker = async (index: number) => {
+    // ${worker} is 0..N-1: each worker can keep to its own data (AW_WORKER in commands)
+    const mine = { ...world, worker: String(index) };
     for (;;) {
       if (stop) return;
       const i = next++;
@@ -537,7 +621,7 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
         else {
           const su = await fileSetup(tc);
           try {
-            r = su.ok ? await runCase(rt, tc, o, su.vars) : { file: tc.file, name: tc.name, line: tc.line, ok: false, ms: 0, steps: 0, failure: { line: 1, step: '', message: su.message, excerpt: '' } };
+            r = su.ok ? await runCase(rt, tc, o, { ...mine, ...su.vars }) : { file: tc.file, name: tc.name, line: tc.line, ok: false, ms: 0, steps: 0, failure: { line: 1, step: '', message: su.message, excerpt: '' } };
           } finally {
             await fileDone(tc);
           }
@@ -550,7 +634,12 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
       onResult?.(r);
     }
   };
-  await Promise.all(Array.from({ length: Math.max(1, Math.min(o.workers, cases.length || 1)) }, worker));
+  try {
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(o.workers, cases.length || 1)) }, (_x, i) => worker(i)));
+  } finally {
+    for (const cmd of o.runTeardown ?? []) if (o.exec !== false) await runShell(cmd, { ...runEnv, ...Object.fromEntries(Object.entries(world).map(([k, v]) => ['AW_' + k.toUpperCase(), v])) }, 600_000);
+  }
+  settleSame(results);
   return results.filter(Boolean);
 }
 

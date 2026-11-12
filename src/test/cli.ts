@@ -14,6 +14,9 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
         --base URL                  resolve relative open('/x') against it (also AGENTWEB_BASE; overrides "# base:")
         --workers N                 tests in parallel (default 3)
         --grep TEXT                 only tests whose "file name" contains TEXT
+        --grep-test TEXT            only tests whose "## " title contains TEXT (the title as written, before "# each:" values)
+        --setup CMD  --teardown CMD shell commands run once for the whole run; name=value lines setup prints are \${name} in
+                                    every test of every file. \${worker} is the worker's number, 0 to N-1 (AW_WORKER in commands)
         --bail                      stop after the first failure
         --update                    accept new or changed snapshot('name') baselines
         --ci                        a missing snapshot baseline fails instead of being written
@@ -42,6 +45,8 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
                ## sign in works
                open('/login'); fill('Email','a@b.co'); submit(); expect('Welcome'); expect(url='/dashboard')
   Commands:    exec('node scripts/otp.mjs', as='otp', retry=10); fill('Code', '\${otp}')
+               mail(to='\${email}', wait=30); open('\${mail.link}')   newest message in a local Mailpit (AGENTWEB_MAILPIT=http://127.0.0.1:54324);
+                                                                       also \${mail.subject}, \${mail.code}, \${mail.text}
   Assertions:  expect('text')  expect('Item', n=3)  expect(not='Error')  expect(url='/cart')  expect(title='Cart')
                expect(role='heading', level=1)  expect(axe=0, tags='wcag2a,wcag2aa', impact='serious', disable='…', exclude='…')
                expect(overflow=0)  expect(audit=0)  expect(console=0)  expect(requests=0, allow='favicon', allow_status='401')
@@ -57,7 +62,7 @@ interface TestFlags {
 }
 
 const BOOL = new Set(['quiet', 'images', 'bail', 'update', 'ci', 'json', 'verbose', 'help', 'v', 'no-ghost', 'no-chrome', 'no-exec', 'record']);
-const VALUE = new Set(['report', 'base', 'workers', 'grep', 'timeout', 'excerpt', 'engine', 'browser', 'record', 'profile', 'name']);
+const VALUE = new Set(['grep-test', 'setup', 'teardown', 'report', 'base', 'workers', 'grep', 'timeout', 'excerpt', 'engine', 'browser', 'record', 'profile', 'name']);
 
 export function parseTestArgs(argv: string[]): TestFlags {
   const f: TestFlags = { paths: [], str: {}, bool: new Set() };
@@ -125,6 +130,8 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     timeoutMs: (Number(f.str.timeout) || 60) * 1000,
     excerptTokens: Math.max(200, Number(f.str.excerpt) || 200),
     report: f.str.report ? resolve(process.cwd(), f.str.report) : undefined,
+    runSetup: f.str.setup ? [f.str.setup] : undefined,
+    runTeardown: f.str.teardown ? [f.str.teardown] : undefined,
   };
 
   let wantImages = f.bool.has('images');
@@ -194,6 +201,8 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
   for (const c of cases) c.file = resolve(cwd, c.file);
   const grep = f.str.grep?.toLowerCase();
   if (grep) cases = cases.filter((c) => `${rel(c.file)} ${c.name}`.toLowerCase().includes(grep));
+  const grepTest = f.str['grep-test']?.toLowerCase();
+  if (grepTest) cases = cases.filter((c) => (c.title ?? c.name).toLowerCase().includes(grepTest));
   if (!cases.length && !bad.length) {
     io.out(files.length ? 'no tests match' : 'no test files found (*.aw, *.awtest)');
     return files.length && !grep ? 0 : 1;

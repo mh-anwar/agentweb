@@ -216,6 +216,19 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
 * **While it runs.** `--verbose` prints each test's line as it ends; otherwise stderr gets `… 12/46 done` every 15
   seconds (`--quiet` switches it off). `--report DIR` writes `DIR/index.html`: every test with its result and a
   full-page screenshot of where it ended, for tests that ran in a real browser.
+* **One setup for the whole run.** `agentweb test --setup 'node scripts/world.mjs' --teardown 'node scripts/unworld.mjs'`
+  runs each command once, around all files; the `name=value` lines setup prints are `${name}` in every test (and
+  `AW_NAME` in every command). `${worker}` is the number of the worker running the test, 0 to N-1 (`AW_WORKER`,
+  `AW_WORKERS` in commands), so each worker can keep to its own data.
+* **Mail.** `mail(to='${email}', wait=30)` waits for the newest message to that address in a local Mailpit
+  (`AGENTWEB_MAILPIT=http://127.0.0.1:54324`, or `api='http://…'`; `subject='…'` narrows it) and sets
+  `${mail.subject}`, `${mail.link}` (the first link), `${mail.links}`, `${mail.code}` (the first 4 to 8 digit code)
+  and `${mail.text}`; `as='invite'` changes the prefix. Then `open('${mail.link}')`.
+* **Shared views.** `expect(same='menu', of='css selector')` is settled when the run ends: what most tests saw is the
+  reference, and each test that saw something else fails with its difference (`2 of 29 tests differ from the other
+  27`). `role="heading"` with `aria-level` counts as a heading everywhere. `--grep-test TEXT` selects tests by their
+  `## ` title as written, before `# each:` values. A small control inside a label of at least 24 px passes the
+  tap-target rule (`expect(audit='target')`).
 * **Exit code** 0 all passed, 1 a failure, 2 bad usage.
 
 ### Layout, accessibility, console and screenshot checks

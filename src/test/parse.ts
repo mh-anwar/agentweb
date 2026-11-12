@@ -27,6 +27,8 @@ export interface TestStep {
 export interface TestCase {
   file: string;
   name: string;
+  /** the `## ` title as written, before `# each:` put a value in it (what --grep-test matches) */
+  title?: string;
   base?: string;
   profile?: string;
   viewport?: string;
@@ -136,7 +138,7 @@ export function parseTestFile(text: string, file: string): TestCase[] {
       const m = { ...fileMeta, ...cur.meta };
       // a file without sections is one test: its headers are the file's, and its hooks run once either way
       const own = sections ? cur.meta : {};
-      const one: TestCase = { file, name: cur.name ?? m.name ?? baseName(file), base: m.base, profile: m.profile, viewport: m.viewport, timeoutMs: m.timeoutMs, expectTimeoutMs: m.expectTimeoutMs, soft: m.soft, skip: m.skip, engine: m.engine, console: m.console ?? undefined, setup: own.setup, teardown: own.teardown, fileSetup: fileMeta.setup, fileTeardown: fileMeta.teardown, steps: cur.steps, line: cur.line };
+      const one: TestCase = { file, title: cur.name ?? m.name ?? baseName(file), name: cur.name ?? m.name ?? baseName(file), base: m.base, profile: m.profile, viewport: m.viewport, timeoutMs: m.timeoutMs, expectTimeoutMs: m.expectTimeoutMs, soft: m.soft, skip: m.skip, engine: m.engine, console: m.console ?? undefined, setup: own.setup, teardown: own.teardown, fileSetup: fileMeta.setup, fileTeardown: fileMeta.teardown, steps: cur.steps, line: cur.line };
       if (!m.each) cases.push(one);
       else {
         // one test per value: `${name}` in its steps, its headers and its name stands for the value

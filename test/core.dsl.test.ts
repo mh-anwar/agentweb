@@ -88,3 +88,10 @@ test('cleanSelector', () => {
   assert.equal(cleanSelector('[aria-label="Close"]'), 'Close');
   assert.equal(cleanSelector('#search-input'), 'search input');
 });
+
+test('js("…"): a quote escaped inside a string of the code survives (JSON pasted into the step)', () => {
+  const step = String.raw`js("document.querySelectorAll(\"[data-x=\\\"menu\\\"]\").length")`;
+  assert.equal(parseProgram(step)[0].args[0], String.raw`document.querySelectorAll("[data-x=\"menu\"]").length`);
+  // a regex keeps its backslashes
+  assert.equal(parseProgram(String.raw`js('/\d+\\/.test("a1")')`)[0].args[0], String.raw`/\d+\\/.test("a1")`);
+});
