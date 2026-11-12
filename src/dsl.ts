@@ -42,6 +42,7 @@ const ALIAS: Record<string, string> = {
   scrollto: 'scroll', scrollintoview: 'scroll',
   use: 'engine', tier: 'engine',
   setinputfiles: 'upload', attach: 'upload',
+  storagestate: 'profile', loadstate: 'profile', usestate: 'profile', usesession: 'profile', signin_as: 'profile', signinas: 'profile', loginas: 'profile',
 };
 
 export const VERBS = new Set([
@@ -49,7 +50,7 @@ export const VERBS = new Set([
   'view', 'read', 'find', 'links', 'outline', 'shot',
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
   'expect', 'engine', 'confirm',
-  'extract', 'each', 'fork', 'watch', 'cookies',
+  'extract', 'each', 'fork', 'watch', 'cookies', 'profile',
 ]);
 
 /** Playwright locator builders: the string they carry is the target. */

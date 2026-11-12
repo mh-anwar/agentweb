@@ -16,6 +16,7 @@ click(target) · fill(target, 'text') · select(target, 'option') · check(targe
 expect('text') - stop here unless the page contains it
 wait('text') - wait until the page shows it (content that appears late)
 view() - the whole page again · links('words') - URLs · shot() - screenshot
+profile('name') - use a saved sign-in (Playwright storageState file); profile('name', save=1) saves the current one
 
 A target is a number shown on the page or its visible text: click(12), click('Sign in'), click('Add to cart', near='USB hub').
 

@@ -15,6 +15,7 @@ import { blockText } from './blocks.ts';
 import { compile, TRUNCATED } from './compile.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
+import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
 import { actByFp, allActs, loadSession, rehash, resolveTarget, saveSession, SessionRefs, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
 import { TOOL, toolSpec } from './tooldoc.ts';
@@ -793,6 +794,25 @@ const VERBS: Record<string, VerbHandler> = {
     const name = str(step.args[1]) || 'file.txt';
     const data = Buffer.from(str(step.opts.text ?? step.args[2] ?? ''), 'utf8').toString('base64');
     await rc.liveOn(step, (n) => ({ do: 'upload', n, files: [{ name, mime: str(step.opts.mime) || 'text/plain', data }] }));
+  },
+
+  /** profile('name') loads a saved sign-in (Playwright storageState file); save=1 writes the current one */
+  async profile(rc, step) {
+    const name = str(step.args[0]).trim();
+    if (!name) throw new AwError('bad_request', "profile needs a name: profile('instructor')");
+    const save = step.opts.save !== undefined && step.opts.save !== false && step.opts.save !== 0 && step.opts.save !== 'no';
+    if (save) {
+      const p = { cookies: rc.jar.all(), storage: rc.rec.storage };
+      saveProfile(name, p);
+      return rc.note(`saved sign-in '${name}': ${describeProfile(p)}`);
+    }
+    const p = loadProfile(name);
+    rc.jar.merge(p.cookies);
+    for (const [origin, items] of Object.entries(p.storage)) rc.rec.storage[origin] = { ...items };
+    // a live page from before the sign-in still shows the signed-out state: load it again
+    const page = rc.rec.page;
+    if (page && page.tier !== 'wire') await rc.engine(page.tier).release(rc.rec.id).catch(() => {});
+    rc.note(`signed in with '${name}': ${describeProfile(p)}` + (page && page.method === 'GET' && /^https?:/.test(page.url) ? '; open a page to use it' : ''));
   },
 
   async engine(rc, step) {
