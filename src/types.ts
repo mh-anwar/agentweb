@@ -178,8 +178,51 @@ export interface Emulation {
   geo?: { lat: number; lon: number };
   dark?: boolean;
   offline?: boolean;
+  /** network speed preset: 'slow3g' | 'fast4g' (absent = full speed) */
+  throttle?: 'slow3g' | 'fast4g';
+  /** CPU slowdown factor (4 = four times slower) */
+  cpu?: number;
+  /** prefers-reduced-motion: reduce */
+  motion?: boolean;
+  /** prefers-contrast: more */
+  contrast?: boolean;
+  forcedColors?: boolean;
+  /** browser permissions granted to the session's pages (clipboard-read, notifications, ...) */
+  permissions?: string[];
   /** shown back to the agent */
   label?: string;
+}
+
+/** A request rule set with route(): matched on the full URL, answered by the browser without the network (or aborted). */
+export interface NetRoute {
+  /** glob on the full URL: * matches anything */
+  pattern: string;
+  /** only this HTTP method */
+  method?: string;
+  /** mock: status, body and content type of the answer */
+  status?: number;
+  body?: string;
+  ctype?: string;
+  /** abort the request instead (a CDP network error name, 'failed' by default) */
+  abort?: string;
+  /** milliseconds to hold the answer back */
+  delay?: number;
+  hits: number;
+}
+
+/** Per-session request control: kept in the session record, applied by every engine that can. */
+export interface NetControl {
+  routes?: NetRoute[];
+  /** extra request headers on every request (names as written) */
+  headers?: Record<string, string>;
+  /** HTTP basic credentials for 401 challenges; `pass` may be a {{secret:name}} handle */
+  auth?: { user: string; pass: string; /** only answer challenges from these origins (default: the page's own) */ origins?: string[] };
+  /** origins that already challenged: later requests there send the credentials at once */
+  authOrigins?: string[];
+  /** scripts run on every new document before the page's own */
+  init?: string[];
+  /** route()/init() pinned the session to chrome (the agent had not chosen an engine); lifted when they are removed */
+  pinned?: boolean;
 }
 
 export type Action =
@@ -190,7 +233,7 @@ export type Action =
   | { do: 'press'; key: string; n?: number }
   | { do: 'hover'; n: number }
   | { do: 'scroll'; to: 'bottom' | 'top' | number }
-  | { do: 'wait'; ms?: number; text?: string }
+  | { do: 'wait'; ms?: number; text?: string; any?: string[]; gone?: string; url?: string; n?: number; state?: 'visible' | 'hidden' | 'enabled' }
   | { do: 'back' }
   | { do: 'forward' }
   | { do: 'drag'; n: number; to: number }
@@ -198,7 +241,9 @@ export type Action =
   | { do: 'log'; kind: 'console' | 'network'; match?: string; failed?: boolean; body?: boolean; n?: number }
   | { do: 'dialog'; accept: boolean; text?: string }
   | { do: 'shot'; full?: boolean; n?: number; pdf?: boolean; save?: boolean }
-  | { do: 'upload'; n: number; files: { name: string; mime: string; data: string }[] };
+  | { do: 'upload'; n: number; files: { name: string; mime: string; data: string }[] }
+  | { do: 'drop'; n: number; files: { name: string; mime: string; data: string }[] }
+  | { do: 'har'; name: string };
 
 export interface CookieData {
   name: string;
@@ -242,6 +287,8 @@ export interface SessionCtx {
   emulate?: Emulation;
   /** this session browses in the user's own browser (through the agentweb extension), not an isolated one */
   own?: boolean;
+  /** route(), headers(), auth(), init(): the session's request control */
+  net?: NetControl;
 }
 
 export interface Engine {

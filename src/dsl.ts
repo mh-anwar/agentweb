@@ -52,6 +52,11 @@ const ALIAS: Record<string, string> = {
   dblclick: 'click', doubleclick: 'click', rightclick: 'click', contextclick: 'click', contextmenu: 'click',
   pdf: 'shot', savepdf: 'shot', screencast: 'shot',
   listtabs: 'tabs', tablist: 'tabs', pages: 'tabs', listpages: 'tabs', switchtab: 'tab', selecttab: 'tab', selectpage: 'tab', switchto: 'tab', newpage: 'newtab', opentab: 'newtab', createtab: 'newtab',
+  mock: 'route', mockroute: 'route', unroute: 'route', intercept: 'route', mockrequest: 'route', blockrequest: 'route', listroutes: 'routes',
+  setextrahttpheaders: 'headers', sethttpheaders: 'headers', extraheaders: 'headers', setheaders: 'headers', requestheaders: 'headers',
+  sethttpcredentials: 'auth', httpcredentials: 'auth', basicauth: 'auth', setcredentials: 'auth', httpauth: 'auth',
+  addinitscript: 'init', initscript: 'init', evaluateonnewdocument: 'init',
+  dropfile: 'drop', dropfiles: 'drop',
   storagestate: 'profile', loadstate: 'profile', usestate: 'profile', usesession: 'profile', signin_as: 'profile', signinas: 'profile', loginas: 'profile',
 };
 
@@ -61,6 +66,7 @@ export const VERBS = new Set([
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
   'expect', 'engine', 'confirm', 'js', 'console', 'network', 'dialog', 'emulate', 'forward', 'drag',
   'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'tab', 'tabs', 'newtab',
+  'route', 'routes', 'headers', 'auth', 'init', 'drop',
 ]);
 
 /** Playwright locator builders: the string they carry is the target. */
@@ -358,7 +364,7 @@ function parseStatement(src: string): Step | undefined {
     p.i = 1;
     const raw = first.v.split('.').pop() ?? first.v;
     const verb = canonical(raw);
-    if (verb === 'js') return jsStep(src);
+    if (verb === 'js' || (verb === 'init' && !/^\s*\S+\s+off\b/.test(src))) return jsStep(src, verb);
     const { args, opts } = p.args(null);
     return shape(verb, joinShell(verb, args), opts, src, raw);
   }
@@ -379,7 +385,7 @@ function parseStatement(src: string): Step | undefined {
   }
   const action = chain[actionIx];
   const verb = canonical(action.name);
-  if (verb === 'js' && actionIx === 0) return jsStep(src);
+  if ((verb === 'js' || verb === 'init') && actionIx === 0 && !(verb === 'init' && /^\s*(?:await\s+)?[\w.$]+\s*\(\s*(?:off\b|\))/.test(src))) return jsStep(src, verb);
   const before = chain.slice(0, actionIx).filter((c) => LOCATORS.has(c.name.toLowerCase()) || c.args.length);
   const target = before.length ? carried(before) : undefined;
   const args = [...action.args];
@@ -409,7 +415,7 @@ const TARGETED = new Set(['click', 'fill', 'select', 'check', 'uncheck', 'hover'
  * regex and split on quotes, so this one reads the first quoted string (or the whole rest of the
  * step, for the shell form) and unescapes only the quote that delimits it.
  */
-function jsStep(src: string): Step {
+function jsStep(src: string, verb = 'js'): Step {
   const m = /^\s*(?:await\s+)?[\w.$]+\s*(?:\(\s*)?/.exec(src);
   let rest = src.slice(m ? m[0].length : 0);
   const paren = !!m && m[0].includes('(');
@@ -428,8 +434,8 @@ function jsStep(src: string): Step {
     code = j >= rest.length ? rest.slice(1) : out;
   }
   code = code.trim();
-  if (!code) throw new AwError('bad_request', "js needs code: js('document.title')");
-  return { verb: 'js', args: [code], opts: {}, src };
+  if (!code) throw new AwError('bad_request', verb === 'init' ? "init needs code: init('window.__TEST__ = true')" : "js needs code: js('document.title')");
+  return { verb, args: [code], opts: {}, src };
 }
 
 function shape(verb: string, args: Arg[], opts: Record<string, Arg>, src: string, raw = ''): Step {
@@ -439,6 +445,9 @@ function shape(verb: string, args: Arg[], opts: Record<string, Arg>, src: string
     if (r === 'dblclick' || r === 'doubleclick') opts.double = 1;
     else if (r === 'rightclick' || r === 'contextclick' || r === 'contextmenu') opts.button = 'right';
   } else if (verb === 'shot' && (r === 'pdf' || r === 'savepdf')) opts.pdf = 1;
+  else if (verb === 'route' && r === 'unroute') opts.off = 1;
+  else if (verb === 'wait' && r === 'waitforurl' && typeof args[0] === 'string') opts.url = args.shift()!;
+  else if (verb === 'network' && r === 'har' && typeof args[0] === 'string') opts.har = args.shift()!;
   else if (verb === 'emulate') {
     // viewport(390, 844) / device('iPhone 15') / timezone('Europe/Paris') / locale('fr-FR') / geolocation(48.8, 2.3)
     if (r === 'timezone' && typeof args[0] === 'string') (opts.tz = args.shift()!);

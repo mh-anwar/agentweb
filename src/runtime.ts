@@ -17,6 +17,7 @@ import { DEVICES, findDevice } from './devices.ts';
 import { parseProgram, VERBS as DSL_VERBS, type Arg, type Step } from './dsl.ts';
 import { renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange } from './render.ts';
 import { describeProfile, loadProfile, saveProfile } from './profiles.ts';
+import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions } from './netcontrol.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
 import { TOOL, toolSpec } from './tooldoc.ts';
@@ -86,6 +87,8 @@ export interface RuntimeOptions {
   secretNames?: string[];
   /** the real browser automatic escalation ends at (default chrome) */
   browser?: BrowserTier;
+  /** folders drop() may read files from, besides the working directory */
+  fileRoots?: string[];
 }
 
 export type BrowserTier = 'chrome' | 'firefox' | 'webkit';
@@ -157,6 +160,7 @@ export class RunCtx {
       userAgent: rec.emulate?.ua ?? rt.opts.emulate?.ua ?? rt.opts.userAgent,
       emulate: rec.emulate ?? rt.opts.emulate,
       own: rec.own,
+      net: rec.net,
       guard: this.guard,
       timeoutMs: rt.opts.timeoutMs,
       signal,
@@ -550,6 +554,12 @@ function describeEmulation(e: Emulation): string {
   if (e.geo) bits.push(`at ${e.geo.lat},${e.geo.lon}`);
   if (e.dark) bits.push('dark');
   if (e.offline) bits.push('offline');
+  if (e.throttle) bits.push(e.throttle);
+  if (e.cpu) bits.push(`cpu ${e.cpu}x slower`);
+  if (e.motion) bits.push('reduced motion');
+  if (e.contrast) bits.push('more contrast');
+  if (e.forcedColors) bits.push('forced colors');
+  if (e.permissions) bits.push('allowed: ' + e.permissions.join(', '));
   if (e.ua && !e.label) bits.push('custom user agent');
   return bits.join(', ') || 'defaults';
 }
@@ -584,6 +594,10 @@ async function readLog(rc: RunCtx, step: Step, kind: 'console' | 'network'): Pro
     return;
   }
   await rc.ensureLive();
+  if (kind === 'network' && step.opts.har !== undefined) {
+    const res = await rc.live({ do: 'har', name: str(step.opts.har) });
+    return rc.note(res.value ?? 'HAR saved');
+  }
   const match = step.args.length ? str(step.args[0]) : undefined;
   const failed = truthy(step.opts.failed) || truthy(step.opts.errors);
   const res = await rc.live({ do: 'log', kind, match, failed, body: truthy(step.opts.body), n: typeof step.opts.n === 'number' ? step.opts.n : undefined });
@@ -965,6 +979,7 @@ const VERBS: Record<string, VerbHandler> = {
   },
 
   async wait(rc, step) {
+    if (isAdvancedWait(step)) return waitVerb(rc, step); // url=, gone=, state=, several texts (netcontrol.ts)
     const a = step.args[0];
     const ms = typeof a === 'number' ? Math.min(a < 100 ? a * 1000 : a, 30000) : undefined;
     const text = typeof a === 'string' ? a : undefined;
@@ -1089,6 +1104,18 @@ const VERBS: Record<string, VerbHandler> = {
     if (o.dark !== undefined) next.dark = truthy(o.dark);
     if (o.colorscheme !== undefined || o.scheme !== undefined) next.dark = /dark/i.test(str(o.colorscheme ?? o.scheme));
     if (o.offline !== undefined) next.offline = truthy(o.offline);
+    // network speed, CPU, media features, permissions (netcontrol.ts has the tables)
+    if (o.throttle !== undefined || o.network !== undefined) next.throttle = parseThrottle(o.throttle ?? o.network!);
+    if (o.cpu !== undefined) {
+      const c = /^(off|none|no|false|reset)$/i.test(str(o.cpu)) ? 1 : Number(o.cpu);
+      if (!Number.isFinite(c) || c < 1 || c > 20) throw new AwError('bad_request', 'cpu is a slowdown factor from 1 to 20: emulate(cpu=4)');
+      next.cpu = c > 1 ? c : undefined;
+    }
+    if (o.motion !== undefined) next.motion = /reduce/i.test(str(o.motion)) || (truthy(o.motion) && !/no-preference|none/i.test(str(o.motion)));
+    if (o.contrast !== undefined) next.contrast = /more|high/i.test(str(o.contrast)) || (truthy(o.contrast) && !/no-preference|none|normal/i.test(str(o.contrast)));
+    const fc = o.forced_colors ?? o.forcedcolors;
+    if (fc !== undefined) next.forcedColors = /active/i.test(str(fc)) || (truthy(fc) && !/none/i.test(str(fc)));
+    if (o.permissions !== undefined || o.permission !== undefined) next.permissions = parsePermissions(o.permissions ?? o.permission!);
     for (const k of Object.keys(next) as (keyof Emulation)[]) if (next[k] === undefined || next[k] === false && k !== 'mobile') delete next[k];
     if (next.width && !next.height) next.height = Math.round(next.width * 0.625);
     if (next.height && !next.width) next.width = Math.round(next.height * 1.6);
@@ -1183,6 +1210,7 @@ const VERBS: Record<string, VerbHandler> = {
   },
 };
 VERBS.uncheck = VERBS.check;
+Object.assign(VERBS, netVerbs); // route, routes, headers, auth, init, drop
 
 // Tabs: several pages kept open in one session, sharing its cookies and storage. tabs() lists them,
 // tab('new', url) opens one, tab(2) goes to one, tab('close') closes the current one.
@@ -1272,7 +1300,7 @@ function setChecked(rc: RunCtx, act: Act, block: Block, on: boolean) {
 
 export class RuntimeImpl implements Runtime {
   deps: RuntimeDeps;
-  opts: Required<Omit<RuntimeOptions, 'defaultEngine' | 'emulate'>> & Pick<RuntimeOptions, 'defaultEngine' | 'emulate'>;
+  opts: Required<Omit<RuntimeOptions, 'defaultEngine' | 'emulate' | 'fileRoots'>> & Pick<RuntimeOptions, 'defaultEngine' | 'emulate' | 'fileRoots'>;
   private verbs: Record<string, VerbHandler> = { ...VERBS };
   private locks = new Map<string, Promise<unknown>>();
   private subs = new Set<(e: RunEvent) => void>();
@@ -1294,6 +1322,7 @@ export class RuntimeImpl implements Runtime {
       secretNames: o.secretNames ?? [],
       defaultEngine: o.defaultEngine,
       emulate: o.emulate,
+      fileRoots: o.fileRoots,
       browser: (this.ladder[2] as BrowserTier) ?? 'chrome',
     };
   }
