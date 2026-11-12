@@ -104,6 +104,8 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
         proxy: proxy ? proxy.replace(/\/\/[^@/]*@/, '//') : undefined,
         viewport: config.viewport ?? (vp ? { width: Number(vp[1]), height: Number(vp[2]) } : undefined),
         downloadDir: dl === 'off' || dl === '0' ? (false as const) : dl || undefined,
+        // pictures and layout checks want the page's images (AGENTWEB_IMAGES=1); by default they are not downloaded
+        images: /^(1|true|yes|on)$/i.test(env.AGENTWEB_IMAGES ?? ''),
       };
       const isolated = mod.createChromeEngine({
         ...common,
@@ -184,6 +186,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
 
   // verb packs (literal import paths, so the bundler includes them)
   (await import('./extract/index.ts')).register(rt);
+  (await import('./checks/index.ts')).register(rt);
   return rt;
 }
 

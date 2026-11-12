@@ -128,6 +128,20 @@ export function isDevSocket(url: string): boolean {
   return local && (/^\/(ws|hmr)?$/.test(u.pathname) || u.searchParams.has('token'));
 }
 
+/** An error or warning the page produced, kept for expect(console=0) and expect(requests=0) (src/checks). */
+export interface Problem {
+  /** which document of this page it belongs to (PageDriver.docSeq when it happened) */
+  doc: number;
+  /** the address of that document */
+  page: string;
+  kind: 'console' | 'request';
+  level: 'error' | 'warning';
+  text: string;
+}
+
+/** What agentweb itself blocks (trackers, fonts, images, policy) fails like any other request: that is not the page's fault. */
+const OUR_BLOCK = /ERR_BLOCKED_BY_CLIENT/;
+
 export class PageDriver {
   readonly cdp: Cdp;
   readonly s: CdpSession;
@@ -182,6 +196,8 @@ export class PageDriver {
 
   // what the page said and did, for console() and network(): reset when a new document loads
   private consoleLog: { type: string; text: string }[] = [];
+  /** errors and warnings of every document this page showed (the console log above starts over with each) */
+  problems: Problem[] = [];
   private netLog = new Map<string, { method: string; url: string; type: string; status: number; failed: string }>();
   /** how JS dialogs are answered (the agent changes it with dialog()) */
   dialogAnswer: { accept: boolean; text: string } = { accept: true, text: '' };
@@ -413,6 +429,7 @@ export class PageDriver {
       const type = String(p.type ?? '');
       const rec = this.netLog.get(p.requestId);
       if (rec) rec.status = Number(p.response?.status) || 0;
+      if (Number(p.response?.status) >= 400) this.problem('request', 'error', `${rec?.method ?? 'GET'} ${p.response.status} ${p.response.url ?? rec?.url ?? ''}`, type === 'Document' && p.frameId === this.mainFrame);
       if (type === 'EventSource') this.inflight.delete(p.requestId);
       if (type === 'Document' && p.frameId === this.mainFrame && p.requestId === p.loaderId) {
         const r = p.response ?? {};
@@ -429,6 +446,7 @@ export class PageDriver {
     s.on('Network.loadingFailed', (p) => {
       const rec = this.netLog.get(p.requestId);
       if (rec && !p.canceled) rec.failed = String(p.blockedReason ? 'blocked' : p.errorText ?? 'failed').replace(/^net::/, '');
+      if (!p.canceled && !OUR_BLOCK.test(String(p.errorText ?? ''))) this.problem('request', 'error', `${rec?.method ?? 'GET'} FAILED ${String(p.errorText ?? 'failed').replace(/^net::/, '')} ${rec?.url ?? ''}`, p.type === 'Document');
       this.inflight.delete(p.requestId);
       this.lastNet = Date.now();
       if (p.type === 'Document' && !p.canceled && p.errorText && this.docMethods.has(p.requestId)) this.navError = String(p.errorText);
@@ -660,6 +678,13 @@ export class PageDriver {
   private pushConsole(type: string, text: string): void {
     if (this.consoleLog.length >= 200) this.consoleLog.shift();
     this.consoleLog.push({ type, text: clip(oneLine(text), 400) });
+    if (type === 'error' || type === 'assert' || type === 'warning') this.problem('console', type === 'warning' ? 'warning' : 'error', text);
+  }
+
+  private problem(kind: Problem['kind'], level: Problem['level'], text: string, nextDoc = false): void {
+    if (OUR_BLOCK.test(text)) return;
+    if (this.problems.length >= 300) this.problems.shift();
+    this.problems.push({ doc: this.docSeq + (nextDoc ? 1 : 0), page: this.url, kind, level, text: clip(oneLine(text), 400) });
   }
 
   /** console() and network() */
@@ -879,7 +904,7 @@ export class PageDriver {
 
   // ───────────────────────────── isolated world ─────────────────────────────
 
-  private async world(): Promise<number> {
+  async world(): Promise<number> {
     if (this.isoCtx) return this.isoCtx;
     const r = await this.s.send<{ executionContextId: number }>('Page.createIsolatedWorld', { frameId: this.mainFrame, worldName: WORLD });
     this.isoCtx = r.executionContextId;
