@@ -168,7 +168,42 @@ This serves MCP (Streamable HTTP) at `/mcp` and REST at `POST /v1/run` with
 | `AGENTWEB_BROWSER=chrome\|firefox\|webkit` | the real browser pages escalate to (default `chrome`). Firefox and WebKit (Safari's engine) need `npm i playwright-core` and `npx playwright-core install firefox webkit`; any session can also pick one with `engine('firefox')`, `engine('webkit')` or `engine('safari')`. When a real browser is shown a bot wall on an automatic open, the next installed browser gets one try |
 | `AGENTWEB_PROFILES=/dir` or `off` | where saved sign-ins live (default `~/.config/agentweb/profiles`): `profile('instructor')` loads `instructor.json`, a Playwright `storageState` file, so files your test suite already writes work as they are; `profile('x', save=1)` saves the session's current sign-in. Values are never shown to the model |
 | `AGENTWEB_PROXY=http://host:port` (or `socks5://…`), `AGENTWEB_VIEWPORT=1280x800`, `AGENTWEB_DEVICE='iPhone 15'`, `AGENTWEB_IGNORE_HTTPS_ERRORS=1`, `AGENTWEB_DOWNLOADS=/dir` or `off` | proxy for every engine, default window size and device, accept bad certificates, where downloaded files are kept (default `~/.agentweb/downloads`; the path is shown to the agent) |
+| `AGENTWEB_CDP_SHARED=1` | with `AGENTWEB_CDP`: open pages in that browser's own profile, see below |
+| `AGENTWEB_GOOGLE_CSE_KEY` + `AGENTWEB_GOOGLE_CSE_CX` | a Google Programmable Search API key and engine id: `search()` then uses Google's results through the official API |
 | `AGENTWEB_STORE`, `AGENTWEB_BUDGET`, `AGENTWEB_USER_AGENT` | store URL, default budget, user agent |
+
+## Bot walls and Google
+
+Some sites, and above all search engines, refuse automated visitors, and an address that has made many automated requests
+gets flagged. Google's `/sorry` captcha is the common case: from a flagged address it is shown to every engine, agentweb's
+included. agentweb detects walls and tells the agent plainly; it does not solve captchas or evade detection with stealth
+patches. What does work:
+
+- **`search('...')` never needs Google's own pages.** It asks keyed APIs first (Brave API, SearXNG, Serper, Tavily, and
+  Google's Programmable Search JSON API with `AGENTWEB_GOOGLE_CSE_KEY` and `AGENTWEB_GOOGLE_CSE_CX`), then Bing, Brave,
+  DuckDuckGo, Yahoo, Seznam and Mwmbl. A provider that answers with a wall (429, an anomaly page, a captcha) is skipped
+  for about 15 minutes. If an agent `open()`s a Google, Bing or DuckDuckGo results URL and gets a wall, agentweb answers with
+  its own `search()` results for the same query and says so on the page; if that finds nothing it reports that the engine is
+  walling this address and suggests `search('...')`.
+- **Your own proxy.** `AGENTWEB_PROXY=http://host:port` (or `socks5://...`) sends every engine through a proxy you supply, for
+  example one on a different network. agentweb does not provide one.
+- **Your own Chrome.** A browser you use every day has history, logins and a clean reputation. Start it with a debugging port
+  (use a separate `--user-data-dir` if your Chrome is already running, since Chrome needs one for the port to open):
+
+  ```sh
+  google-chrome --remote-debugging-port=9222 --user-data-dir="$HOME/.config/chrome-agent"
+  AGENTWEB_CDP=http://127.0.0.1:9222 agentweb ...
+  ```
+
+  By default agentweb gives each session an isolated, empty context in that browser, so your logins are not visible. Add
+  `AGENTWEB_CDP_SHARED=1` to open pages in the browser's default context instead: your cookies and signed-in sessions are
+  live, and the agent can act as you on those sites. This is opt-in, prints a warning at start-up, and adds a note to pages.
+  agentweb opens its own tabs and closes only those; it never closes the browser or your tabs. It does not copy your cookies
+  or storage into the session, and downloads follow the browser's own settings. Treat it like handing someone your unlocked
+  laptop, and keep `AGENTWEB_ALLOW` narrow.
+- **Consistent headless browser.** The browser agentweb launches reports `navigator.webdriver` as false and sends client hints
+  (`navigator.userAgentData`) that match its user agent. That removes contradictions; it is not a disguise, and strict
+  bot filters can still tell.
 
 ## How it works
 
