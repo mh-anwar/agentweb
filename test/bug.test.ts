@@ -90,3 +90,22 @@ test("find('$') finds prices, and a bare amount finds the priced line", async ()
     assert.match(r.text, /\$359\.99/, q + ' -> ' + r.text);
   }
 });
+
+test('server-rendered fade-in content (opacity:0 with a transform) is shown; a honeypot field stays hidden', async () => {
+  const html = '<html><head><title>Editor</title></head><body><nav><a href="/">Home</a></nav><main style="opacity:0;transform:translateY(4px)"><h1>Editor examples</h1><p>Rich text blocks for email.</p></main>' +
+    '<form><input name="email" aria-label="Email"><input name="website" aria-label="Website" style="opacity:0;position:absolute;left:0"><div style="opacity:0;pointer-events:none">ghost text</div></form></body></html>';
+  const server = createServer((_q, res) => res.writeHead(200, { 'content-type': 'text/html' }).end(html));
+  await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+  const rt = await createAgentweb({ store: 'memory:', ghost: false, chrome: false, atlas: false, env: { AGENTWEB_ALLOW_PRIVATE: '1' } });
+  try {
+    const r = await rt.run('f', `open('http://127.0.0.1:${(server.address() as AddressInfo).port}/'); view()`);
+    assert.match(r.text, /Editor examples/);
+    assert.match(r.text, /Rich text blocks/);
+    assert.doesNotMatch(r.text, /no main content/);
+    assert.doesNotMatch(r.text, /Website/);
+    assert.doesNotMatch(r.text, /ghost text/);
+  } finally {
+    await rt.close();
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
