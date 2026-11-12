@@ -3,6 +3,7 @@
 //
 //   agentweb                 MCP server on stdio (what an agent harness launches)
 //   agentweb run "<program>" run one program and print the result (sessions persist between calls)
+//   agentweb test [paths]    run *.aw end-to-end tests; failures in a few lines
 //   agentweb serve           MCP over HTTP + REST, for many agents
 //   agentweb tool            print the tool definition (mcp | openai | anthropic)
 //   agentweb doctor          what works on this machine
@@ -53,6 +54,7 @@ const HELP = `agentweb ${VERSION} - a browser for agents
         -p, --port N             default 4455        --host H   default 127.0.0.1
         --workers N              processes (default 1)
         --keys k1=tenant1,k2=…   bearer API keys (also AGENTWEB_KEYS)
+  agentweb test [paths] [--base URL] [--json] [--update] [--record out.aw "program"]   end-to-end tests (agentweb test --help)
   agentweb tool [--format mcp|openai|anthropic]
   agentweb doctor
   agentweb report "<site> | <task> | <why>"   an agent fell back to another browser (AGENTWEB_USAGE_LOG)
@@ -78,6 +80,12 @@ async function main() {
   const argv = process.argv.slice(2);
   const f = parseArgs(argv);
   const cmd = f._[0] ?? (process.stdin.isTTY ? 'help' : 'mcp');
+  if (cmd === 'test') {
+    const { testCommand } = await import('./test/cli.ts');
+    process.exitCode = await testCommand(argv.slice(argv.indexOf('test') + 1));
+    return;
+  }
+
   if (f.version || cmd === 'version') return void console.log(VERSION);
   if (f.help || cmd === 'help') return void console.log(HELP);
 

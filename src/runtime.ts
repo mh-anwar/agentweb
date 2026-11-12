@@ -575,14 +575,38 @@ const VERBS: Record<string, VerbHandler> = {
     rc.emit(renderOutline(rc.page).text);
   },
 
+  // expect('text')                 the text is on the page (title, url or body)
+  // expect('Item', n=3)            exactly 3 occurrences (also count=3)
+  // expect(not='Error')            the text is absent (combine: expect('Welcome', not='Error'))
+  // expect(url='/dashboard')       the address: '/path' matches the path, 'a*b' is a glob, else a substring
+  // expect(title='Cart')           the page title contains it
   async expect(rc, step) {
-    const want = str(step.args[step.args.length - 1]);
-    if (!want) throw new AwError('bad_request', "expect needs text: expect('Order placed')");
-    const needle = lc(want);
+    const o = step.opts;
+    const own = step.args.length ? str(step.args[step.args.length - 1]) : '';
+    const not = o.not !== undefined ? String(o.not) : undefined;
+    const url = o.url !== undefined ? String(o.url) : undefined;
+    const title = o.title !== undefined ? String(o.title) : undefined;
+    const nWant = o.n ?? o.count;
+    if (!own && not === undefined && url === undefined && title === undefined) throw new AwError('bad_request', "expect needs text: expect('Order placed') or expect(not='Error'), expect(url='/cart')");
     const p = rc.page;
-    if (lc(p.title).includes(needle) || lc(p.url).includes(needle)) return;
-    for (const b of p.blocks) if (lc(blockText(b)).includes(needle)) return;
-    throw new AwError('bad_request', `'${want}' is not on the page`);
+    const occurrences = (needle: string) => {
+      const n = lc(needle);
+      let c = 0;
+      for (const b of p.blocks) {
+        const t = lc(blockText(b));
+        for (let i = t.indexOf(n); i >= 0; i = t.indexOf(n, i + n.length)) c++;
+      }
+      return c;
+    };
+    if (url !== undefined && !urlMatches(p.url, url)) throw new AwError('bad_request', `the address is ${shortUrl(p.url)}, expected ${url}`);
+    if (title !== undefined && !lc(p.title).includes(lc(title))) throw new AwError('bad_request', `the title is '${p.title}', expected '${title}'`);
+    if (not !== undefined && (lc(p.title).includes(lc(not)) || occurrences(not) > 0)) throw new AwError('bad_request', `'${not}' is on the page but should not be`);
+    if (own) {
+      if (nWant !== undefined) {
+        const got = occurrences(own);
+        if (got !== Number(nWant)) throw new AwError('bad_request', `expected ${nWant} of '${own}', found ${got}`);
+      } else if (!(lc(p.title).includes(lc(own)) || lc(p.url).includes(lc(own)) || occurrences(own) > 0)) throw new AwError('bad_request', `'${own}' is not on the page`);
+    }
   },
 
   async click(rc, step) {
@@ -1099,6 +1123,32 @@ export function hollowMain(page: Page): boolean {
     }
   }
   return words < 15 && acts < 3;
+}
+
+function shortUrl(u: string): string {
+  try {
+    const x = new URL(u);
+    return x.pathname + x.search;
+  } catch {
+    return u;
+  }
+}
+
+/** '/path' compares the path (and query when given), 'a*b' is a glob over the whole address, anything else is a substring. */
+export function urlMatches(actual: string, pat: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(actual);
+  } catch {
+    return actual.includes(pat);
+  }
+  const trim = (x: string) => (x.length > 1 ? x.replace(/\/+$/, '') : x);
+  if (pat.includes('*')) {
+    const re = new RegExp('^' + pat.split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
+    return re.test(actual) || re.test(u.pathname + u.search) || re.test(u.pathname);
+  }
+  if (pat.startsWith('/')) return pat.includes('?') ? trim(u.pathname + u.search) === trim(pat) : trim(u.pathname) === trim(pat);
+  return lc(actual).includes(lc(pat));
 }
 
 function shortError(e: unknown): string {
