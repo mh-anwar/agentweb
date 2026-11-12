@@ -682,14 +682,30 @@ async function liveClick(rc: RunCtx, step: Step): Promise<void> {
   if (!eligible) return rc.liveOn(step, click);
   const r = rc.resolve(step);
   const sig = pageSig(p0);
+  // what the agent typed so far, to put back if the page has to move to the real browser
+  const acts0 = allActs(p0).map((x) => x.act);
+  const typed = acts0.filter((a) => (a.k === 'input' || a.k === 'select') && a.val && a.type !== 'password' && a.type !== 'file' && a.type !== 'hidden');
+  const hasPassword = acts0.some((a) => a.k === 'input' && a.type === 'password' && a.val);
   await rc.liveOn(step, click);
   const p1 = rc.page;
-  if ('portable' in r || p1.tier !== 'ghost' || pageSig(p1) !== sig || rc.lastBytes > 0) return;
+  if ('portable' in r || p1.tier !== 'ghost') return;
+  // Two cases where the click certainly did not do its job and nothing was sent that a second click would repeat:
+  // nothing changed and no request left, or the request it wanted to make was refused before leaving (a CORS
+  // preflight this engine could not pass). A request that reached a server is never repeated.
+  const refused = p1.notes.some((n) => /blocked by CORS: .*\(preflight refused\)/.test(n));
+  const nothing = pageSig(p1) === sig && rc.lastBytes === 0;
+  if (!nothing && !refused) return;
   const up = await rc.nextTier('ghost');
   if (!up) return;
+  if (hasPassword) return void rc.note(`[${r.act.l}] did not work without a real browser; engine('${up}') and repeat the steps (a typed password is not carried over)`);
   rc.rt.count('escalations');
-  rc.note(`[${r.act.l}] did nothing without a real browser; page re-opened in ${up} and clicked again`);
+  rc.note(refused ? `a request [${r.act.l}] makes was refused before it was sent; page re-opened in ${up}, fields filled again, clicked again` : `[${r.act.l}] did nothing without a real browser; page re-opened in ${up} and clicked again`);
   await rc.navigate({ url: p1.url }, { tier: up, push: false });
+  for (const a of typed) {
+    const hit = actByFp(rc.page, a.f);
+    if (!hit || hit.act.n === undefined || hit.act.val === a.val) continue;
+    await rc.live(a.k === 'select' ? { do: 'select', n: hit.act.n, value: a.val! } : { do: 'fill', n: hit.act.n, value: a.val! }).catch(() => {});
+  }
   await rc.liveOn(retarget(step, r.act), click);
 }
 

@@ -227,7 +227,9 @@ export function defaultFetch(o: DefaultFetchOptions = {}): GhostFetch {
       };
       if (!authz) authz = preemptiveBasic(ctx, target.origin);
       if (authz && !h.authorization) h.authorization = authz;
-      if (req.headers) for (const [k, val] of Object.entries(req.headers)) if (k.toLowerCase() === 'origin') h.origin = String(val);
+      // headers only the engine itself may set (a page cannot): the origin, and the two lines of a CORS preflight.
+      // Dropping the preflight's header list makes servers that echo it back (Supabase, many gateways) refuse.
+      if (req.headers) for (const [k, val] of Object.entries(req.headers)) if (/^(origin|access-control-request-(method|headers))$/i.test(k)) h[k.toLowerCase()] = String(val);
       if (req.referer) h.referer = req.referer;
       if (body !== undefined && body !== null && ctype) h['content-type'] = ctype;
       if (creds) {

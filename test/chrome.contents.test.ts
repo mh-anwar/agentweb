@@ -80,3 +80,58 @@ describe('reported regressions', () => {
     }
   });
 });
+
+describe('cross-origin requests from the script engine', () => {
+  it('passes a CORS preflight on a server that echoes the requested headers; a refused one is redone in the real browser with the fields filled again', async () => {
+    const calls: string[] = [];
+    let echo = true;
+    let refusals = 0;
+    const api = createServer((req, res) => {
+      calls.push(`${req.method} ${req.headers['access-control-request-headers'] ?? ''}`);
+      const asked = req.headers['access-control-request-headers'];
+      // like Supabase's gateway: the allowed headers are the ones the preflight named. With echo off, the first
+      // preflight is refused (as one this engine could not pass would be) and later ones are let through.
+      const cors: Record<string, string> = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST,OPTIONS' };
+      const refuse = req.method === 'OPTIONS' && !echo && refusals++ === 0;
+      if (asked && !refuse) cors['access-control-allow-headers'] = String(asked);
+      if (req.method === 'OPTIONS') return void res.writeHead(200, cors).end();
+      let body = '';
+      req.on('data', (d) => (body += d));
+      req.on('end', () => {
+        calls.push('body ' + body);
+        res.writeHead(200, { ...cors, 'content-type': 'application/json' }).end('{}');
+      });
+    });
+    await new Promise<void>((r) => api.listen(0, '127.0.0.1', r));
+    const apiUrl = `http://127.0.0.1:${(api.address() as AddressInfo).port}`;
+    const site = createServer((_q, res) =>
+      res.writeHead(200, { 'content-type': 'text/html' }).end(
+        `<!doctype html><title>Login</title><main><h1>Sign in</h1><p>${'Use the email on your account. '.repeat(8)}</p><input aria-label="Email" id="e"><button id="b">Email me a sign-in link</button><p id="o">idle</p></main><script>document.getElementById('b').addEventListener('click', async () => { try { const r = await fetch('${apiUrl}/otp', { method: 'POST', headers: { 'content-type': 'application/json', apikey: 'k', 'x-client-info': 'c' }, body: JSON.stringify({ email: document.getElementById('e').value }) }); document.getElementById('o').textContent = r.ok ? 'link sent' : 'failed'; } catch (e) { document.getElementById('o').textContent = 'could not send'; } });</script>`,
+      ),
+    );
+    await new Promise<void>((r) => site.listen(0, 'localhost', r));
+    const page = `http://localhost:${(site.address() as AddressInfo).port}/`;
+    const rt: Runtime = await createAgentweb({ store: 'memory:', env });
+    try {
+      const a = await rt.run('cors1', `open('${page}'); fill('Email', 'a@b.co'); click('Email me a sign-in link')`);
+      assert.ok(a.ok, a.text);
+      assert.match(a.text, /link sent/);
+      assert.match(a.text, /\[ghost\]/, 'the script engine was enough');
+      assert.ok(calls.some((c) => /^OPTIONS .*apikey/.test(c)), 'the preflight names the headers: ' + calls.join(' | '));
+      assert.equal(calls.filter((c) => c.startsWith('body')).length, 1);
+
+      echo = false;
+      calls.length = 0;
+      const b = await rt.run('cors2', `open('${page}'); fill('Email', 'c@d.co'); click('Email me a sign-in link')`);
+      assert.ok(b.ok, b.text);
+      assert.match(b.text, /refused before it was sent/);
+      assert.match(b.text, /\[chrome\]/);
+      assert.match(b.text, /link sent/);
+      assert.deepEqual(calls.filter((c) => c.startsWith('body')), ['body {"email":"c@d.co"}'], 'sent once, with the typed value');
+    } finally {
+      await rt.close();
+      await new Promise<void>((r) => api.close(() => r()));
+      await new Promise<void>((r) => site.close(() => r()));
+    }
+  });
+});
