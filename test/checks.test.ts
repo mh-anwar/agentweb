@@ -4,7 +4,7 @@
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -248,6 +248,60 @@ describe('audit()', { concurrency: false }, () => {
     } finally {
       process.chdir(cwd);
       rmSync(none, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('expect(axe=0)', { concurrency: false }, () => {
+  // a stand-in with axe's interface that reports what it was asked to run
+  const AXE = `window.axe={version:'4.9.9',run:async(ctx,o)=>({violations:[
+    {id:'image-alt',impact:'critical',help:'Images must have alternate text',nodes:[{target:['img.hero'],html:'<img>'},{target:['#logo'],html:'<img>'}]},
+    {id:'region',impact:'moderate',help:'tags='+((o.runOnly||{}).values||[]).join('+')+' off='+Object.keys(o.rules||{}).join('+')+' exclude='+JSON.stringify(ctx&&ctx.exclude||[]),nodes:[{target:['main'],html:'<main>'}]}
+  ].filter(v=>!(o.rules&&o.rules[v.id]&&o.rules[v.id].enabled===false))})}`;
+
+  it('fails on violations, counts only the impact asked for, passes tags, disable and exclude to axe-core; found in a pnpm project', async () => {
+    const cwd = process.cwd();
+    const dir = mkdtempSync(join(tmpdir(), 'aw-pnpm-'));
+    try {
+      // pnpm: axe-core is not in node_modules/, only beside the package that depends on it, in the store
+      const store = join(dir, 'node_modules', '.pnpm', '@axe-core+playwright@4.11.0', 'node_modules');
+      mkdirSync(join(store, '@axe-core', 'playwright'), { recursive: true });
+      mkdirSync(join(store, 'axe-core'), { recursive: true });
+      writeFileSync(join(store, '@axe-core', 'playwright', 'package.json'), '{"name":"@axe-core/playwright","version":"4.11.0","main":"index.js"}');
+      writeFileSync(join(store, 'axe-core', 'package.json'), '{"name":"axe-core","version":"4.9.9","main":"axe.min.js"}');
+      writeFileSync(join(store, 'axe-core', 'axe.min.js'), AXE);
+      mkdirSync(join(dir, 'node_modules', '@axe-core'), { recursive: true });
+      symlinkSync(join(store, '@axe-core', 'playwright'), join(dir, 'node_modules', '@axe-core', 'playwright'), 'dir');
+      process.chdir(dir);
+      await at('/ok', 'axg', "expect('OK')");
+      const all = await run('axg', 'expect(axe=0)');
+      assert.equal(all.ok, false);
+      assert.match(all.text, /✗ expect\(axe=0\) — axe-core 4\.9\.9: 2 rules violated, 3 elements\n  image-alt \(critical\) ×2: Images must have alternate text: img\.hero · #logo\n  region \(moderate\)/, all.text);
+      const serious = await run('axg', "expect(axe=0, impact='serious', tags='wcag2a,wcag22aa', exclude='nextjs-portal')");
+      assert.equal(serious.ok, false);
+      assert.match(serious.text, /1 rules violated, 2 elements/);
+      assert.doesNotMatch(serious.text, /region/);
+      const report = await run('axg', "audit(axe=1, tags='wcag2a,wcag22aa', disable='color-contrast', exclude='nextjs-portal,.ad')");
+      assert.match(report.text, /tags=wcag2a\+wcag22aa off=color-contrast exclude=\[\["nextjs-portal"\],\["\.ad"\]\]/, report.text);
+      assert.equal((await run('axg', "expect(axe=0, impact='serious', disable='image-alt')")).ok, true, 'nothing serious is left');
+      assert.equal((await run('axg', 'expect(axe=3)')).ok, true, 'up to three elements are let through');
+      assert.match((await run('axg', "expect(axe=0, impact='bad')")).text, /impact='bad' is not one of minor, moderate, serious, critical/);
+    } finally {
+      process.chdir(cwd);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('AGENTWEB_AXE names the file or the folder; the error says where it looked', async () => {
+    const { axeSource } = await import('../src/checks/index.ts');
+    const dir = mkdtempSync(join(tmpdir(), 'aw-axe-'));
+    try {
+      writeFileSync(join(dir, 'axe.min.js'), 'window.axe={}');
+      assert.equal(axeSource(tmpdir(), { AGENTWEB_AXE: dir }), 'window.axe={}');
+      assert.equal(axeSource(tmpdir(), { AGENTWEB_AXE: join(dir, 'axe.min.js') }), 'window.axe={}');
+      assert.throws(() => axeSource(dir, {}), (e: Error & { hint?: string }) => /axe-core is not installed here/.test(e.message) && /looked for: axe-core from /.test(e.hint ?? '') && /AGENTWEB_AXE/.test(e.hint ?? ''));
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

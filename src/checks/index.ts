@@ -8,9 +8,9 @@
 //
 // They need Chromium: a page that was fetched without one is reopened there, with a note, the way emulate() does it.
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { VERBS as DSL_VERBS, type Step } from '../dsl.ts';
 import { needChrome, type RunCtx, type RuntimeImpl } from '../runtime.ts';
 import { allActs } from '../session.ts';
@@ -114,14 +114,78 @@ async function overflow(rc: RunCtx, step: Step): Promise<void> {
 
 // ───────────────────────────── audit ─────────────────────────────
 
-function axeSource(): string {
-  const req = createRequire(join(process.cwd(), 'agentweb-axe.cjs'));
-  for (const name of ['axe-core/axe.min.js', 'axe-core']) {
+/**
+ * axe-core's browser build, from the project the run started in. Looked for, in order: AGENTWEB_AXE (the file, or the
+ * package folder), `axe-core` as the project resolves it, the copy a tool that bundles it depends on
+ * (@axe-core/playwright and the like: pnpm does not hoist it), and pnpm's store folder.
+ */
+export function axeSource(cwd = process.cwd(), env: Record<string, string | undefined> = process.env): string {
+  const tried: string[] = [];
+  const read = (file: string): string | undefined => {
     try {
-      return readFileSync(req.resolve(name), 'utf8');
-    } catch {}
+      return readFileSync(file, 'utf8');
+    } catch {
+      return undefined;
+    }
+  };
+  const fromRequire = (from: string, label: string): string | undefined => {
+    tried.push(label);
+    try {
+      return read(createRequire(from).resolve('axe-core/axe.min.js'));
+    } catch {
+      return undefined;
+    }
+  };
+  if (env.AGENTWEB_AXE) {
+    const p = resolve(cwd, env.AGENTWEB_AXE);
+    tried.push(`AGENTWEB_AXE=${env.AGENTWEB_AXE}`);
+    const src = read(p) ?? read(join(p, 'axe.min.js')) ?? read(join(p, 'node_modules', 'axe-core', 'axe.min.js'));
+    if (src) return src;
   }
-  throw new AwError('unsupported', 'axe-core is not installed here', `install it in the project folder (npm install --save-dev axe-core; agentweb looks for it from the folder it runs in), or use audit() for the built-in rules`);
+  const here = join(cwd, 'agentweb-axe.cjs');
+  let src = fromRequire(here, `axe-core from ${cwd}`);
+  if (src) return src;
+  for (const host of ['@axe-core/playwright', '@axe-core/puppeteer', '@axe-core/cli', '@axe-core/webdriverjs', '@axe-core/react', 'jest-axe', 'vitest-axe', 'cypress-axe', 'pa11y']) {
+    let pkg: string;
+    try {
+      pkg = createRequire(here).resolve(host + '/package.json');
+    } catch {
+      continue;
+    }
+    // the real path: under pnpm the package is a link into its store, where its own dependencies sit beside it
+    src = fromRequire(realpathSync(pkg), `axe-core through ${host}`);
+    if (src) return src;
+  }
+  for (let dir = cwd, i = 0; i < 6; i++) {
+    const store = join(dir, 'node_modules', '.pnpm');
+    if (existsSync(store)) {
+      tried.push(store);
+      const found = readdirSync(store).filter((d) => /^axe-core@\d/.test(d)).sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+      for (const d of found) {
+        src = read(join(store, d, 'node_modules', 'axe-core', 'axe.min.js'));
+        if (src) return src;
+      }
+    }
+    const up = dirname(dir);
+    if (up === dir) break;
+    dir = up;
+  }
+  throw new AwError('unsupported', 'axe-core is not installed here', `looked for: ${tried.join('; ')}. Install it in the project (npm install --save-dev axe-core), or set AGENTWEB_AXE to its folder or to axe.min.js, or use audit() for the built-in rules`);
+}
+
+const list = (v: unknown): string[] | undefined => (v === undefined || v === '' ? undefined : String(v).split(',').map((x) => x.trim()).filter(Boolean));
+const IMPACTS = ['minor', 'moderate', 'serious', 'critical'];
+
+/** Run axe-core with the options a step carries: tags='wcag2a,wcag2aa', disable='color-contrast', exclude='nextjs-portal', impact='serious' (the least that counts). */
+async function runAxe(rc: RunCtx, step: Step): Promise<AxeReport> {
+  const o = step.opts;
+  const r: AxeReport = await probe(rc, 'audit', { axe: axeSource(), tags: list(o.tags), disable: list(o.disable), exclude: list(o.exclude) });
+  if (o.impact !== undefined) {
+    const least = IMPACTS.indexOf(String(o.impact).toLowerCase());
+    if (least < 0) throw new AwError('bad_request', `impact='${o.impact}' is not one of ${IMPACTS.join(', ')}`);
+    r.violations = r.violations.filter((v) => IMPACTS.indexOf(v.impact ?? 'minor') >= least);
+  }
+  return r;
 }
 
 interface AxeReport {
@@ -143,11 +207,12 @@ export function axeLines(r: AxeReport): string[] {
 
 /** audit() · audit('contrast,names') · audit(axe=1) */
 async function audit(rc: RunCtx, step: Step): Promise<void> {
-  const axe = truthy(step.opts.axe) ? axeSource() : undefined;
+  const axe = truthy(step.opts.axe);
+  if (axe) axeSource(); // say that it is missing before a browser is started for it
   const rules = axe ? [] : parseRules(step.args[0] ?? step.opts.rules);
   await inChrome(rc, 'audit()');
   await rc.ensureLive();
-  if (axe) return void rc.emit(axeLines(await probe(rc, 'audit', { axe })).join('\n'));
+  if (axe) return void rc.emit(axeLines(await runAxe(rc, step)).join('\n'));
   const r: AuditReport = await probe(rc, 'audit', { rules });
   rc.emit(auditLines(r, rules, actsByNode(rc), rc.refs).join('\n'));
 }
@@ -223,6 +288,12 @@ async function expectChecks(rc: RunCtx, step: Step): Promise<void> {
     const rules = parseRules(spec);
     const r: AuditReport = await probe(rc, 'audit', { rules });
     if (violations(r) > (spec ? 0 : tolerance(o.audit))) failed.push(...auditLines(r, rules, actsByNode(rc), rc.refs));
+  }
+  if (o.axe !== undefined) {
+    // expect(axe=0): axe-core finds nothing (or at most N elements); tags=, impact=, disable=, exclude= narrow what counts
+    const r = await runAxe(rc, step);
+    const total = r.violations.reduce((n, v) => n + v.count, 0);
+    if (total > tolerance(o.axe)) failed.push(...axeLines(r));
   }
   if (o.console !== undefined || o.requests !== undefined) {
     const { doc, url, problems } = await probe(rc, 'problems');

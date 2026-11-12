@@ -29,7 +29,7 @@ export async function labelsOff(d: PageDriver): Promise<void> {
 }
 
 /** axe-core, run in the isolated world: it reads the page's DOM and adds nothing to it. */
-async function runAxe(d: PageDriver, source: string): Promise<unknown> {
+async function runAxe(d: PageDriver, source: string, o: { tags?: string[]; disable?: string[]; exclude?: string[] } = {}): Promise<unknown> {
   const contextId = await d.world();
   const send = (expression: string, awaitPromise = false) => d.s.send<any>('Runtime.evaluate', { expression, contextId, awaitPromise, returnByValue: true }, 60_000);
   const has = await send('typeof axe');
@@ -38,7 +38,11 @@ async function runAxe(d: PageDriver, source: string): Promise<unknown> {
     if (r.exceptionDetails || r.result?.value !== 'object') throw new AwError('internal', 'axe-core did not load in the page', 'check that the installed axe-core is a browser build (axe.min.js)');
   }
   const r = await send(
-    `axe.run(document,{resultTypes:['violations']}).then(r=>JSON.stringify({version:axe.version,violations:r.violations.map(v=>({id:v.id,impact:v.impact,help:v.help,count:v.nodes.length,nodes:v.nodes.slice(0,2).map(n=>({target:(n.target||[]).join(' '),html:String(n.html||'').slice(0,100)}))}))}))`,
+    `axe.run(${o.exclude?.length ? JSON.stringify({ exclude: o.exclude.map((x) => [x]) }) : 'document'},${JSON.stringify({
+      resultTypes: ['violations'],
+      ...(o.tags?.length ? { runOnly: { type: 'tag', values: o.tags } } : {}),
+      ...(o.disable?.length ? { rules: Object.fromEntries(o.disable.map((id) => [id, { enabled: false }])) } : {}),
+    })}).then(r=>JSON.stringify({version:axe.version,violations:r.violations.map(v=>({id:v.id,impact:v.impact,help:v.help,count:v.nodes.length,nodes:v.nodes.slice(0,2).map(n=>({target:(n.target||[]).join(' '),html:String(n.html||'').slice(0,100)}))}))}))`,
     true,
   );
   if (r.exceptionDetails) throw new AwError('internal', `axe-core failed: ${String(r.exceptionDetails.exception?.description ?? r.exceptionDetails.text).split('\n')[0].slice(0, 200)}`);
@@ -54,7 +58,7 @@ export async function runCheck(d: PageDriver, a: CheckAction): Promise<string> {
     case 'overflow':
       return JSON.stringify(await d.run(inPage(`C.overflow(${JSON.stringify({ clipped: !!args.clipped, max: args.max })})`), { timeoutMs: 20_000 }));
     case 'audit':
-      if (typeof args.axe === 'string') return JSON.stringify(await runAxe(d, args.axe));
+      if (typeof args.axe === 'string') return JSON.stringify(await runAxe(d, args.axe, args as { tags?: string[]; disable?: string[]; exclude?: string[] }));
       return JSON.stringify(await d.run(inPage(`C.audit(${JSON.stringify({ rules: args.rules ?? [] })})`), { timeoutMs: 30_000 }));
     case 'problems':
       return JSON.stringify({ doc: d.docSeq, url: d.url, problems: d.problems });

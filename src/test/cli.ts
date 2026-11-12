@@ -186,7 +186,7 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     return files.length && !grep ? 0 : 1;
   }
 
-  if (cases.some((c) => !!c.console || c.steps.some((st) => /\b(?:screenshot|shot|overflow|audit|record)\s*\(|\b(?:requests|console|overflow|no_overflow|audit)\s*=/.test(st.src)))) wantImages = true;
+  if (cases.some((c) => !!c.console || c.steps.some((st) => /\b(?:screenshot|shot|overflow|audit|record)\s*\(|\b(?:requests|console|overflow|no_overflow|audit|axe)\s*=/.test(st.src)))) wantImages = true;
   const t0 = performance.now();
   const watch = watchResources();
   const rt = await mk();

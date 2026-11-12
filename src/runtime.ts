@@ -1078,7 +1078,7 @@ const VERBS: Record<string, VerbHandler> = {
     const title = o.title !== undefined ? String(o.title) : undefined;
     const nWant = o.n ?? o.count;
     // expect(overflow=0, audit=0, console=0, requests=0): the page checks of src/checks
-    const checks = ['overflow', 'no_overflow', 'audit', 'console', 'requests'].some((k) => o[k] !== undefined) ? rc.rt.verbHandler('expect_checks') : undefined;
+    const checks = ['overflow', 'no_overflow', 'audit', 'axe', 'console', 'requests'].some((k) => o[k] !== undefined) ? rc.rt.verbHandler('expect_checks') : undefined;
     if (checks) {
       await checks(rc, step);
       if (!own && not === undefined && url === undefined && title === undefined) return;
