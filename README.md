@@ -64,6 +64,10 @@ benchmark browser agents cite. Frozen 50-task sample across 14 sites, blind LLM 
 | Median input tokens per task | **56k** | 86k | 144k | 210k |
 | Median tool calls | **5** | 8 | 8 | 11 |
 
+**40 tasks on a local test web** (shop, single-page apps, news, docs, forms, bank, hostile pages; state checked on
+the server): agentweb 40/40 with 1.00M input tokens and 105 tool calls (November 12); the same tasks six days
+earlier: agentweb 39/40 with 1.35M, Playwright MCP 39/40 with 3.36M.
+
 **Repeated tasks on a local test web** (6 tasks × 3 runs, 54 trials):
 
 | | agentweb | Playwright MCP | agent-browser |

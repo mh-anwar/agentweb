@@ -1,5 +1,21 @@
 # Current checkpoint
 
+**November 12, 40-task core set on the local test web** (Haiku via `claude -p`, agentweb only, one run per task; raw
+rows in [reports/core-2026-11-12](reports/core-2026-11-12/)). Each run is a different commit of the same day:
+
+| Commit | Passed | Tool calls | Total input tokens | Median calls |
+|:--|--:|--:|--:|--:|
+| `4f5d308` (start of the day) | 40/40 | 117 | 1,099,212 | 2.5 |
+| `0856aec` | 40/40 | 110 | 998,809 | 2 |
+| `3927a57` | 40/40 | 105 | 1,003,553 | 2 |
+
+For scale, the same 40 tasks on November 6: agentweb 39/40 with 1.35M tokens, Playwright MCP 39/40 with 3.36M (below).
+Tool results are about 50k of the million tokens; the rest is the fixed context each call carries, so the work between
+these commits removed calls: a `find()` that misses answers from the site's search or scrolls the feed, exact lines
+before loose ones, numbers that work from another page, counts over a whole JSON array, frames read in place,
+several options in one `select`. With one run per task a task moves by one or two calls between runs for no reason
+(the last two rows differ by noise); a claim smaller than about 5% needs `--repeats 3`.
+
 The [November 11 repeated comparison](reports/hill-2026-11-11/README.md) ran six inspected tasks
 three times against current pinned tools. Agentweb passed 18/18 after one answer-format grader
 correction (17/18 raw), Playwright MCP 18/18, and agent-browser 16/18. Aggregate model input was
