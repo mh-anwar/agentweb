@@ -127,7 +127,9 @@ ${url.searchParams.get('error') && !on('login-error-silent') ? `<p class="${cls(
     redirect(res, u.role === 'parent' ? '/welcome' : '/home', { 'set-cookie': `sid=${sid}; Path=/; HttpOnly; SameSite=Lax` });
   },
   'POST /logout': (req, res) => {
-    if (!on('signout-broken')) sessions.delete(cookies(req).sid);
+    // signout-broken: the button goes to the sign-in page but the session (and its cookie) stay
+    if (on('signout-broken')) return redirect(res, '/login');
+    sessions.delete(cookies(req).sid);
     redirect(res, '/login', { 'set-cookie': 'sid=; Path=/; Max-Age=0' });
   },
   'GET /home': (req, res) => send(res, 200, 'text/html', page(req, 'Home', `<h1>Today</h1><p>Welcome back. You have no shifts today.</p>`, '', { path: '/home' })),

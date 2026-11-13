@@ -46,6 +46,7 @@ before(async () => {
   server = createServer((req, res) => {
     const u = new URL(req.url!, 'http://x');
     if (u.pathname === '/export') return res.writeHead(200, { 'content-type': 'text/csv', 'content-disposition': 'attachment; filename="export-2026-11-12.csv"' }).end('a,b\n1,2\n');
+    if (u.pathname === '/api/secret') return /sid=alice/.test(req.headers.cookie ?? '') ? res.writeHead(200, { 'content-type': 'application/json' }).end('{"rows":3}') : res.writeHead(403, { 'content-type': 'application/json' }).end('{"error":"not allowed"}');
     if (u.pathname === '/who') return res.writeHead(200, { 'content-type': 'text/html' }).end(`<!doctype html><html lang="en"><title>Who</title><main><h1>${/sid=(\w+)/.exec(req.headers.cookie ?? '')?.[1] ?? 'nobody'}</h1></main></html>`);
     res.writeHead(200, { 'content-type': 'text/html' }).end(APP);
   });
@@ -171,4 +172,15 @@ test('string escapes other than quotes, \\n, \\t and \\\\ keep their backslash (
 test('steps that only a browser can run make a test start in one', () => {
   for (const src of ["expect(role='button', name='Save')", "expect(checked='Kiosk')", "upload('Photo', 'a.png')", "within('row:Ada')", "expect(overflow=0)", "emulate(390, 844)"]) assert.ok(NEEDS_BROWSER.test(src), src);
   for (const src of ["expect('Saved')", "expect(role='heading', level=1)", "click('Save')", "expect(url='/home')"]) assert.ok(!NEEDS_BROWSER.test(src), src);
+});
+
+test("request() calls an API with the test user's cookies and checks the status and body", async () => {
+  const state = JSON.stringify({ cookies: [{ name: 'sid', value: 'alice', domain: '127.0.0.1', path: '/', expires: -1, httpOnly: true, secure: false, sameSite: 'Lax' }], origins: [] });
+  const r = await run({
+    'alice.json': state,
+    'a.aw': `## signed in\nprofile(file='$DIR/alice.json'); open('/who'); request('/api/secret', status=200, has='rows'); exec('echo \${response.status}', expect='200')\n## anonymous\nrequest('/api/secret', status=403, not='rows')\n## wrong\nrequest('/api/secret', status=200)\n`,
+  });
+  assert.equal(r.code, 1);
+  assert.doesNotMatch(r.out, /✗ signed in|✗ anonymous/);
+  assert.match(r.out, /GET \/api\/secret answered 403, expected 200: '\{"error":"not allowed"\}'/);
 });

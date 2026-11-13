@@ -5,6 +5,7 @@
 import { spawn } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
+import { createJar } from '../net/cookies.ts';
 import { parseProgram, type Arg, type Step } from '../dsl.ts';
 import { liveId, SESSION_NS, type SessionRecord } from '../session.ts';
 import type { RuntimeImpl } from '../runtime.ts';
@@ -329,6 +330,42 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
           else Object.assign(vars, varsFrom(r.out));
           continue;
         }
+        if (/^\s*(?:await\s+)?request\s*\(/.test(st.src)) {
+          // request('/api/export', status=403, has='…', not='…', method='POST', body='{…}', redirects=0): an HTTP call with
+          // the cookies of the user the test runs as (Playwright's page.request); sets ${response.status}, ${response.text},
+          // ${response.location}
+          const q = parseProgram(st.src.replace(/^\s*(?:await\s+)?request\s*\(/, 'find('))[0];
+          res.steps++;
+          const target = String(q.args[0] ?? q.opts.url ?? '');
+          if (!target) throw new Error("request needs a URL: request('/api/export', status=200)");
+          const url = withBase(target, base);
+          const rec = await rt.deps.store.get<SessionRecord>(SESSION_NS, cur);
+          const cookie = createJar(rec?.cookies ?? []).header(url);
+          const method = String(q.opts.method ?? (q.opts.body !== undefined ? 'POST' : 'GET')).toUpperCase();
+          const body = q.opts.body !== undefined ? String(q.opts.body) : undefined;
+          const headers: Record<string, string> = {};
+          if (cookie) headers.cookie = cookie;
+          if (body !== undefined) headers['content-type'] = /^\s*[{[]/.test(body) ? 'application/json' : 'application/x-www-form-urlencoded';
+          const resp = await fetch(url, { method, headers, body, redirect: String(q.opts.redirects ?? '') === '0' ? 'manual' : 'follow', signal: deadline });
+          const text = await resp.text();
+          vars['response.status'] = String(resp.status);
+          vars['response.text'] = text.slice(0, 65536);
+          vars['response.location'] = resp.headers.get('location') ?? '';
+          const problems: string[] = [];
+          const shown = text.replace(/\s+/g, ' ').trim().slice(0, 160);
+          if (q.opts.status !== undefined && String(resp.status) !== String(q.opts.status)) problems.push(`${method} ${target} answered ${resp.status}, expected ${q.opts.status}${resp.headers.get('location') ? ` (redirect to ${resp.headers.get('location')})` : ''}${shown ? `: '${shown}'` : ''}`);
+          const holds = (want: string) => {
+            const re = /^\/(.*)\/([a-z]*)$/s.exec(want);
+            return re ? new RegExp(re[1], re[2]).test(text) : text.toLowerCase().includes(want.toLowerCase());
+          };
+          if (q.opts.has !== undefined && !holds(String(q.opts.has))) problems.push(`${method} ${target} answered without '${q.opts.has}': '${shown}'`);
+          if (q.opts.not !== undefined && holds(String(q.opts.not))) problems.push(`${method} ${target} answered with '${q.opts.not}': '${shown}'`);
+          if (problems.length) {
+            await fail(st0, problems.join('; '), '');
+            break;
+          }
+          continue;
+        }
         if (/^\s*expect\s*\(\s*download\s*=/.test(st.src)) {
           // expect(download='/^export-.*\.xlsx$/'): the last file a step downloaded has that name (substring, or /pattern/)
           const d = parseProgram(st.src)[0];
@@ -449,7 +486,10 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         }
         continue;
       }
+      const tStep = performance.now();
       const r = await rt.run(cur, snap ? 'view()' : stepToSource(step), { budget: snap ? 1500 : o.excerptTokens, signal: deadline });
+      // AGENTWEB_TEST_TRACE=1: how long each step took, on stderr (finding where a suite spends its time)
+      if (process.env.AGENTWEB_TEST_TRACE) process.stderr.write(`trace ${Math.round(performance.now() - tStep)}ms ${r.stats.tier ?? ''} ${tc.name} :: ${st.src.slice(0, 90)}\n`);
       res.steps++;
       if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
       for (const m of r.text.matchAll(/^note: (profile '.*' has no cookies for .*)$/gm)) (res.warnings ??= []).push(m[1]);

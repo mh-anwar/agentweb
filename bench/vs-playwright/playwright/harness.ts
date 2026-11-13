@@ -27,7 +27,10 @@ export function watchErrors(page: Page) {
     page.on("response", (r) => {
         if (r.status() >= 400 && !r.url().includes("favicon")) errors.push(`${r.status()} ${r.request().method()} ${r.url()}`);
     });
-    page.on("requestfailed", (r) => errors.push(`failed ${r.url()}: ${r.failure()?.errorText}`));
+    // a request cancelled because the page navigated away is not a failure
+    page.on("requestfailed", (r) => {
+        if (r.failure()?.errorText !== "net::ERR_ABORTED") errors.push(`failed ${r.url()}: ${r.failure()?.errorText}`);
+    });
     return errors;
 }
 

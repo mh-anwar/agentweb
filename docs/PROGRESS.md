@@ -1,5 +1,21 @@
 # Agentweb progress
 
+## Beat Playwright (from 2026-11-12, branch `t3/beat-playwright`)
+
+Owner's goal: Clockwork moves its browser tests to agentweb only once agentweb is measurably better than
+Playwright. The scoreboard is [bench/vs-playwright](../bench/vs-playwright/README.md) (`node run.mjs`; results in
+its RESULTS.md): the same 9 journeys in both tools against a fixture app with 24 switchable planted bugs and 5
+benign variants, measuring wall/CPU/memory, pass and flake rate, false alarms, bugs caught, whether the output
+names the cause, and test code size. Clockwork's own journeys are the real-world half (their thread runs
+`scripts/agentweb/compare.mjs`).
+
+Built for it: assertions and step targets by role, accessible name, label, test id, CSS and state, with scopes
+(`src/checks/locate.ts` in the page, `src/checks/expectloc.ts`), `within()`, `as('user')` for a second browser
+context, `expect(download=)`, waiting step targets and short settling in test runs, read-only probes that skip
+settling, ghost clock limited to 1 s ahead after actions, `upload(t, path)`, `exec(expect=)`, readable command
+failures, `${base}`, `${today+N}`. Next: close the remaining wall-time gap, then move Clockwork journeys.
+
+
 Updated 2026-11-11. This iteration was developed on `t3/agent-browser-differentiation` and
 integrates the owner’s logging and auto-release commits through `3de280b`. Green work lands on
 `build/agentweb-v0`, the box’s live release branch. Branches are preserved in the local bare git
