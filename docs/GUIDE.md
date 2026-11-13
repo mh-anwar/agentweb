@@ -230,6 +230,37 @@ agentweb test --record tests/login.aw "open('/login'); fill(4,'bob'); submit(); 
   27`). `role="heading"` with `aria-level` counts as a heading everywhere. `--grep-test TEXT` selects tests by their
   `## ` title as written, before `# each:` values. A small control inside a label of at least 24 px passes the
   tap-target rule (`expect(audit='target')`).
+* **Elements by role, name and state** (what Playwright's `getByRole(...)` + `toBeVisible/toBeChecked/...` do).
+  `expect(role='button', name='Send report')` is a visible button with that accessible name (aria-label, label,
+  text; a substring, `name='/^Send/i'` a pattern, `exact=1` the whole name). Add a state: `checked=1` (`0` for not),
+  `disabled=1`, `enabled=1`, `focused=1`, `selected=1`, `expanded=1`, `pressed=1`, `value='482 913'`, `text='…'`
+  (contains), `attr='aria-current=page'`, `empty=1`. Shorthand: `expect(checked='Kiosk')`, `expect(focused='Email')`,
+  `expect(disabled='Save')`. Count and absence: `expect(role='row', n=3)`, `expect(role='dialog', hidden=1)`,
+  `expect(not='QR codes', role='heading')`. Other locators: `label='Clock-in code'`, `testid='save'`, `css='nav a'`;
+  `expect('1 student', exact=1)` is an element whose whole text is that. When several elements match, the assertion
+  holds if one visible match passes (pick one with `nth=2` or `last=1`). A failure says what is there instead:
+  `button 'Send report' does not have the focus (it is on textbox 'What went wrong')`,
+  `no button named 'Delete' on the page (button here: 'Archive', 'Edit')`. They run in the real browser.
+* **Scopes.** `in='dialog:Report a problem'` on one step or assertion (`'role:name'`, `'role'`, or `'.css'` /
+  `'css=…'`; a row or card is found by any text in it: `in='row:Grace Hopper'`); `within('row:Grace Hopper')` (or
+  `within(role='dialog', name='…')`) makes every later step and assertion act inside it until `within()` or the next
+  `open()`. `expect('Saved', in='status')` looks for text inside the scope only.
+* **Waiting targets.** In a test run a step waits up to 5 s for its target to appear (as an assertion does), and a
+  control named only by `aria-label` or `aria-labelledby` is found by that name. After each action the run waits only
+  for a short quiet moment (80 ms network, 50 ms page), since everything after it waits for what it needs.
+* **Two users in one test.** `as('instructor', profile='${admin_profile}')` runs the following steps in a second
+  browser context with its own cookies; both stay open. `as('main')` goes back to the first; `as('instructor')` again
+  returns to the second exactly where it was.
+* **Downloads.** After a step that downloads a file, `expect(download='/^export-\d{4}-\d\d-\d\d\.xlsx$/')` checks its
+  name and `${download.path}`, `${download.name}`, `${download.bytes}` are set (`exec('node check.mjs ${download.path}')`).
+* **Files and commands.** `upload('Card photo', 'fixtures/card.png')` reads the file (relative to the working
+  directory); `exec('node scripts/sql.mjs …', expect='/history', not='error')` fails unless what it printed contains
+  (does not contain) that; a failing command reports its `Error: …` line and exit code, not the end of a stack trace.
+* **Built-in values.** `${base}` (the address of the run), `${today}`, `${today+3}`, `${today-1}` (date keys in
+  `AGENTWEB_TZ`, else `TZ`, else the machine's zone). In strings, `\d`, `\.` and other escapes keep their backslash, so
+  patterns work as written; `\'`, `\n`, `\t` and `\\` mean what they do in JavaScript.
+* **Offline and dialogs.** `emulate(offline=1)` / `emulate(offline=0)`; `dialog('accept')` before the step that opens
+  a confirm.
 * **Exit code** 0 all passed, 1 a failure, 2 bad usage.
 
 ### Layout, accessibility, console and screenshot checks

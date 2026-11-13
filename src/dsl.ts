@@ -101,7 +101,8 @@ function tokenize(src: string): Tok[] {
       while (j < n && src[j] !== close) {
         if (src[j] === '\\' && j + 1 < n) {
           const e = src[j + 1];
-          s += e === 'n' ? '\n' : e === 't' ? '\t' : e;
+          // \n, \t, an escaped quote or backslash; any other escape keeps its backslash, so name='/^\d+ items$/' is a pattern
+          s += e === 'n' ? '\n' : e === 't' ? '\t' : e === '\\' || e === close || e === "'" || e === '"' || e === '`' ? e : '\\' + e;
           j += 2;
         } else s += src[j++];
       }

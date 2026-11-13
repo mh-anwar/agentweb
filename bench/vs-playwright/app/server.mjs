@@ -230,6 +230,17 @@ $('#f2').onsubmit=async(e)=>{e.preventDefault();const r=await api('/api/signup/v
   },
   'POST /api/world': (req, res) => json(res, 200, newWorld()),
 
+  // ── a cookie set by a script request (like a Next.js server action), then read by a later page (not part of the suites) ──
+  'GET /cookie-lab': (req, res) => send(res, 200, 'text/html', `<!doctype html><html lang="en"><title>Cookie lab</title><main><h1>Cookie lab</h1>
+<button id="b">Email me a sign-in link</button><p id="s" role="status"></p><p><a href="/export">Download all data</a></p></main>
+<script>document.getElementById('b').onclick=async()=>{const r=await fetch('/cookie-lab',{method:'POST',headers:{'Next-Action':'abc'}});document.getElementById('s').textContent=await r.text();};</script></html>`),
+  'POST /cookie-lab': async (req, res) => {
+    await sleep(Number(new URL(req.url, 'http://x').searchParams.get('delay') ?? 300));
+    send(res, 200, 'text/plain', 'Check your email', { 'set-cookie': 'link_requested=yes; Path=/; Max-Age=600; SameSite=lax' });
+  },
+  'GET /export': (req, res) => send(res, 200, 'text/csv', 'name,grade\nAda,3\n', { 'content-disposition': `attachment; filename="tock-export-${new Date().toISOString().slice(0, 10)}.csv"` }),
+  'GET /cookie-check': (req, res) => send(res, 200, 'text/html', `<!doctype html><html lang="en"><title>Cookie check</title><main><h1>${cookies(req).link_requested ? 'Cookie present' : 'Cookie missing'}</h1></main></html>`),
+
   // ── a Mailpit-shaped mailbox ──
   'GET /mailpit/api/v1/search': (req, res, url) => {
     const to = /to:"?([^"\s]+)"?/.exec(url.searchParams.get('query') ?? '')?.[1];
@@ -247,7 +258,7 @@ createServer(async (req, res) => {
     const h = routes[`${req.method} ${url.pathname}`];
     if (h) {
       // pages need a session, except the public ones
-      if (req.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/mailpit') && !['/', '/login', '/signup', '/welcome'].includes(url.pathname) && !who(req)) return redirect(res, '/login');
+      if (req.method === 'GET' && !url.pathname.startsWith('/api/') && !url.pathname.startsWith('/mailpit') && !['/', '/login', '/signup', '/welcome', '/cookie-lab', '/cookie-check', '/export'].includes(url.pathname) && !who(req)) return redirect(res, '/login');
       return await h(req, res, url);
     }
     if (url.pathname === '/favicon.ico') return send(res, 204, 'image/x-icon', '');

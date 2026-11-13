@@ -34,6 +34,8 @@ export function register(rt: RuntimeImpl): void {
 /** Does this expect() need the locator (rather than the page-text check)? */
 export function wantsLocator(o: Record<string, unknown>, rec: { within?: string }): boolean {
   if (o.role !== undefined && String(o.role).toLowerCase() !== 'heading') return true;
+  // expect(not='QR codes', role='heading'): no heading with that name (not: the text nowhere on the page)
+  if (o.role !== undefined && o.not !== undefined) return true;
   if (o.label !== undefined || o.testid !== undefined || o.test_id !== undefined || o.css !== undefined || o.in !== undefined || o.name !== undefined) return true;
   if (STATE_KEYS.some((k) => o[k] !== undefined) || o.value !== undefined || o.attr !== undefined || o.text !== undefined || o.exact !== undefined) return true;
   // inside within(...), text and headings are looked for in the scope

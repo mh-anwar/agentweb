@@ -260,9 +260,12 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
   if (tc.viewport && rt.verbHandler('viewport')) steps.push({ line: tc.line, src: `viewport(${JSON.stringify(tc.viewport)})` });
   steps.push(...tc.steps);
 
+  // as('name'): the sessions of the test's other users, and the one steps run in now
+  const others = new Set<string>();
+  let cur = sid;
   const fail = async (st: TestStep, message: string, excerpt?: string) => {
     res.ok = false;
-    res.failure = { line: st.line, step: st.src, message: message.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n'), excerpt: excerpt ?? (await pageExcerpt(rt, sid, o.excerptTokens)) };
+    res.failure = { line: st.line, step: st.src, message: message.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n'), excerpt: excerpt ?? (await pageExcerpt(rt, cur, o.excerptTokens)) };
   };
 
   const hook = async (cmds: string[] | undefined, what: string): Promise<boolean> => {
@@ -326,6 +329,50 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
           else Object.assign(vars, varsFrom(r.out));
           continue;
         }
+        if (/^\s*expect\s*\(\s*download\s*=/.test(st.src)) {
+          // expect(download='/^export-.*\.xlsx$/'): the last file a step downloaded has that name (substring, or /pattern/)
+          const d = parseProgram(st.src)[0];
+          res.steps++;
+          const want = String(d.opts.download);
+          const name = vars['download.name'];
+          const re = /^\/(.*)\/([a-z]*)$/s.exec(want);
+          const ok = name !== undefined && (re ? new RegExp(re[1], re[2]).test(name) : name.toLowerCase().includes(want.toLowerCase()));
+          if (!ok) {
+            const message = name === undefined ? `nothing was downloaded (expected '${want}')` : `the download is '${name}', expected '${want}'`;
+            if (d.opts.soft !== undefined ? !/^(0|false|no|off)$/i.test(String(d.opts.soft)) : tc.soft) soft.push({ st, message });
+            else {
+              await fail(st0, message, '');
+              break;
+            }
+          }
+          continue;
+        }
+        if (/^\s*(?:await\s+)?as\s*\(/.test(st.src)) {
+          // as('parent', profile='${profile_parent}'): later steps run as another user, in a browser context of their own
+          // that stays open (both users at once); as('main') goes back to the test's first user
+          const a = parseProgram(st.src.replace(/^\s*(?:await\s+)?as\s*\(/, 'find('))[0];
+          const who = String(a.args[0] ?? a.opts.name ?? '').trim();
+          if (!who) throw new Error("as needs a name: as('parent', profile='${profile_parent}')");
+          res.steps++;
+          const next = who === 'main' || who === 'default' ? sid : `${sid}~${who.replace(/[^\w-]/g, '_')}`;
+          if (next !== sid && !others.has(next)) {
+            others.add(next);
+            if (hinted) rt.hinted.add(next);
+            const init: string[] = [];
+            const pin = steps.find((x) => /^engine\(/.test(x.src));
+            if (pin) init.push(pin.src);
+            if (a.opts.profile !== undefined) init.push(`profile(file=${JSON.stringify(String(a.opts.profile))})`);
+            for (const src of init) {
+              const r = await rt.run(next, src, { budget: o.excerptTokens, signal: deadline });
+              if (!r.ok) throw new Error(r.text.split('\n')[0].replace(/^✗\s*/, ''));
+            }
+          } else if (a.opts.profile !== undefined) {
+            const r = await rt.run(next, `profile(file=${JSON.stringify(String(a.opts.profile))})`, { budget: o.excerptTokens, signal: deadline });
+            if (!r.ok) throw new Error(r.text.split('\n')[0].replace(/^✗\s*/, ''));
+          }
+          cur = next;
+          continue;
+        }
         if (/^\s*(?:await\s+)?mail\s*\(/.test(st.src)) {
           // mail(to='${email}', wait=30): the newest message for that address from a local Mailpit; ${mail.subject},
           // ${mail.link}, ${mail.code}, ${mail.text} are then set (as='name' changes the prefix)
@@ -344,7 +391,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
           // screenshot('name', widths='375,768', threshold=0.01): compared with a saved picture, like snapshot()
           const sc = parseProgram(st.src)[0];
           res.steps++;
-          const v = await compareScreenshot(rt, sid, tc, sc, o, deadline);
+          const v = await compareScreenshot(rt, cur, tc, sc, o, deadline);
           if (v.tier && tiers[tiers.length - 1] !== v.tier) tiers.push(v.tier);
           if (v.wrote) (res.wrote ??= []).push(...v.wrote);
           if (v.failure) {
@@ -376,7 +423,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         res.steps++;
         if (!o.report) continue;
         const { attach, ...rest } = step.opts;
-        const r = await rt.run(sid, stepToSource({ ...step, opts: { ...rest, save: 1 } }), { budget: 200, signal: deadline });
+        const r = await rt.run(cur, stepToSource({ ...step, opts: { ...rest, save: 1 } }), { budget: 200, signal: deadline });
         if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
         const from = /saved screenshot: (.+?) \(\d+ bytes\)/.exec(r.text)?.[1];
         if (!r.ok || !from || !existsSync(from)) {
@@ -390,7 +437,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       if (step.verb === 'expect' && step.opts.same !== undefined) {
         // expect(same='menu', of='nav a'): the text of those elements is the same in every test of this run that says so
         res.steps++;
-        const v = await sameAcross(rt, sid, step, deadline);
+        const v = await sameAcross(rt, cur, step, deadline);
         if (v.tier && tiers[tiers.length - 1] !== v.tier) tiers.push(v.tier);
         if (v.text !== undefined) (res.same ??= []).push({ name: String(step.opts.same), text: v.text, line: st.line, step: st.src });
         if (v.failure) {
@@ -402,10 +449,16 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
         }
         continue;
       }
-      const r = await rt.run(sid, snap ? 'view()' : stepToSource(step), { budget: snap ? 1500 : o.excerptTokens, signal: deadline });
+      const r = await rt.run(cur, snap ? 'view()' : stepToSource(step), { budget: snap ? 1500 : o.excerptTokens, signal: deadline });
       res.steps++;
       if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
       for (const m of r.text.matchAll(/^note: (profile '.*' has no cookies for .*)$/gm)) (res.warnings ??= []).push(m[1]);
+      // a step that downloaded a file: ${download.name}, ${download.path}, ${download.bytes}; expect(download='…') checks it
+      for (const m of r.text.matchAll(/downloaded (.+?): (\S+) \((\d+) bytes\)/g)) {
+        vars['download.name'] = m[1];
+        vars['download.path'] = m[2];
+        vars['download.bytes'] = m[3];
+      }
       if (!r.ok && isSoft && !deadline.aborted) {
         soft.push({ st, message: firstError(r.text, step.src) });
         continue;
@@ -452,7 +505,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       // `# console: clean`: no console errors (or, with warn, warnings) on any page this test visited
       const allow = tc.console.allow ? `, allow=${JSON.stringify(tc.console.allow)}` : '';
       const src = `expect(console=${tc.console.warn ? "'warn'" : 0}, all=1${allow})`;
-      const r = await rt.run(sid, src, { budget: o.excerptTokens, signal: deadline });
+      const r = await rt.run(cur, src, { budget: o.excerptTokens, signal: deadline });
       res.steps++;
       if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
       if (!r.ok) await fail({ line: tc.line, src: `# console: clean${tc.console.warn ? ', warn' : ''}${tc.console.allow ? ', allow=' + tc.console.allow : ''}` }, firstError(r.text, src), '');
@@ -461,7 +514,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
     if (o.report && tiers.length && ['chrome', 'firefox', 'webkit'].includes(tiers[tiers.length - 1])) {
       // the screen as the test left it, for a person to look at afterwards
       try {
-        const r = await rt.run(sid, 'shot(full=1, save=1)', { budget: 200, signal: AbortSignal.timeout(20_000) });
+        const r = await rt.run(cur, 'shot(full=1, save=1)', { budget: 200, signal: AbortSignal.timeout(20_000) });
         const from = /saved screenshot: (.+?) \(\d+ bytes\)/.exec(r.text)?.[1];
         if (from && existsSync(from)) res.shot = saveShot(o.report, from, tc.name);
       } catch {}
@@ -469,6 +522,16 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
     if (tc.teardown?.length) await hook(tc.teardown, 'teardown');
     if (tiers.length) res.engine = tiers[tiers.length - 1];
     if (tiers.length > 1) res.engines = tiers;
+    // the other users' sessions and browser contexts go with the test
+    for (const other of others) {
+      try {
+        const r2 = await rt.deps.store.get<SessionRecord>(SESSION_NS, other);
+        await rt.deps.store.del(SESSION_NS, other);
+        rt.hinted.delete(other);
+        const ids2 = [other, ...(r2?.tabs ?? []).map((t) => liveId({ id: other }, t.n)), ...(r2?.tab ? [liveId({ id: other }, r2.tab)] : [])];
+        await Promise.all(Object.values(rt.deps.engines).flatMap((e) => (e && e.tier !== 'wire' ? ids2.map((id) => e.release(id).catch(() => {})) : [])));
+      } catch {}
+    }
     let rec: SessionRecord | undefined;
     try {
       rec = await rt.deps.store.get<SessionRecord>(SESSION_NS, sid);
