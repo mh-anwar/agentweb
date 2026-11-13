@@ -61,12 +61,12 @@ open('/kiosk'); upload('Card photo', 'app/card.png'); expect('Photo received: ca
 # profile: ${profile}
 # console: clean
 emulate(${width}, 900)
-open('/home'); expect(role='heading', level=1); expect(overflow=0, requests=0, axe=0, impact='serious', disable='color-contrast', audit='target')
+open('/home'); expect(role='heading', level=1); expect(overflow=0, requests=0, console=0, axe=0, impact='serious', disable='color-contrast', audit='target')
 expect(same='menu', of='nav [data-menu]')
-open('/students'); expect(role='heading', level=1); expect(overflow=0, requests=0, axe=0, impact='serious', disable='color-contrast', audit='target')
+open('/students'); expect(role='heading', level=1); expect(overflow=0, requests=0, console=0, axe=0, impact='serious', disable='color-contrast', audit='target')
 expect(same='menu', of='nav [data-menu]')
-open('/settings'); expect(role='heading', level=1); expect(overflow=0, requests=0, axe=0, impact='serious', disable='color-contrast', audit='target')
+open('/settings'); expect(role='heading', level=1); expect(overflow=0, requests=0, console=0, axe=0, impact='serious', disable='color-contrast', audit='target')
 expect(same='menu', of='nav [data-menu]')
-open('/kiosk'); expect(role='heading', level=1); expect(overflow=0, requests=0, axe=0, impact='serious', disable='color-contrast', audit='target')
+open('/kiosk'); expect(role='heading', level=1); expect(overflow=0, requests=0, console=0, axe=0, impact='serious', disable='color-contrast', audit='target')
 expect(same='menu', of='nav [data-menu]')
-profile(file='${admin_profile}'); open('/admin/reports'); expect(role='heading', level=1); expect(overflow=0, requests=0, axe=0, impact='serious', disable='color-contrast', audit='target')
+profile(file='${admin_profile}'); open('/admin/reports'); expect(role='heading', level=1); expect(overflow=0, requests=0, console=0, axe=0, impact='serious', disable='color-contrast', audit='target')

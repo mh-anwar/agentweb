@@ -133,7 +133,7 @@ ${url.searchParams.get('error') && !on('login-error-silent') ? `<p class="${cls(
     redirect(res, '/login', { 'set-cookie': 'sid=; Path=/; Max-Age=0' });
   },
   'GET /home': (req, res) => send(res, 200, 'text/html', page(req, 'Home', `<h1>Today</h1><p>Welcome back. You have no shifts today.</p>`, '', { path: '/home' })),
-  'GET /students': (req, res) => send(res, 200, 'text/html', page(req, 'Students', `<div class="${cls('top')}">${on('no-h1') ? '<div class="h">Students</div>' : '<h1>Students</h1>'}<button type="button" id="sort" ${on('axe-unnamed-button') ? '' : 'aria-label="Sort by name"'}>⇅</button></div>
+  'GET /students': (req, res) => send(res, 200, 'text/html', page(req, 'Students', `<div class="${cls('top')}">${on('no-h1') ? '<div class="h">Students</div>' : '<h1>Students</h1>'}<button type="button" id="sort" ${on('axe-unnamed-button') ? '' : 'aria-label="Sort by name"'}><span aria-hidden="true">⇅</span></button></div>
 <p id="count"></p><table class="${cls('students')}"><thead><tr><th>Name</th><th>Grade</th><th>Joined</th><th>Notes</th></tr></thead><tbody id="rows"></tbody></table>
 <h2>Add a student</h2><form id="add" novalidate><label for="sname">Student name</label><input id="sname" name="name">
 <label for="grade">Grade</label><select id="grade" name="grade">${[1, 2, 3, 4, 5, 6].map((g) => `<option>${g}</option>`).join('')}</select>
