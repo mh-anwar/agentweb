@@ -70,8 +70,33 @@ Second round (same day):
   back-to-back agentweb runs here gave 4/5 each in ~30 s (the failure is A). Suspect: local Supabase sign-in rate limit
   when alternating with Playwright; waiting for their captured errors.
 
-**Open:** flaky count on Clockwork journeys (needs their error output); a disabled control on a wire-tier page still
-fails at once; then the "Next, in priority order" list above, fixture wall time first (8.4 s vs 6.6 s).
+Released as 91509aa (suite 1288 passed, 0 failed).
+
+### Handoff (2026-11-12 evening; thread ended on the owner's instruction)
+
+**Scoreboard** (bench/vs-playwright/RESULTS.md, 2 workers, 24 planted bugs, 5 benign variants; not rerun since
+f56dd6c): wall 8.4 s vs Playwright 6.6 s (**loss**; one run on 91509aa: 8.0 s); CPU 11.8 vs 14.0 s; peak memory 861 vs
+1801 MB; flaky 0 vs 0; false alarms 0/5 both; bugs caught 23/24 vs 24/24 (**loss**: 18 px tap target); failure output
+1274 vs 2967 chars; test code 63 vs 212 lines.
+
+**Clockwork:** A was their dev server (`-H 0.0.0.0`), fixed on their side; the first agentweb journeys run after that
+passed 5/5 in 21.6 s. A like-for-like table (the same 5 tests in both tools) is being run by the Clockwork thread and
+will be recorded in Clockwork's docs/knowledge/agentweb-vs-playwright/. Earlier, not like-for-like (7 Playwright tests vs
+5 ports): CPU 36 vs 71 s, memory 1306 vs 3355 MiB, code 5036 vs 11248 chars, flaky 3 vs 1 (the flaky run was not
+reproduced: three back-to-back runs here were stable).
+
+**Open, in order:**
+1. Fixture wall time. Lead found with AGENTWEB_TEST_TRACE=1: 17 of 48 expects take ~255 ms each (4.3 s of 13.9 s step
+   time over 2 workers), all `expect(…, role='heading', level=1)` right after open(). The page view open() returns still
+   says "Loading…" (the fixture renders by script), the first check fails, and expect sleeps 250 ms and re-reads the
+   page (`sleep(250)` in the expect verb, src/runtime.ts). Ideas: open() in a test run waits for the first render
+   (DOM quiet after the load event) before returning; the heading check goes through the in-page locator (no page
+   re-read); a shorter first poll (20-50 ms, backing off). Also 3 slow first opens (1275, 988, 474 ms: browser and
+   context start; 988 ms is the ghost engine's first page).
+2. Strict tap-target rule (`audit='target24'`, any control under 24 px), so the fixture's `tap-small` is caught.
+3. `# console: clean` loses earlier pages' errors after a mid-test `profile()`.
+4. A disabled control on a wire-tier page still fails at once (live pages wait 5 s).
+5. Rerun `node run.mjs` in bench/vs-playwright after each win; record Clockwork's like-for-like table here.
 
 Updated 2026-11-11. This iteration was developed on `t3/agent-browser-differentiation` and
 integrates the owner’s logging and auto-release commits through `3de280b`. Green work lands on
