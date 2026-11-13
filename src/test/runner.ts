@@ -81,6 +81,8 @@ export interface ExecResult {
   ok: boolean;
   out: string;
   err: string;
+  /** exit code, or the signal that ended it */
+  code?: number | string;
 }
 
 export function runShell(cmd: string, env: Record<string, string | undefined>, timeoutMs: number, signal?: AbortSignal): Promise<ExecResult> {
@@ -96,11 +98,24 @@ export function runShell(cmd: string, env: Record<string, string | undefined>, t
     child.stdout!.on('data', (d: Buffer) => (out = (out + d.toString('utf8')).slice(-65_536)));
     child.stderr!.on('data', (d: Buffer) => (err = (err + d.toString('utf8')).slice(-8192)));
     child.once('error', (e) => resolve({ ok: false, out, err: err || e.message }));
-    child.once('close', (code, sig) => resolve({ ok: code === 0, out, err: code === 0 ? err : err || (sig ? `killed (${sig}) after ${Math.round(timeoutMs / 1000)} s` : `exit code ${code}`) }));
+    child.once('close', (code, sig) => resolve({ ok: code === 0, out, code: code ?? sig ?? undefined, err: code === 0 ? err : err || (sig ? `killed (${sig}) after ${Math.round(timeoutMs / 1000)} s` : '') }));
   });
 }
 
 const tail = (s: string, n = 3) => s.trim().split('\n').slice(-n).join(' / ').slice(0, 300);
+
+/**
+ * Why a command failed, in one line: the error line of a stack trace (`Error: …`, `TypeError: …`, `error: …`)
+ * rather than its last lines, then the exit code.
+ */
+export function whyFailed(r: ExecResult): string {
+  const text = `${r.err}\n${r.out}`;
+  const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
+  const errLine = lines.find((l) => /^(?:Uncaught )?(?:[A-Z]\w*)?(?:Error|Exception)\b[:\s]/.test(l) || /^(?:error|fatal|ERROR|FATAL)\b[:\s]/.test(l) || /^AssertionError/.test(l));
+  const code = r.code === undefined ? '' : typeof r.code === 'number' ? `exit code ${r.code}` : `killed (${r.code})`;
+  const what = errLine ?? (lines.filter((l) => !/^at\s|^\^+$|^Node\.js v|^[{}\[\]();,]*$/.test(l)).slice(-2).join(' / ') || tail(text));
+  return [what.slice(0, 300), code].filter(Boolean).join(' — ') || 'no output';
+}
 
 /** `name=value` lines a hook prints become ${name} in the tests; a JSON object does too. */
 export function varsFrom(out: string): Record<string, string> {
@@ -119,8 +134,26 @@ export function varsFrom(out: string): Record<string, string> {
   return vars;
 }
 
+/** Steps that only a real browser can run (layout, accessibility, console, uploads, elements by role or state, emulation). */
+export const NEEDS_BROWSER = /\b(?:emulate|upload|drop|within|js|route|init|shot|overflow|audit)\s*\(|\bexpect\s*\([^)]*\b(?:overflow|no_overflow|audit|axe|console|requests|label|testid|test_id|css|in|focused|checked|unchecked|disabled|enabled|selected|expanded|collapsed|pressed|hidden|visible|value|attr|exact)\s*=|\bexpect\s*\([^)]*\brole\s*=\s*['"](?!heading['"])/;
+
+/** ${today}, ${today+3}, ${today-1}: a date key (YYYY-MM-DD) in AGENTWEB_TZ (else TZ, else this machine's zone). */
+export function dateKey(offsetDays: number, tz = process.env.AGENTWEB_TZ || process.env.TZ || undefined): string {
+  let today: string;
+  try {
+    today = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch {
+    today = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  }
+  const d = new Date(`${today}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offsetDays);
+  return d.toISOString().slice(0, 10);
+}
+
 function substitute(src: string, vars: Record<string, string>): string {
-  return src.replace(/\$\{([A-Za-z_][\w.]*)\}/g, (_m, name: string) => {
+  return src.replace(/\$\{([A-Za-z_][\w.]*)(?:([+-])(\d+))?\}/g, (_m, name: string, sign?: string, num?: string) => {
+    if (name === 'today' && !(name in vars)) return dateKey(sign ? (sign === '-' ? -1 : 1) * Number(num) : 0);
+    if (sign) throw new Error(`\${${name}${sign}${num}} : only \${today+N} takes a number of days`);
     if (!(name in vars)) throw new Error(`\${${name}} is not set: a "# setup:" command prints ${name}=value, or exec('command', as='${name}') sets it`);
     return vars[name];
   });
@@ -209,6 +242,8 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
   if (base) try { origins.add(new URL(base).origin); } catch {}
 
   const vars: Record<string, string> = { ...shared };
+  // ${base}: the address tests run against (for an api='${base}/…' or a command)
+  if (base && vars.base === undefined) vars.base = base.replace(/\/+$/, '');
   const tiers: string[] = [];
   const engine = o.engine ?? tc.engine;
   const steps: TestStep[] = [];
@@ -217,8 +252,9 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
   // view never depends on which test ran before it.
   const hinted = !engine && !tc.console && !tc.steps.some((st) => /\b(?:snapshot|screenshot)\s*\(/.test(st.src));
   if (hinted) rt.hinted.add(sid);
-  // `# console: clean` needs the browser's own console from the first page on
-  if (tc.console && !engine) steps.push({ line: tc.line, src: 'engine("chrome")' });
+  // `# console: clean` needs the browser's own console from the first page on; so does a test whose steps can only
+  // run in a real browser: starting there saves re-opening the page halfway through the test
+  if ((tc.console || tc.steps.some((st) => NEEDS_BROWSER.test(st.src))) && !engine) steps.push({ line: tc.line, src: 'engine("chrome")' });
   if (engine && engine !== 'auto') steps.push({ line: tc.line, src: `engine(${JSON.stringify(engine)})` });
   if (tc.profile) steps.push({ line: tc.line, src: `profile(${JSON.stringify(tc.profile)})` });
   if (tc.viewport && rt.verbHandler('viewport')) steps.push({ line: tc.line, src: `viewport(${JSON.stringify(tc.viewport)})` });
@@ -237,7 +273,7 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       }
       const r = await runShell(cmd, hookEnv(tc, base, vars), 120_000, deadline);
       if (!r.ok) {
-        if (res.ok) await fail({ line: tc.line, src: `# ${what}: ${cmd}` }, `${what} failed: ${tail(r.err || r.out) || 'no output'}`, '');
+        if (res.ok) await fail({ line: tc.line, src: `# ${what}: ${cmd}` }, `${what} failed: ${whyFailed(r)}`, '');
         return false;
       }
       Object.assign(vars, varsFrom(r.out));
@@ -268,10 +304,25 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
           }
           res.steps++;
           if (!r.ok) {
-            await fail(st0, `the command failed: ${tail(r.err || r.out) || 'no output'}`, '');
+            await fail(st0, `the command failed: ${whyFailed(r)}`, '');
             break;
           }
-          if (typeof ex.opts.as === 'string') vars[ex.opts.as] = r.out.trim();
+          // exec('node scripts/sql.mjs …', expect='/history', not='error'): what it prints must (not) contain that ('/re/' for a pattern)
+          const printed = r.out.trim();
+          const holds = (want: string) => {
+            const re = /^\/(.*)\/([a-z]*)$/s.exec(want);
+            return re ? new RegExp(re[1], re[2]).test(printed) : printed.toLowerCase().includes(want.toLowerCase());
+          };
+          const shown = printed.length > 200 ? printed.slice(0, 199) + '…' : printed;
+          if (ex.opts.expect !== undefined && !holds(String(ex.opts.expect))) {
+            await fail(st0, `the command printed ${shown ? `'${shown}'` : 'nothing'}, expected it to contain '${ex.opts.expect}'`, '');
+            break;
+          }
+          if (ex.opts.not !== undefined && holds(String(ex.opts.not))) {
+            await fail(st0, `the command printed '${shown}', which contains '${ex.opts.not}'`, '');
+            break;
+          }
+          if (typeof ex.opts.as === 'string') vars[ex.opts.as] = printed;
           else Object.assign(vars, varsFrom(r.out));
           continue;
         }
@@ -579,7 +630,7 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
         for (const cmd of tc.fileSetup ?? []) {
           if (o.exec === false) return { ok: false, vars, message: 'setup commands are switched off (--no-exec)' };
           const r = await runShell(cmd, hookEnv(tc, o.base ?? tc.base, { ...world, ...vars }), 300_000);
-          if (!r.ok) return { ok: false, vars, message: `setup failed (${cmd}): ${tail(r.err || r.out) || 'no output'}` };
+          if (!r.ok) return { ok: false, vars, message: `setup failed (${cmd}): ${whyFailed(r)}` };
           Object.assign(vars, varsFrom(r.out));
         }
         return { ok: true, vars, message: '' };
@@ -601,7 +652,7 @@ export async function runAll(rt: RuntimeImpl, cases: TestCase[], o: RunOptions, 
   for (const cmd of o.runSetup ?? []) {
     const r = o.exec === false ? { ok: false, out: '', err: 'setup commands are switched off (--no-exec)' } : await runShell(cmd, runEnv, 600_000);
     if (!r.ok) {
-      const message = `run setup failed (${cmd}): ${tail(r.err || r.out) || 'no output'}`;
+      const message = `run setup failed (${cmd}): ${whyFailed(r)}`;
       for (const cmd2 of o.runTeardown ?? []) if (o.exec !== false) await runShell(cmd2, { ...runEnv, ...Object.fromEntries(Object.entries(world).map(([k, v]) => ['AW_' + k.toUpperCase(), v])) }, 600_000);
       return cases.map((c) => ({ file: c.file, name: c.name, line: c.line, ok: !!c.skip, skipped: c.skip || undefined, ms: 0, steps: 0, failure: c.skip ? undefined : { line: 1, step: '', message, excerpt: '' } }));
     }

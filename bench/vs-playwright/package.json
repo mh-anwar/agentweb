@@ -1,0 +1,12 @@
+{
+  "name": "agentweb-vs-playwright",
+  "private": true,
+  "type": "module",
+  "description": "Scoreboard: agentweb test vs Playwright Test on the same journeys, with planted bugs",
+  "scripts": { "score": "node run.mjs" },
+  "devDependencies": {
+    "@axe-core/playwright": "4.11.0",
+    "@playwright/test": "1.65.0",
+    "axe-core": "4.11.0"
+  }
+}

@@ -2,6 +2,7 @@
 // their JSON back. The verbs, the wording and the rules live in src/checks; this file only moves data.
 
 import { pageChecks } from '../../checks/inpage.ts';
+import { locator } from '../../checks/locate.ts';
 import { AwError } from '../../types.ts';
 import type { PageDriver } from './page.ts';
 
@@ -49,7 +50,7 @@ async function runAxe(d: PageDriver, source: string, o: { tags?: string[]; disab
   return JSON.parse(String(r.result?.value ?? '{}'));
 }
 
-export type CheckAction = { what: 'overflow' | 'audit' | 'problems' | 'imgdiff'; args?: Record<string, unknown> };
+export type CheckAction = { what: 'overflow' | 'audit' | 'problems' | 'imgdiff' | 'locate'; args?: Record<string, unknown> };
 
 /** Run one check; the answer is JSON text (the engine's `Loaded.value`). */
 export async function runCheck(d: PageDriver, a: CheckAction): Promise<string> {
@@ -60,6 +61,8 @@ export async function runCheck(d: PageDriver, a: CheckAction): Promise<string> {
     case 'audit':
       if (typeof args.axe === 'string') return JSON.stringify(await runAxe(d, args.axe, args as { tags?: string[]; disable?: string[]; exclude?: string[] }));
       return JSON.stringify(await d.run(inPage(`C.audit(${JSON.stringify({ rules: args.rules ?? [] })})`), { timeoutMs: 30_000 }));
+    case 'locate':
+      return JSON.stringify(await d.run(`(()=>{var __name=(f)=>f;return (${locator.toString()})(self).query(${JSON.stringify(args)})})()`, { timeoutMs: 10_000 }));
     case 'problems':
       return JSON.stringify({ doc: d.docSeq, url: d.url, problems: d.problems });
     case 'imgdiff':

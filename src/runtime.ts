@@ -20,7 +20,8 @@ import { helpText } from './help.ts';
 import { rank, renderFind, renderLinks, renderOutline, renderRead, renderView, sectionRange, terms } from './render.ts';
 import { readFileSync } from 'node:fs';
 import { describeProfile, loadProfile, parseProfile, saveProfile } from './profiles.ts';
-import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions } from './netcontrol.ts';
+import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions, readDroppable } from './netcontrol.ts';
+import { locateTarget, wantsLocator } from './checks/expectloc.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
 import { TOOL, toolSpec } from './tooldoc.ts';
@@ -98,6 +99,8 @@ export interface RuntimeOptions {
   profileFiles?: boolean;
   /** folders drop() may read files from, besides the working directory */
   fileRoots?: string[];
+  /** a step waits this long for its target to appear (the test runner: AGENTWEB_SETTLE=test); 0 = an agent's step answers at once */
+  targetWaitMs?: number;
 }
 
 export type BrowserTier = 'chrome' | 'firefox' | 'webkit';
@@ -886,6 +889,7 @@ async function liveClick(rc: RunCtx, step: Step): Promise<void> {
 
 const VERBS: Record<string, VerbHandler> = {
   async open(rc, step) {
+    rc.rec.within = undefined;
     const url = normalizeUrl(str(step.args[0]), rc.rec.page?.url);
     const u = new URL(url);
     rc.outflow(u.pathname + u.search + u.hash, u.origin);
@@ -1097,6 +1101,15 @@ const VERBS: Record<string, VerbHandler> = {
     if (checks) {
       await checks(rc, step);
       if (!own && not === undefined && url === undefined && title === undefined && o.role === undefined) return;
+    }
+    // expect(role='button', name='Save', disabled=1), expect(checked='Kiosk'), expect('Saved', in='dialog'): src/checks/expectloc.ts
+    const locKeys = ['overflow', 'no_overflow', 'audit', 'axe', 'console', 'requests', 'allow', 'allow_status', 'all', 'impact', 'tags', 'disable', 'exclude'];
+    const locOpts = Object.fromEntries(Object.entries(o).filter(([k]) => !locKeys.includes(k)));
+    if (wantsLocator(locOpts, rc.rec) && (own || not !== undefined || Object.keys(locOpts).some((k) => !['url', 'title', 'timeout', 'n', 'count'].includes(k)))) {
+      const { url: _u, title: _t, ...lo } = locOpts;
+      await rc.rt.verbHandler('expect_loc')!(rc, { ...step, opts: lo as Record<string, Arg> });
+      if (url === undefined && title === undefined) return;
+      return checkExpect(rc.page, { own: '', url, title });
     }
     let heading: { level?: number } | undefined;
     if (o.role !== undefined) {
@@ -1363,11 +1376,16 @@ const VERBS: Record<string, VerbHandler> = {
     if (!pdf) rc.note('screenshot attached');
   },
 
+  // upload(t, 'path/to/file') reads the file (working directory, downloads, AGENTWEB_FILES); upload(t, 'a.txt', text='…') sends that text
   async upload(rc, step) {
-    if (!rc.isLive()) await rc.escalate('file upload needs a browser engine');
     const name = str(step.args[1]) || 'file.txt';
-    const data = Buffer.from(str(step.opts.text ?? step.args[2] ?? ''), 'utf8').toString('base64');
-    await rc.liveOn(step, (n) => ({ do: 'upload', n, files: [{ name, mime: str(step.opts.mime) || 'text/plain', data }] }));
+    const inline = step.opts.text !== undefined || step.args[2] !== undefined;
+    const file = inline || !step.args[1] ? { name, mime: str(step.opts.mime) || 'text/plain', data: Buffer.from(str(step.opts.text ?? step.args[2] ?? ''), 'utf8').toString('base64') } : readDroppable(rc, name);
+    if (!rc.isLive()) await rc.escalate('file upload needs a browser engine');
+    // the script engine has no file chooser: the page moves to the real browser
+    if (rc.page.tier === 'ghost') await needChrome(rc, 'file upload', true);
+    await rc.liveOn({ ...step, args: [step.args[0]] }, (n) => ({ do: 'upload', n, files: [file] }));
+    if (!inline) rc.note(`uploaded ${file.name} (${Buffer.from(file.data, 'base64').length} bytes)`);
   },
 
   /** js('code'): run JavaScript in the page and show the result as JSON (an expression, statements, or an arrow function) */
@@ -1828,6 +1846,45 @@ VERBS.confirm = async (rc, step) => {
 };
 
 /** After escalation the page object is new: aim the step at the same control by fingerprint or label. */
+/** Steps that aim at one control. */
+const AIMED = new Set(['click', 'fill', 'select', 'check', 'uncheck', 'hover', 'upload', 'drop']);
+
+/** Run a step on live node `n` found by the locator: through the page view's control when it has one (all the verb's rules apply), else directly. */
+async function aimedStep(rc: RunCtx, step: Step, handler: VerbHandler, n: number): Promise<void> {
+  const eng = rc.engine(rc.page.tier);
+  if (eng.snapshot) rc.setPage(await rc.toPage(await eng.snapshot(rc.ctx), rc.page.tier), { push: false });
+  const hit = allActs(rc.page).find((x) => x.act.n === n);
+  const { in: _in, label: _label, role: _role, name: _name, nth: _nth, testid: _t, test_id: _t2, css: _css, ...rest } = step.opts;
+  if (hit) {
+    const args = step.verb === 'upload' || step.verb === 'drop' || step.verb === 'fill' || step.verb === 'select' ? [hit.act.l, ...(step.args.length > 1 || step.opts.label === undefined ? step.args.slice(1) : step.args)] : [hit.act.l];
+    return handler(rc, { ...step, args, opts: { ...rest, _fp: hit.act.f } });
+  }
+  const value = step.opts.label !== undefined ? step.args[0] : step.args[1];
+  switch (step.verb) {
+    case 'click':
+      await rc.live({ do: 'click', n });
+      return;
+    case 'hover':
+      await rc.live({ do: 'hover', n });
+      return;
+    case 'check':
+    case 'uncheck':
+      await rc.live({ do: 'check', n, on: step.verb === 'check' });
+      return;
+    case 'fill': {
+      const origin = originOf(rc.page.url);
+      rc.outflow(str(value), origin);
+      await rc.live({ do: 'fill', n, value: rc.guard.reveal(str(value), origin) });
+      return;
+    }
+    case 'select':
+      await rc.live({ do: 'select', n, value: str(value) });
+      return;
+    default:
+      throw new AwError('bad_request', `${step.verb}() could not aim at that element: the page view does not show it as a control`);
+  }
+}
+
 function retarget(step: Step, act: Act): Step {
   return { ...step, args: [act.l, ...step.args.slice(1)], opts: { ...step.opts, _fp: act.f } };
 }
@@ -1890,6 +1947,7 @@ export class RuntimeImpl implements Runtime {
       browser: (this.ladder[2] as BrowserTier) ?? 'chrome',
       userBrowser: !!o.userBrowser,
       profileFiles: !!o.profileFiles,
+      targetWaitMs: o.targetWaitMs ?? 0,
     };
   }
 
@@ -1975,15 +2033,55 @@ export class RuntimeImpl implements Runtime {
         delete step.opts.confirm;
       }
     }
+    // a step inside within(...), with in='…', or aimed by label=: found by the in-page locator
+    if (AIMED.has(step.verb) && rc.rec.page && (step.opts.in !== undefined || rc.rec.within || step.opts.label !== undefined)) {
+      const n = (await locateTarget(rc, step, { must: true }))!;
+      return aimedStep(rc, step, handler, n);
+    }
     try {
       await handler(rc, step);
     } catch (e) {
+      if (!(e instanceof AwError) || e.code !== 'bad_request' || !MISSING_TARGET.test(e.message)) throw e;
       // a control the plain-HTTP view does not have (rendered by script, in a shadow root):
       // move the page to a script engine and try the step once more
       const p = rc.rec.page;
-      if (!(e instanceof AwError) || e.code !== 'bad_request' || !MISSING_TARGET.test(e.message) || !p || p.tier !== 'wire' || !p.stats.scripts || p.method !== 'GET' || !(await rc.nextTier('wire'))) throw e;
-      await rc.escalate(`${step.src} was not found without the page's scripts`);
-      await handler(rc, step);
+      if (p && p.tier === 'wire' && p.stats.scripts && p.method === 'GET' && (await rc.nextTier('wire'))) {
+        await rc.escalate(`${step.src} was not found without the page's scripts`);
+        try {
+          return await handler(rc, step);
+        } catch (e2) {
+          if (!(e2 instanceof AwError) || !MISSING_TARGET.test(e2.message)) throw e2;
+        }
+      }
+      // named only by aria-label, aria-labelledby or a label the view does not show: ask the page by accessible name
+      if (!AIMED.has(step.verb) || !rc.rec.page || !/^https?:/.test(rc.rec.page.url)) throw e;
+      const byName = async () => {
+        if (typeof step.args[0] !== 'string') return undefined;
+        try {
+          return await locateTarget(rc, step);
+        } catch {
+          return undefined;
+        }
+      };
+      // in a test run a step waits for its target to appear, as an assertion does (AGENTWEB_SETTLE=test)
+      const waitMs = rc.isLive() ? rc.rt.opts.targetWaitMs : 0;
+      for (const end = Date.now() + waitMs; Date.now() < end && !rc.ctx.signal?.aborted; ) {
+        await sleep(200);
+        const eng = rc.engine(rc.page.tier);
+        if (eng.snapshot) rc.setPage(await rc.toPage(await eng.snapshot(rc.ctx), rc.page.tier), { push: false });
+        try {
+          return await handler(rc, step);
+        } catch (e3) {
+          if (!(e3 instanceof AwError) || e3.code !== 'bad_request' || !MISSING_TARGET.test(e3.message)) throw e3;
+        }
+        if (rc.page.tier === 'chrome') {
+          const n = await byName();
+          if (n !== undefined) return aimedStep(rc, step, handler, n);
+        }
+      }
+      const n = await byName();
+      if (n === undefined) throw e;
+      await aimedStep(rc, step, handler, n);
     }
   }
 

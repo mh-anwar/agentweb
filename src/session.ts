@@ -38,6 +38,8 @@ export interface SessionRecord {
   tiers?: Record<string, Tier>;
   /** fingerprint of the last field filled (default target for submit() and press('Enter')) */
   lastField?: string;
+  /** within(...): steps and expects act inside this scope ('dialog:Report a problem', 'row:Ada', 'css=…') until within() or open() */
+  within?: string;
   /** values filled on the current wire-tier page: fingerprint -> value, replayed if the page moves to a script engine */
   dirty?: Record<string, string>;
   /** viewport, device, locale, timezone, location the agent asked for with emulate() */

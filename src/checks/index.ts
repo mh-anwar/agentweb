@@ -20,6 +20,7 @@ import type { AuditReport, OverflowReport } from './inpage.ts';
 import { auditLines, overflowLines, parseRules, violations } from './report.ts';
 import { imageSize, parseWidths, shotLine } from './shots.ts';
 import { recordVerb } from './record.ts';
+import { register as registerLocator } from './expectloc.ts';
 
 const truthy = (v: unknown) => v !== undefined && v !== false && v !== 0 && !/^(0|no|false|off)$/i.test(String(v));
 
@@ -27,6 +28,7 @@ export function register(rt: RuntimeImpl): void {
   rt.register('overflow', overflow);
   rt.register('audit', audit);
   rt.register('record', recordVerb);
+  registerLocator(rt);
   // not for programs: the pieces expect() and shot() hand over to
   rt.register('expect_checks', expectChecks);
   rt.register('shot_more', shotMore);

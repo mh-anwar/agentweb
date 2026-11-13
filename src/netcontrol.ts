@@ -731,7 +731,7 @@ function fileRoots(rc: RunCtx): string[] {
   return out;
 }
 
-function readDroppable(rc: RunCtx, path: string): { name: string; mime: string; data: string } {
+export function readDroppable(rc: RunCtx, path: string): { name: string; mime: string; data: string } {
   const abs = isAbsolute(path) ? path : resolve(process.cwd(), path);
   if (!existsSync(abs)) throw new AwError('bad_request', `no such file: ${clip(path, 120)}`, 'give a path relative to the working directory, or inside the downloads folder');
   const real = realpathSync(abs);

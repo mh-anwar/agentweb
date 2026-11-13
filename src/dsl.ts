@@ -69,7 +69,7 @@ export const VERBS = new Set([
   'click', 'fill', 'select', 'check', 'uncheck', 'submit', 'press', 'hover', 'scroll', 'upload', 'wait',
   'expect', 'engine', 'confirm', 'js', 'console', 'network', 'dialog', 'emulate', 'forward', 'drag',
   'extract', 'each', 'fork', 'watch', 'cookies', 'profile', 'login', 'tab', 'tabs', 'newtab', 'bug', 'help', 'handoff',
-  'route', 'routes', 'headers', 'auth', 'init', 'drop', 'tools', 'call',
+  'route', 'routes', 'headers', 'auth', 'init', 'drop', 'tools', 'call', 'within',
 ]);
 
 /** Playwright locator builders: the string they carry is the target. */

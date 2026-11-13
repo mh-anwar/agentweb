@@ -111,6 +111,9 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
         downloadDir: dl === 'off' || dl === '0' ? (false as const) : dl || undefined,
         // pictures and layout checks want the page's images (AGENTWEB_IMAGES=1); by default they are not downloaded
         images: /^(1|true|yes|on)$/i.test(env.AGENTWEB_IMAGES ?? ''),
+        // AGENTWEB_SETTLE=test (agentweb test sets it): a short quiet window after each action, because every assertion
+        // and every step target waits for what it needs; an agent reading a page gets the longer default
+        ...(/^(test|fast)$/i.test(env.AGENTWEB_SETTLE ?? '') ? { netQuietMs: 80, domQuietMs: 50 } : {}),
       };
       const isolated = mod.createChromeEngine({
         ...common,
@@ -192,6 +195,7 @@ export async function createAgentweb(config: AgentwebConfig = {}): Promise<Runti
       emulate: env.AGENTWEB_DEVICE ? findDevice(env.AGENTWEB_DEVICE)?.emu : undefined,
       sessionTtlSec: config.sessionTtlSec,
       profileFiles: config.profileFiles,
+      targetWaitMs: /^(test|fast)$/i.test(env.AGENTWEB_SETTLE ?? '') ? 5000 : 0,
       secretNames: policy.secrets.map((x) => x.name),
       secretOrigins: Object.fromEntries(policy.secrets.map((x) => [x.name.toLowerCase(), x.origins])),
       browser,

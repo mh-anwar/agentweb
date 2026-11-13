@@ -683,6 +683,12 @@ export function createChromeEngine(opts: ChromeEngineOptions = {}): ChromeEngine
           await d.begin(ctx);
           await Promise.all([d.cookiesIn(ctx), d.storageIn(ctx)]);
         }
+        // a read-only look (a check, the element search): no settling, no fresh read of the page
+        if (action.do === 'probe' && !fresh) {
+          const out: Out = {};
+          await perform(slot, action, deadline, out);
+          return { url: d.url, status: d.doc.status || 200, method: d.doc.method, contentType: d.doc.mime || 'text/html', bytes: 0, ms: Math.round(performance.now() - t0), value: out.value };
+        }
         d.setActing(true);
         const since = Date.now();
         const out: Out = {};

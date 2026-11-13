@@ -258,7 +258,7 @@ export type Action =
       labels?: { n: number; num: number }[];
     }
   /** page-side checks of src/checks: overflow, audit, problems (console/requests), imgdiff */
-  | { do: 'probe'; what: 'overflow' | 'audit' | 'problems' | 'imgdiff'; args?: Record<string, unknown> }
+  | { do: 'probe'; what: 'overflow' | 'audit' | 'problems' | 'imgdiff' | 'locate'; args?: Record<string, unknown> }
   | { do: 'record'; op: 'start' | 'stop'; name?: string }
   | { do: 'upload'; n: number; files: { name: string; mime: string; data: string }[] }
   | { do: 'drop'; n: number; files: { name: string; mime: string; data: string }[] }

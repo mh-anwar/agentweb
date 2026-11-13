@@ -400,7 +400,7 @@ class Page {
   }
 
   /** run until quiet. `until` stops early (wait text), `minMs` keeps the clock going (wait ms). */
-  async settle(budgetMs: number, opts: { until?: () => boolean; minMs?: number } = {}): Promise<{ tasks: number; skippedMs: number; wallMs: number; stop: string }> {
+  async settle(budgetMs: number, opts: { until?: () => boolean; minMs?: number; horizonMs?: number } = {}): Promise<{ tasks: number; skippedMs: number; wallMs: number; stop: string }> {
     const limits = this.limits;
     this.settling = true;
     try {
@@ -418,7 +418,7 @@ class Page {
         until = () => (inner ? inner() : false) || this.clock.now() >= target;
       }
       const hooks: SettleHooks = {
-        limits: opts.minMs ? { ...limits, maxVirtualMs: Math.max(limits.maxVirtualMs, opts.minMs + 1000) } : limits,
+        limits: { ...limits, ...(opts.minMs ? { maxVirtualMs: Math.max(limits.maxVirtualMs, opts.minMs + 1000) } : {}), ...(opts.horizonMs !== undefined ? { horizonMs: Math.min(limits.horizonMs, opts.horizonMs) } : {}) },
         wallMs: Math.max(50, Math.min(limits.maxWallMs, budgetMs)),
         inflight: () => {
           let n = 0;
@@ -772,6 +772,9 @@ const fail = (id: number, e: any) =>
     hint: e instanceof ActError ? e.hint : undefined,
   });
 
+/** how far ahead an action or a fresh look may skip the clock (virtual ms) */
+const ACT_HORIZON_MS = 1000;
+
 async function onLoad(msg: LoadMsg): Promise<void> {
   const t0 = performance.now();
   if (current) current.destroy();
@@ -796,7 +799,9 @@ async function onAct(msg: ActMsg): Promise<void> {
     send(r);
     return;
   }
-  const st = await page.settle(msg.budgetMs - (performance.now() - t0) - 300, plan);
+  // After an action, time is skipped only up to the near future: a toast that goes away after a few seconds
+  // must still be there when the page is looked at, as it is for a person (and in a real browser)
+  const st = await page.settle(msg.budgetMs - (performance.now() - t0) - 300, msg.action.do === 'wait' || plan.until || plan.minMs ? plan : { ...plan, horizonMs: ACT_HORIZON_MS });
   if (msg.action.do === 'wait' && msg.action.text && st.stop !== 'found' && !page.nav) page.event(`"${msg.action.text}" did not appear`);
   send(page.result(msg.id, st, false));
 }
@@ -805,7 +810,7 @@ async function onSnap(msg: SnapMsg): Promise<void> {
   const page = current;
   if (!page) throw new ActError('gone', 'no page is open');
   page.begin(msg.limits, msg.budgetMs);
-  const st = await page.settle(Math.min(msg.budgetMs - 300, 2000));
+  const st = await page.settle(Math.min(msg.budgetMs - 300, 2000), { horizonMs: ACT_HORIZON_MS });
   send(page.result(msg.id, st, false));
 }
 

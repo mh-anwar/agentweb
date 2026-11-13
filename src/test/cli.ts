@@ -145,7 +145,7 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
       profileFiles: true,
       // Images cost time and memory and most page checks do not look at them, so a run loads them only when it
       // asks for something that does: a screenshot, a layout or accessibility check, a request check (--images forces it)
-      env: { ...process.env, AGENTWEB_IMAGES: process.env.AGENTWEB_IMAGES ?? (wantImages ? '1' : '0'), AGENTWEB_CONFIRM: process.env.AGENTWEB_CONFIRM ?? 'never' },
+      env: { ...process.env, AGENTWEB_IMAGES: process.env.AGENTWEB_IMAGES ?? (wantImages ? '1' : '0'), AGENTWEB_CONFIRM: process.env.AGENTWEB_CONFIRM ?? 'never', AGENTWEB_SETTLE: process.env.AGENTWEB_SETTLE ?? 'test' },
       budget: opts.excerptTokens,
       ...(f.bool.has('no-ghost') ? { ghost: false } : {}),
       ...(f.bool.has('no-chrome') ? { chrome: false } : {}),
