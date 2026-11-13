@@ -129,6 +129,7 @@ export async function testCommand(argv: string[], io: { out: (s: string) => void
     ci: f.bool.has('ci') || (!!env.CI && env.CI !== '0' && env.CI !== 'false'),
     timeoutMs: (Number(f.str.timeout) || 60) * 1000,
     excerptTokens: Math.max(200, Number(f.str.excerpt) || 200),
+    verbose: f.bool.has('verbose'),
     report: f.str.report ? resolve(process.cwd(), f.str.report) : undefined,
     runSetup: f.str.setup ? [f.str.setup] : undefined,
     runTeardown: f.str.teardown ? [f.str.teardown] : undefined,

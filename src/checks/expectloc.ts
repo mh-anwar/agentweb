@@ -235,6 +235,13 @@ async function within(rc: RunCtx, step: Step): Promise<void> {
   rc.note(`later steps act inside ${scope} (within() ends it)`);
 }
 
+const NOT_FILLABLE = new Set(['button', 'link', 'checkbox', 'radio', 'switch', 'tab', 'menuitem', 'option', 'group', 'region', 'dialog', 'img', 'heading']);
+const FITS: Record<string, (role: string) => boolean> = {
+  fill: (r) => !NOT_FILLABLE.has(r),
+  check: (r) => r === 'checkbox' || r === 'radio' || r === 'switch' || r === 'menuitemcheckbox' || r === 'menuitemradio',
+  uncheck: (r) => r === 'checkbox' || r === 'switch' || r === 'menuitemcheckbox',
+  select: (r) => r === 'combobox' || r === 'listbox',
+};
 const VALUE_VERBS = new Set(['fill', 'select', 'upload', 'drop']);
 /** The step names its control by keyword (label=, testid=, css=, role= with name=), so a positional argument is not the target. */
 export function keyedTarget(o: Record<string, unknown>): boolean {
@@ -267,6 +274,12 @@ export async function locateTarget(rc: RunCtx, step: Step, opts: { actionable?: 
         r = r2;
         vis = v2;
       }
+    }
+    // fill aims at something that takes text, check at a box, select at a list: a "Show password" button next to the field is not a candidate
+    const fits = FITS[step.verb];
+    if (fits && vis.length > 1) {
+      const narrowed = vis.filter((m) => fits(m.role));
+      if (narrowed.length) vis = narrowed;
     }
     const nth = o.nth !== undefined ? Number(o.nth) : undefined;
     if (vis.length) {

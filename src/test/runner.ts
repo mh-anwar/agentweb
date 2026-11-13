@@ -25,6 +25,8 @@ export interface RunOptions {
   timeoutMs: number;
   /** token budget of the page excerpt shown with a failure */
   excerptTokens: number;
+  /** --verbose: also print what js() steps returned */
+  verbose?: boolean;
   /** load every page in this engine (overrides `# engine:`) */
   engine?: string;
   /** false: `# setup:`, `# teardown:` and exec() are refused (--no-exec) */
@@ -490,6 +492,17 @@ export async function runCase(rt: RuntimeImpl, tc: TestCase, o: RunOptions, shar
       const r = await rt.run(cur, snap ? 'view()' : stepToSource(step), { budget: snap ? 1500 : o.excerptTokens, signal: deadline });
       // AGENTWEB_TEST_TRACE=1: how long each step took, on stderr (finding where a suite spends its time)
       if (process.env.AGENTWEB_TEST_TRACE) process.stderr.write(`trace ${Math.round(performance.now() - tStep)}ms ${r.stats.tier ?? ''} ${tc.name} :: ${st.src.slice(0, 90)}\n`);
+      if (step.verb === 'js' && r.ok) {
+        // js('document.cookie', as='c'): the value is kept as ${c}, and shown with --verbose or the trace
+        const val = jsValue(r.text);
+        // js() keeps its arguments as code, so as= is read the way exec()'s is
+        let as: unknown;
+        try {
+          as = parseProgram(st.src.replace(/^\s*(?:await\s+)?js\s*\(/, 'find('))[0]?.opts.as;
+        } catch {}
+        if (typeof as === 'string') vars[as] = val;
+        if (o.verbose || process.env.AGENTWEB_TEST_TRACE) process.stderr.write(`  ${tc.name} :: ${st.src.slice(0, 60)} → ${val.slice(0, 400) || '(empty)'}\n`);
+      }
       res.steps++;
       if (r.stats.tier && tiers[tiers.length - 1] !== r.stats.tier) tiers.push(r.stats.tier);
       for (const m of r.text.matchAll(/^note: (profile '.*' has no cookies for .*)$/gm)) (res.warnings ??= []).push(m[1]);
@@ -683,6 +696,20 @@ export function settleSame(results: TestResult[]): void {
       } else if (x.r.failure) x.r.failure.message += `\nalso line ${x.line}: ${x.step} — ${message}`;
     }
   }
+}
+
+/** What a js() step returned: the run's text without its status line and the page lines after it. */
+export function jsValue(text: string): string {
+  const lines = text.split('\n');
+  if (/^[✓✗] /.test(lines[0] ?? '')) lines.shift();
+  // the page's header line ("Title — https://… [chrome]") starts what the run says about the page
+  const at = lines.findIndex((l) => / — \S+:\/\/\S* \[\w+\]$/.test(l));
+  const v = (at >= 0 ? lines.slice(0, at) : lines).join('\n').trim();
+  try {
+    const j = JSON.parse(v);
+    if (typeof j === 'string') return j;
+  } catch {}
+  return v;
 }
 
 /** "✗ <src> — message" is the first line of a failed run. */

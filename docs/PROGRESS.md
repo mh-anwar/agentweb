@@ -50,10 +50,28 @@ Clockwork's first journey run on preview 037b68c (sign-in, settings-groups) repo
 2. `fill(label='Password', 'value')`: with a keyword locator (label=, testid=, css=, role=+name=) the one positional
    argument is the value (`keyedTarget` in src/checks/expectloc.ts). css= steps now go through the locator too.
 3. `expect(url='/path?q#frag')` compares the fragment when the pattern has one; the failure message shows it.
-**Not done:** (4) their settings-groups test took 47.9 s to fail with a 10 s expect timeout: find which step waits
-(AGENTWEB_TEST_TRACE=1; suspects press('ArrowLeft'), open() with #hash) and print the slowest step in failure output.
-No regression test yet for 1 and 2 (verified by hand with a page whose inputs enable after 1.5 s); add one to
-test/testrunner.test.ts. Then the "Next, in priority order" list above, wall time first.
+Released as 7dafa57 (installed). Clockwork confirmed 1-3 on the real app: 4 of 5 journey ports pass (were 0 of 5); the
+47.9 s slow failure was the #hash expect waiting and is gone (settings-groups passes in 13-16 s).
+
+Second round (same day):
+- `expect('/Bug Reports/', role='heading', level=1)` takes a pattern (checkExpect in src/runtime.ts).
+- fill/select/check/uncheck narrow several locator matches to controls that fit the verb (`FITS` in
+  src/checks/expectloc.ts): fill(label='Password') no longer trips on a "Show password" button.
+- `js('…', as='name')` keeps the value as `${name}` and prints it with --verbose or AGENTWEB_TEST_TRACE=1
+  (src/test/runner.ts; js() keeps its arguments as code, so as= is read the way exec()'s is).
+- Regression test for all of the above and for fixes 1-2: test/testrunner.test.ts, "a form that is disabled until its
+  script runs".
+- Clockwork item 5 / A (cookie missing after a sign-in link) is **not agentweb**: their dev server on 3989 runs
+  `next dev -H 0.0.0.0`, so the app redirects to http://0.0.0.0:3989 and the localhost cookie is not sent. Told them.
+- Clockwork's first journeys comparison (preview 7dafa57, 2 workers, 2 runs; Playwright ran 7 tests vs 5 ports, so wall
+  time is not like-for-like): agentweb 31.3 s 4/5 and 56.1 s 1/5; Playwright 43.0 s 6/7 and 40.0 s 5/7; CPU 36 vs 71 s;
+  peak memory 1306 vs 3355 MiB; code 5036 vs 11248 chars; **flaky 3 vs 1 (loss)**. Their table:
+  clockwork worktree docs/knowledge/agentweb-vs-playwright/2026-11-13-journeys.md. The 1/5 run was not reproduced: three
+  back-to-back agentweb runs here gave 4/5 each in ~30 s (the failure is A). Suspect: local Supabase sign-in rate limit
+  when alternating with Playwright; waiting for their captured errors.
+
+**Open:** flaky count on Clockwork journeys (needs their error output); a disabled control on a wire-tier page still
+fails at once; then the "Next, in priority order" list above, fixture wall time first (8.4 s vs 6.6 s).
 
 Updated 2026-11-11. This iteration was developed on `t3/agent-browser-differentiation` and
 integrates the owner’s logging and auto-release commits through `3de280b`. Green work lands on

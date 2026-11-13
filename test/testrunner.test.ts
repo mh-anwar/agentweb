@@ -333,6 +333,29 @@ test('fill resolves by placeholder, aria-label and title as well as the label', 
   }
 });
 
+test('a form that is disabled until its script runs: steps wait; keyword locators take the value; fill skips buttons; js(as=) keeps its value', async () => {
+  const h = createServer((q, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    if (q.url!.startsWith('/done')) return res.end('<!doctype html><title>d</title><h1>Bug Reports2</h1>');
+    res.end(`<!doctype html><title>t</title><main><h1>Sign in</h1><form onsubmit="event.preventDefault();location.href='/done?group=fees#fees'">
+      <label>Email <input id=e name=e disabled></label><label>Password <input type=password name=p></label>
+      <button type=button aria-label="Show password">eye</button><button id=b disabled>Email me a link</button></form><p id=o></p></main>
+      <script>setTimeout(()=>{e.disabled=false;b.disabled=false},1200);document.querySelector('[name=p]').oninput=ev=>o.textContent='pw:'+ev.target.value</script>`);
+  });
+  await new Promise<void>((ok) => h.listen(0, '127.0.0.1', ok));
+  const u = `http://127.0.0.1:${(h.address() as AddressInfo).port}`;
+  try {
+    const r = await run({
+      'a.aw': `# engine: chrome\n## hydrate\nopen('${u}/')\nfill('Email', 'a@b.co')\nfill(label='Password', 'IntQg4wemsrqvKF7x')\nexpect('pw:IntQg4wemsrqvKF7x')\njs('document.title', as='t')\nexpect(title='\${t}')\nclick(role='button', name='Email me a link')\nexpect(url='/done?group=fees#fees')\nexpect('/Bug Reports/', role='heading', level=1)\nexpect('/^Bug Reports$/', role='heading', level=1, timeout=0.3, soft=0)\n`,
+    });
+    assert.equal(r.code, 1, r.out + r.err);
+    assert.match(r.out, /a\.aw:12/, r.out);
+    assert.match(r.out, /no level 1 heading/, r.out);
+  } finally {
+    h.close();
+  }
+});
+
 test('engine memory: a later test opens a page on the engine an earlier one had to climb to, and the next run starts there', async () => {
   const hits = (path: string) => lateHits.filter((u) => u === path).length;
   const body = `# base: ${lateUrl}\n## first\nopen('/m1'); expect('Report ready')\n## second\nopen('/m1'); expect('Report ready')\n## third\nopen('/m1'); expect('Dashboard'); snapshot('d')\n`;

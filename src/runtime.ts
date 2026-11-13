@@ -2227,7 +2227,15 @@ function checkExpect(p: Page, c: { own: string; not?: string; url?: string; titl
     // expect(role='heading', level=1) · expect('Orders', role='heading'): a heading of that level (with that text) is shown
     const lv = c.heading.level;
     const hs = p.blocks.filter((b) => b.k === 'h' && (lv === undefined || (b.lv ?? 0) === lv));
-    if (!hs.some((b) => !own || lc(blockText(b)).includes(lc(own)))) {
+    // expect('/Bug Reports/', role='heading'): a pattern, as with name='/…/'
+    const m = /^\/(.*)\/([a-z]*)$/s.exec(own);
+    let re: RegExp | undefined;
+    try {
+      if (m) re = new RegExp(m[1], m[2]);
+    } catch {
+      // not a valid pattern: compared as text
+    }
+    if (!hs.some((b) => !own || (re ? re.test(blockText(b)) : lc(blockText(b)).includes(lc(own))))) {
       const have = p.blocks.filter((b) => b.k === 'h').slice(0, 5).map((b) => `h${b.lv ?? '?'} "${blockText(b).slice(0, 40)}"`);
       throw new AwError('bad_request', `no ${lv ? `level ${lv} ` : ''}heading${own ? ` with '${own}'` : ''} on the page${have.length ? ` (headings: ${have.join(', ')})` : ' (it has no headings)'}`);
     }
