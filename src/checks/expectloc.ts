@@ -235,13 +235,21 @@ async function within(rc: RunCtx, step: Step): Promise<void> {
   rc.note(`later steps act inside ${scope} (within() ends it)`);
 }
 
+const VALUE_VERBS = new Set(['fill', 'select', 'upload', 'drop']);
+/** The step names its control by keyword (label=, testid=, css=, role= with name=), so a positional argument is not the target. */
+export function keyedTarget(o: Record<string, unknown>): boolean {
+  return o.label !== undefined || o.testid !== undefined || o.test_id !== undefined || o.css !== undefined || (o.role !== undefined && o.name !== undefined);
+}
+
 /**
  * The live node a step aims at, found by role/name/label/test id inside the current scope, for steps the
  * page view cannot place (a scope is set, or the control is named only by aria-label). Undefined: not found.
  */
 export async function locateTarget(rc: RunCtx, step: Step, opts: { actionable?: boolean; must?: boolean } = {}): Promise<number | undefined> {
   const o = step.opts;
-  const target = step.args.length && typeof step.args[0] === 'string' ? String(step.args[0]) : undefined;
+  // fill(label='Password', 'value'): with a keyword locator the one positional argument is the value, not the target
+  const isValue = VALUE_VERBS.has(step.verb) && step.args.length === 1 && keyedTarget(o);
+  const target = !isValue && step.args.length && typeof step.args[0] === 'string' ? String(step.args[0]) : undefined;
   const spec = specOf(step, rc.rec as { within?: string }, target);
   if (target !== undefined && spec.role === undefined && spec.label === undefined && spec.testid === undefined && spec.css === undefined) {
     // a field is found by its label first, then anything with that name

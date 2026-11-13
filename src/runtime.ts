@@ -21,7 +21,7 @@ import { rank, renderFind, renderLinks, renderOutline, renderRead, renderView, s
 import { readFileSync } from 'node:fs';
 import { describeProfile, loadProfile, parseProfile, saveProfile } from './profiles.ts';
 import { isAdvancedWait, netVerbs, waitVerb, parseThrottle, parsePermissions, readDroppable } from './netcontrol.ts';
-import { locateTarget, wantsLocator } from './checks/expectloc.ts';
+import { keyedTarget, locateTarget, wantsLocator } from './checks/expectloc.ts';
 import { actByFp, allActs, liveId, loadSession, MAX_TABS, rehash, resolveTarget, saveSession, SessionRefs, type ParkedTab, type Resolved, type SessionRecord } from './session.ts';
 import { estimateTokens } from './tokens.ts';
 import { TOOL, toolSpec } from './tooldoc.ts';
@@ -534,10 +534,21 @@ export class RunCtx {
   /** Act on a target in a script engine, re-resolving once if the page changed under us. */
   async liveOn(step: Step, build: (n: number, act: Act) => Action): Promise<void> {
     await this.ensureLive();
+    const enabledBy = Date.now() + 5000;
     for (let attempt = 0; ; attempt++) {
       const r = this.resolve(step);
       if ('portable' in r) return this.navigate({ url: r.portable.href!, referer: this.page.url });
-      if (r.act.dis) throw new AwError('bad_request', `[${r.act.l}] is disabled`);
+      if (r.act.dis) {
+        // a control that is disabled until the page's scripts are ready (a form before hydration): wait for it
+        const eng = this.engine(this.page.tier);
+        if (eng.snapshot && Date.now() < enabledBy && !this.ctx.signal?.aborted) {
+          await new Promise((res) => setTimeout(res, 100));
+          this.setPage(await this.toPage(await eng.snapshot(this.ctx), this.page.tier), { push: false });
+          attempt--;
+          continue;
+        }
+        throw new AwError('bad_request', `[${r.act.l}] is ${eng.snapshot ? 'still disabled after 5 s' : 'disabled'}`);
+      }
       try {
         if (r.act.n === undefined) throw new AwError('stale', 'no live node');
         await this.live(build(r.act.n, r.act));
@@ -1856,10 +1867,10 @@ async function aimedStep(rc: RunCtx, step: Step, handler: VerbHandler, n: number
   const hit = allActs(rc.page).find((x) => x.act.n === n);
   const { in: _in, label: _label, role: _role, name: _name, nth: _nth, testid: _t, test_id: _t2, css: _css, ...rest } = step.opts;
   if (hit) {
-    const args = step.verb === 'upload' || step.verb === 'drop' || step.verb === 'fill' || step.verb === 'select' ? [hit.act.l, ...(step.args.length > 1 || step.opts.label === undefined ? step.args.slice(1) : step.args)] : [hit.act.l];
+    const args = step.verb === 'upload' || step.verb === 'drop' || step.verb === 'fill' || step.verb === 'select' ? [hit.act.l, ...(step.args.length > 1 || !keyedTarget(step.opts) ? step.args.slice(1) : step.args)] : [hit.act.l];
     return handler(rc, { ...step, args, opts: { ...rest, _fp: hit.act.f } });
   }
-  const value = step.opts.label !== undefined ? step.args[0] : step.args[1];
+  const value = keyedTarget(step.opts) && step.args.length === 1 ? step.args[0] : step.args[1];
   switch (step.verb) {
     case 'click':
       await rc.live({ do: 'click', n });
@@ -2034,7 +2045,7 @@ export class RuntimeImpl implements Runtime {
       }
     }
     // a step inside within(...), with in='…', or aimed by label=: found by the in-page locator
-    if (AIMED.has(step.verb) && rc.rec.page && (step.opts.in !== undefined || rc.rec.within || step.opts.label !== undefined)) {
+    if (AIMED.has(step.verb) && rc.rec.page && (step.opts.in !== undefined || rc.rec.within || step.opts.label !== undefined || step.opts.css !== undefined)) {
       const n = (await locateTarget(rc, step, { must: true }))!;
       return aimedStep(rc, step, handler, n);
     }
@@ -2245,7 +2256,7 @@ function checkExpect(p: Page, c: { own: string; not?: string; url?: string; titl
 function shortUrl(u: string): string {
   try {
     const x = new URL(u);
-    return x.pathname + x.search;
+    return x.pathname + x.search + x.hash;
   } catch {
     return u;
   }
@@ -2262,9 +2273,14 @@ export function urlMatches(actual: string, pat: string): boolean {
   const trim = (x: string) => (x.length > 1 ? x.replace(/\/+$/, '') : x);
   if (pat.includes('*')) {
     const re = new RegExp('^' + pat.split('*').map((x) => x.replace(/[.+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
-    return re.test(actual) || re.test(u.pathname + u.search) || re.test(u.pathname);
+    return re.test(actual) || re.test(u.pathname + u.search + u.hash) || re.test(u.pathname + u.search) || re.test(u.pathname);
   }
-  if (pat.startsWith('/')) return pat.includes('?') ? trim(u.pathname + u.search) === trim(pat) : trim(u.pathname) === trim(pat);
+  // a pattern with #fragment compares the fragment too; without one the fragment is not looked at
+  if (pat.startsWith('/')) {
+    const [pp, ph] = pat.split('#');
+    if (ph !== undefined && u.hash !== '#' + ph) return false;
+    return pp.includes('?') ? trim(u.pathname + u.search) === trim(pp) : trim(u.pathname) === trim(pp);
+  }
   return lc(actual).includes(lc(pat));
 }
 

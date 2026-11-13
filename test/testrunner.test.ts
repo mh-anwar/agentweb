@@ -99,6 +99,12 @@ test('expect: text, count, not, url, title', async () => {
 
 test('urlMatches', () => {
   assert.ok(urlMatches('http://h:1/a/b?x=1', '/a/b'));
+  // a #fragment in the pattern is compared; without one it is not looked at
+  assert.ok(urlMatches('http://h:1/a?g=fees#fees', '/a?g=fees#fees'));
+  assert.ok(urlMatches('http://h:1/a?g=fees#fees', '/a?g=fees'));
+  assert.ok(urlMatches('http://h:1/a?g=fees#fees', '/a#fees'));
+  assert.ok(!urlMatches('http://h:1/a?g=fees', '/a?g=fees#fees'));
+  assert.ok(!urlMatches('http://h:1/a?g=fees#other', '/a?g=fees#fees'));
   assert.ok(!urlMatches('http://h:1/a/b?x=1', '/a'));
   assert.ok(urlMatches('http://h:1/a/b?x=1', '/a/b?x=1'));
   assert.ok(!urlMatches('http://h:1/a/b?x=1', '/a/b?x=2'));

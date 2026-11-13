@@ -41,6 +41,19 @@ Their journey ports (report-problem, settings-groups, sign-in) are moving to the
 5. Rerun `node run.mjs` for a clean table after each win; ask the Clockwork thread for compare.sh numbers on the
    newest build; then move the next Clockwork journeys (forms + db checks via exec(expect=), mail(), as()).
 
+### Takeover (2026-11-12 ~20:00 local, third thread, same worktree)
+
+Clockwork's first journey run on preview 037b68c (sign-in, settings-groups) reported 4 bugs. Fixed here:
+1. Actions wait up to 5 s for a control that is disabled until hydration (`liveOn` in src/runtime.ts re-reads the
+   page every 100 ms), then fail with "still disabled after 5 s". Not covered: a disabled control on a wire-tier
+   page (click at `if (act.dis)` in the click verb, fill on a plain HTML form) still fails at once.
+2. `fill(label='Password', 'value')`: with a keyword locator (label=, testid=, css=, role=+name=) the one positional
+   argument is the value (`keyedTarget` in src/checks/expectloc.ts). css= steps now go through the locator too.
+3. `expect(url='/path?q#frag')` compares the fragment when the pattern has one; the failure message shows it.
+**Not done:** (4) their settings-groups test took 47.9 s to fail with a 10 s expect timeout: find which step waits
+(AGENTWEB_TEST_TRACE=1; suspects press('ArrowLeft'), open() with #hash) and print the slowest step in failure output.
+No regression test yet for 1 and 2 (verified by hand with a page whose inputs enable after 1.5 s); add one to
+test/testrunner.test.ts. Then the "Next, in priority order" list above, wall time first.
 
 Updated 2026-11-11. This iteration was developed on `t3/agent-browser-differentiation` and
 integrates the owner’s logging and auto-release commits through `3de280b`. Green work lands on
