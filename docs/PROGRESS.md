@@ -15,6 +15,32 @@ context, `expect(download=)`, waiting step targets and short settling in test ru
 settling, ghost clock limited to 1 s ahead after actions, `upload(t, path)`, `exec(expect=)`, readable command
 failures, `${base}`, `${today+N}`. Next: close the remaining wall-time gap, then move Clockwork journeys.
 
+### Handoff (2026-11-12 ~20:00 local; next thread continues in this worktree)
+
+**Scoreboard so far** (bench/vs-playwright/RESULTS.md, 2 workers, 5 clean runs, 24 planted bugs, 5 benign variants):
+agentweb wall 8.4 s vs Playwright 6.6 s (**loss**); CPU 11.8 vs 14.0 s; peak memory 861 vs 1801 MB; flaky 0 vs 0;
+false alarms 0/5 vs 0/5; bugs caught 23/24 vs 24/24 (agentweb misses the 18 px tap target, see below); failure output
+1274 vs 2967 chars; test code 63 vs 212 lines.
+**Clockwork's real suite** (their numbers, build c8d73f6, before this branch's speedups): 46-page sweep 84 s vs 137 s
+(38% faster), CPU 118 vs 205 s, memory 1081 vs 1918 MiB, 0 flaky both, code 1456 vs 2664 chars; planted bugs 8/8
+both, failure output 599 vs 2046 chars.
+
+**Open Clockwork items:** (5) a cookie set by a Next server action missing on a later open(): not reproduced with
+a fixture (bench/vs-playwright/app/server.mjs `/cookie-lab`); they retest on the preview build with --verbose.
+Their journey ports (report-problem, settings-groups, sign-in) are moving to the new locator syntax.
+
+**Next, in priority order:**
+1. Wall time on the fixture (the only lost metric). Run `AGENTWEB_TEST_TRACE=1 node dist/agentweb.mjs test
+   bench/vs-playwright/agentweb --base …` for per-step ms. Suspects: page extract + compile + render after every
+   action, cookie/storage sync over CDP per step, browser context creation per test, a node process per `# setup:`.
+2. Strict tap-target rule (any control under 24 px, no WCAG spacing exception), as Clockwork's checkDesign does:
+   e.g. `audit='target24'`; then the fixture's `tap-small` bug is caught.
+3. Bug: `# console: clean` (expect(console=0, all=1) at the end of a test) loses earlier pages' errors after a
+   mid-test `profile()`.
+4. `--grep-test` matches titles before `# each:` values (documented; `--grep` matches the expanded name).
+5. Rerun `node run.mjs` for a clean table after each win; ask the Clockwork thread for compare.sh numbers on the
+   newest build; then move the next Clockwork journeys (forms + db checks via exec(expect=), mail(), as()).
+
 
 Updated 2026-11-11. This iteration was developed on `t3/agent-browser-differentiation` and
 integrates the owner’s logging and auto-release commits through `3de280b`. Green work lands on

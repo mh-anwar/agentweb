@@ -13,7 +13,7 @@ export const TEST_HELP = `agentweb test - end-to-end tests in agentweb programs,
   agentweb test [paths|globs]       run *.aw / *.awtest files (default: ./tests, else .)
         --base URL                  resolve relative open('/x') against it (also AGENTWEB_BASE; overrides "# base:")
         --workers N                 tests in parallel (default 3)
-        --grep TEXT                 only tests whose "file name" contains TEXT
+        --grep TEXT                 only tests whose "file name" contains TEXT (the name after # each: values: --grep /admin/home picks one page)
         --grep-test TEXT            only tests whose "## " title contains TEXT (the title as written, before "# each:" values)
         --setup CMD  --teardown CMD shell commands run once for the whole run; name=value lines setup prints are \${name} in
                                     every test of every file. \${worker} is the worker's number, 0 to N-1 (AW_WORKER in commands)
